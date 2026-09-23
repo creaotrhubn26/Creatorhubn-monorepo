@@ -49,7 +49,7 @@ produserer det signerte bygget de faktisk installerer.
 
 ## Distribusjon + auto-updater (F7)
 
-Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, signerer med minisign, uploader til en GitHub Release med `latest.json`-manifest. Tauri-updater-plugin'en sjekker manifestet og prompt'er brukeren ved oppstart.
+Tag-trigget GitHub Actions: `creatorhub-one-desk-v*` → bygger `.app.tar.gz` for både aarch64 og x86_64, signerer med minisign, uploader til en GitHub Release med `latest.json`-manifest. Tauri-updater-plugin-en kontrollerer manifestet etter oppstart, hver sjette time og når appen får fokus etter minst én time. Brukeren kan også velge «Søk etter oppdateringer» fra den globale statuskontrollen. Kontrollen er tilgjengelig både før og etter innlogging.
 
 ### Minisign-nøkler
 - **Lokalt:** `~/.tauri/one-desk` (privat) + `~/.tauri/one-desk.pub` (offentlig)

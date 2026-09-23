@@ -6,7 +6,7 @@ import ProjectInfoScreen from "./components/ProjectInfoScreen";
 import ProjectPickerScreen from "./components/ProjectPickerScreen";
 import LoginScreen from "./components/LoginScreen";
 import NoProjectsScreen from "./components/NoProjectsScreen";
-import UpdaterDialog from "./components/UpdaterDialog";
+import DeskUpdater from "./components/DeskUpdater";
 
 type Status =
   | "loading"
@@ -16,53 +16,9 @@ type Status =
   | "picker"
   | "connected";
 
-interface PendingUpdate {
-  version: string;
-  notes: string | null;
-  runDownload: (
-    onProgress: (fraction: number, status: "downloading" | "finished") => void,
-  ) => Promise<void>;
-}
-
 export default function App() {
   const [status, setStatus] = useState<Status>("loading");
   const [config, setConfig] = useState<StoredConfig | null>(null);
-  const [updateInfo, setUpdateInfo] = useState<PendingUpdate | null>(null);
-
-  // Auto-updater: sjekk én gang 4s etter mount slik at hovedflyten ikke
-  // blokkes av en tung GitHub-fetch. Hvis funnet, vises UpdaterDialog.
-  useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      try {
-        const updater = await import("@tauri-apps/plugin-updater");
-        const update = await updater.check();
-        if (!update) return;
-        setUpdateInfo({
-          version: update.version,
-          notes: update.body ?? null,
-          runDownload: async (onProgress) => {
-            let total = 0;
-            let downloaded = 0;
-            await update.downloadAndInstall((event) => {
-              if (event.event === "Started") {
-                total = event.data.contentLength ?? 0;
-                onProgress(0, "downloading");
-              } else if (event.event === "Progress") {
-                downloaded += event.data.chunkLength;
-                if (total > 0) onProgress(downloaded / total, "downloading");
-              } else if (event.event === "Finished") {
-                onProgress(1, "finished");
-              }
-            });
-          },
-        });
-      } catch (e) {
-        // Updater ikke konfigurert (manglende endpoint/pubkey) — vanlig i dev
-        console.warn("[updater] ikke tilgjengelig:", e);
-      }
-    }, 4000);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   /// Hoved-rute-logikk. Tilstander etter loading:
   ///   - needs-login: ingen device-token + ingen lagrede prosjekter → LoginScreen
@@ -128,8 +84,10 @@ export default function App() {
     void refresh();
   }, []);
 
+  let screen;
+
   if (status === "loading") {
-    return (
+    screen = (
       <Container maxWidth="md" sx={{ py: 10, textAlign: "center" }}>
         <CircularProgress />
         <Typography sx={{ mt: 2 }} color="text.secondary">
@@ -137,41 +95,28 @@ export default function App() {
         </Typography>
       </Container>
     );
-  }
-
-  if (status === "needs-login") {
-    return <LoginScreen onLoggedIn={refresh} onManualToken={handleManualToken} />;
-  }
-
-  if (status === "needs-token") {
-    return <TokenSetupScreen onSaved={refresh} onBack={() => setStatus("needs-login")} />;
-  }
-
-  if (status === "picker") {
-    return <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
-  }
-
-  if (status === "no-projects") {
-    return <NoProjectsScreen onRefresh={refresh} onLogout={handleLogout} />;
+  } else if (status === "needs-login") {
+    screen = <LoginScreen onLoggedIn={refresh} onManualToken={handleManualToken} />;
+  } else if (status === "needs-token") {
+    screen = <TokenSetupScreen onSaved={refresh} onBack={() => setStatus("needs-login")} />;
+  } else if (status === "picker") {
+    screen = <ProjectPickerScreen onProjectSelected={refresh} onAddNew={handleAddNew} />;
+  } else if (status === "no-projects") {
+    screen = <NoProjectsScreen onRefresh={refresh} onLogout={handleLogout} />;
+  } else {
+    screen = config ? (
+      <ProjectInfoScreen
+        config={config}
+        onLoggedOut={refresh}
+        onSwitchProject={handleSwitchProject}
+      />
+    ) : null;
   }
 
   return (
     <Box>
-      {config && (
-        <ProjectInfoScreen
-          config={config}
-          onLoggedOut={refresh}
-          onSwitchProject={handleSwitchProject}
-        />
-      )}
-      {updateInfo && (
-        <UpdaterDialog
-          version={updateInfo.version}
-          notes={updateInfo.notes}
-          onDownload={updateInfo.runDownload}
-          onDismiss={() => setUpdateInfo(null)}
-        />
-      )}
+      {screen}
+      <DeskUpdater />
     </Box>
   );
 }

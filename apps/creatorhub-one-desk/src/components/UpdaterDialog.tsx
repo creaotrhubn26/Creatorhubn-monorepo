@@ -22,10 +22,17 @@ interface Props {
   onDownload: (
     onProgress: (fraction: number, status: "downloading" | "finished") => void,
   ) => Promise<void>;
+  onInstalled?: () => void;
   onDismiss: () => void;
 }
 
-export default function UpdaterDialog({ version, notes, onDownload, onDismiss }: Props) {
+export default function UpdaterDialog({
+  version,
+  notes,
+  onDownload,
+  onInstalled,
+  onDismiss,
+}: Props) {
   const [stage, setStage] = useState<UpdaterStage>("available");
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +47,13 @@ export default function UpdaterDialog({ version, notes, onDownload, onDismiss }:
       setProgress(fraction);
       if (status === "finished") {
         setStage("installed");
+        onInstalled?.();
       }
     }).catch((err) => {
       setStage("error");
       setError(err instanceof Error ? err.message : String(err));
     });
-  }, [onDownload]);
+  }, [onDownload, onInstalled]);
 
   // Auto-lukk 8s etter "installed" — den nye versjonen er på disk, restart
   // kan skje når brukeren er klar.
