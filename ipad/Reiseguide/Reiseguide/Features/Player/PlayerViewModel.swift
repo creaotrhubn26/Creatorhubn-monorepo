@@ -320,19 +320,8 @@ final class PlayerViewModel {
     private func startOrUpdateLiveActivity(isPlaying: Bool) {
         #if !targetEnvironment(macCatalyst)
         if #available(iOS 16.1, *) {
-            guard let poi, let chapter else { return }
-            let chapterCount = variant?.chapters.count ?? 1
-            if PlayerActivityManager.shared.isRunning {
-                PlayerActivityManager.shared.updatePlayback(
-                    poi: poi, chapter: chapter, chapterCount: chapterCount,
-                    positionS: positionS, durationS: durationS, isPlaying: isPlaying
-                )
-            } else {
-                PlayerActivityManager.shared.start(
-                    poi: poi, chapter: chapter, chapterCount: chapterCount,
-                    positionS: positionS, durationS: durationS, isPlaying: isPlaying
-                )
-            }
+            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
+            PlayerActivityManager.shared.sync(snapshot)
         }
         #endif
     }
@@ -340,15 +329,25 @@ final class PlayerViewModel {
     private func updateLiveActivityDistanceIfNeeded() {
         #if !targetEnvironment(macCatalyst)
         if #available(iOS 16.1, *) {
-            guard let poi, let chapter else { return }
-            let chapterCount = variant?.chapters.count ?? 1
-            PlayerActivityManager.shared.updateDistanceIfNeeded(
-                currentPoiId: poi.id, poi: poi, chapter: chapter, chapterCount: chapterCount,
-                positionS: positionS, durationS: durationS, isPlaying: isPlaying
-            )
+            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
+            PlayerActivityManager.shared.updateDistanceIfNeeded(snapshot)
         }
         #endif
     }
+
+    #if !targetEnvironment(macCatalyst)
+    private func liveActivitySnapshot(isPlaying: Bool) -> PlayerActivitySnapshot? {
+        guard let poi, let chapter else { return nil }
+        return PlayerActivitySnapshot(
+            poi: poi,
+            chapter: chapter,
+            chapterCount: variant?.chapters.count ?? 1,
+            positionS: positionS,
+            durationS: durationS,
+            isPlaying: isPlaying
+        )
+    }
+    #endif
 
     private func endLiveActivity() {
         #if !targetEnvironment(macCatalyst)

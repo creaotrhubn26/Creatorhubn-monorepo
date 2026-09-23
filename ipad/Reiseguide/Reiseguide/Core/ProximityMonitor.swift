@@ -72,15 +72,21 @@ struct ProximityMonitor: Sendable {
     /// prioritet vinner, deretter nærmest.
     private func nearestWithinRadius(coordinate: Coordinate, pois: [GuidePOI]) -> String? {
         pois
-            .compactMap { poi -> (id: String, priority: Int, distanceM: Double)? in
+            .compactMap { poi -> Candidate? in
                 let distanceM = Geo.distanceM(from: coordinate, to: poi.coordinate)
                 guard distanceM <= Double(poi.triggerRadiusM) else { return nil }
-                return (poi.id, poi.priority, distanceM)
+                return Candidate(id: poi.id, priority: poi.priority, distanceM: distanceM)
             }
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
                 return lhs.distanceM < rhs.distanceM
             }
             .first?.id
+    }
+
+    private struct Candidate {
+        let id: String
+        let priority: Int
+        let distanceM: Double
     }
 }

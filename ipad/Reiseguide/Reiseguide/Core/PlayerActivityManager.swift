@@ -22,6 +22,16 @@
 import ActivityKit
 import Foundation
 
+/// Det avspilleren vet om akkurat nå, samlet så kallene holder seg korte.
+struct PlayerActivitySnapshot {
+    let poi: GuidePOI
+    let chapter: GuideChapter
+    let chapterCount: Int
+    let positionS: Double
+    let durationS: Double
+    let isPlaying: Bool
+}
+
 @available(iOS 16.1, *)
 @MainActor
 final class PlayerActivityManager {
@@ -32,6 +42,9 @@ final class PlayerActivityManager {
     private static let distanceRepeatThresholdM: Double = 25
 
     private var currentActivity: Activity<PlayerActivityAttributes>?
+    /// Stedet aktiviteten ble startet for. Tittelen ligger i de faste
+    /// attributtene, så et nytt sted krever en ny aktivitet.
+    private var currentPoiId: String?
     private var location: LocationService?
     private var store: AreaStore?
     private var visits: VisitLogStore?
@@ -41,8 +54,6 @@ final class PlayerActivityManager {
     private var lastDistanceReportedM: Double?
 
     private init() {}
-
-    var isRunning: Bool { currentActivity != nil }
 
     /// Kobler til de andre butikkene appen allerede har (kalt én gang fra
     /// AppEnvironment.init). Disse lever like lenge som appen selv, så
@@ -55,42 +66,24 @@ final class PlayerActivityManager {
         self.settings = settings
     }
 
-    func start(poi: GuidePOI, chapter: GuideChapter, chapterCount: Int, positionS: Double, durationS: Double, isPlaying: Bool) {
-        Task { await endInternal() }
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        lastDistanceUpdateAt = nil
-        lastDistanceReportedM = nil
-        let attrs = PlayerActivityAttributes(poiTitle: poi.title, poiId: poi.id)
-        let state = makeState(poi: poi, chapter: chapter, chapterCount: chapterCount, positionS: positionS, durationS: durationS, isPlaying: isPlaying)
-        do {
-            let content = ActivityContent(state: state, staleDate: nil)
-            currentActivity = try Activity.request(attributes: attrs, content: content)
-        } catch {
-            // Live Activity er et pluss, ikke kritisk for avspilling.
+    /// Start, kapittelbytte, spill/pause: oppdaterer aktiviteten for samme
+    /// sted, ellers avsluttes den gamle og en ny startes.
+    func sync(_ snapshot: PlayerActivitySnapshot) {
+        if let activityId = currentActivity?.id, currentPoiId == snapshot.poi.id {
+            let state = makeState(snapshot)
+            Task { await Self.performUpdate(activityId: activityId, state: state) }
+        } else {
+            start(snapshot)
         }
-    }
-
-    func updatePlayback(poi: GuidePOI, chapter: GuideChapter, chapterCount: Int, positionS: Double, durationS: Double, isPlaying: Bool) {
-        guard let activityId = currentActivity?.id else { return }
-        let state = makeState(poi: poi, chapter: chapter, chapterCount: chapterCount, positionS: positionS, durationS: durationS, isPlaying: isPlaying)
-        Task { await Self.performUpdate(activityId: activityId, state: state) }
     }
 
     /// Kalt fra avspillerens ticker (hvert 250. ms mens den spiller). Selve
     /// Live Activity-oppdateringen throttles internt til maks hvert
     /// 20. sekund eller 25 m bevegelse.
-    func updateDistanceIfNeeded(
-        currentPoiId: String,
-        poi: GuidePOI,
-        chapter: GuideChapter,
-        chapterCount: Int,
-        positionS: Double,
-        durationS: Double,
-        isPlaying: Bool
-    ) {
+    func updateDistanceIfNeeded(_ snapshot: PlayerActivitySnapshot) {
         guard currentActivity != nil, let location, let store, let visits else { return }
         guard let fix = location.fix else { return }
-        guard let next = VeiviserTarget.resolve(.nextStop, pois: store.pois, visitedIds: visits.visitedPoiIds, excludingId: currentPoiId) else { return }
+        guard let next = VeiviserTarget.resolve(.nextStop, pois: store.pois, visitedIds: visits.visitedPoiIds, excludingId: snapshot.poi.id) else { return }
         let distanceM = Geo.distanceM(from: fix.coordinate, to: next.coordinate)
         let now = Date()
         let movedEnough = lastDistanceReportedM.map { abs($0 - distanceM) >= Self.distanceRepeatThresholdM } ?? true
@@ -98,35 +91,51 @@ final class PlayerActivityManager {
         guard movedEnough || timedOut else { return }
         lastDistanceReportedM = distanceM
         lastDistanceUpdateAt = now
-        updatePlayback(poi: poi, chapter: chapter, chapterCount: chapterCount, positionS: positionS, durationS: durationS, isPlaying: isPlaying)
+        sync(snapshot)
     }
 
     func end() {
-        Task { await endInternal() }
+        // Id-en hentes synkront, så en aktivitet som startes rett etterpå
+        // ikke blir avsluttet av denne oppgaven.
+        guard let activityId = currentActivity?.id else { return }
+        currentActivity = nil
+        currentPoiId = nil
+        Task { await Self.performEnd(activityId: activityId) }
     }
 
     // MARK: - Privat
 
-    private func makeState(
-        poi: GuidePOI,
-        chapter: GuideChapter,
-        chapterCount: Int,
-        positionS: Double,
-        durationS: Double,
-        isPlaying: Bool
-    ) -> PlayerActivityAttributes.ContentState {
+    private func start(_ snapshot: PlayerActivitySnapshot) {
+        end()
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        lastDistanceUpdateAt = nil
+        lastDistanceReportedM = nil
+        let attrs = PlayerActivityAttributes(poiTitle: snapshot.poi.title, poiId: snapshot.poi.id)
+        do {
+            let content = ActivityContent(state: makeState(snapshot), staleDate: nil)
+            currentActivity = try Activity.request(attributes: attrs, content: content)
+            currentPoiId = snapshot.poi.id
+        } catch {
+            // Live Activity er et pluss, ikke kritisk for avspilling.
+        }
+    }
+
+    private func makeState(_ snapshot: PlayerActivitySnapshot) -> PlayerActivityAttributes.ContentState {
+        let poi = snapshot.poi
+        let chapter = snapshot.chapter
+        let isPlaying = snapshot.isPlaying
         let uiLang = settings?.uiLanguage ?? "nb"
         let locale = settings?.locale ?? Locale(identifier: "nb")
         let now = Date()
-        let safeDuration = max(durationS, 0.01)
-        let clampedPosition = min(max(0, positionS), safeDuration)
+        let safeDuration = max(snapshot.durationS, 0.01)
+        let clampedPosition = min(max(0, snapshot.positionS), safeDuration)
         let start = now.addingTimeInterval(-clampedPosition)
         let end = start.addingTimeInterval(safeDuration)
         let pausedProgress = min(1, max(0, clampedPosition / safeDuration))
 
         let chapterProgress = L10n.string("liveActivity.chapterProgress", lang: uiLang)
             .replacingOccurrences(of: "%1$@", with: "\(chapter.no)")
-            .replacingOccurrences(of: "%2$@", with: "\(chapterCount)")
+            .replacingOccurrences(of: "%2$@", with: "\(snapshot.chapterCount)")
         let statusText = L10n.string(isPlaying ? "player.play" : "player.pause", lang: uiLang)
 
         var distanceText: String?
@@ -167,12 +176,6 @@ final class PlayerActivityManager {
             await activity.end(nil, dismissalPolicy: .immediate)
             return
         }
-    }
-
-    private func endInternal() async {
-        guard let activityId = currentActivity?.id else { return }
-        currentActivity = nil
-        await Self.performEnd(activityId: activityId)
     }
 }
 
