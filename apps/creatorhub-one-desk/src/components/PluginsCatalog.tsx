@@ -15,6 +15,9 @@ import {
 import AppsOutlinedIcon from "@mui/icons-material/AppsOutlined";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import LightroomIntegrationCard from "./LightroomIntegrationCard";
+import premiereProLogo from "../assets/premiere-pro-logo.png";
+import davinciResolveLogo from "../assets/davinci-resolve-logo.png";
+import proToolsLogo from "../assets/pro-tools-logo.png";
 
 interface Props {
   compact?: boolean;
@@ -22,45 +25,37 @@ interface Props {
 
 interface CompanionPlugin {
   id: string;
-  monogram: string;
+  logo: string;
   name: string;
   category: "Video" | "Lyd";
   description: string;
   availability: string;
-  accent: string;
-  foreground: string;
 }
 
 const companionPlugins: CompanionPlugin[] = [
   {
     id: "premiere-pro",
-    monogram: "Pr",
+    logo: premiereProLogo,
     name: "Adobe Premiere Pro",
     category: "Video",
     description: "Send sekvenser til Video Room og synk kommentarer og markører.",
     availability: "UXP-pakke",
-    accent: "#2f2458",
-    foreground: "#d8b8ff",
   },
   {
     id: "davinci-resolve",
-    monogram: "DR",
+    logo: davinciResolveLogo,
     name: "DaVinci Resolve",
     category: "Video",
     description: "Bakgrunnssynk for review, markører og leveranser via CreatorHub Bridge.",
     availability: "Bridge-integrasjon",
-    accent: "#162f3c",
-    foreground: "#62d7ff",
   },
   {
     id: "pro-tools",
-    monogram: "PT",
+    logo: proToolsLogo,
     name: "Avid Pro Tools",
     category: "Lyd",
     description: "Koble bounces, revisjoner og Sound Room til CreatorHub Companion.",
     availability: "Companion-app",
-    accent: "#301d45",
-    foreground: "#cf8cff",
   },
 ];
 
@@ -74,24 +69,17 @@ function CompanionPluginCard({ plugin }: { plugin: CompanionPlugin }) {
       <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", gap: 1.5 }}>
         <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
           <Box
-            aria-hidden="true"
+            component="img"
+            src={plugin.logo}
+            alt={`${plugin.name}-logo`}
             sx={{
               width: 44,
               height: 44,
               flexShrink: 0,
-              display: "grid",
-              placeItems: "center",
               borderRadius: 1.5,
-              bgcolor: plugin.accent,
-              color: plugin.foreground,
-              border: "1px solid",
-              borderColor: `${plugin.foreground}55`,
-              fontWeight: 800,
-              letterSpacing: "-0.04em",
+              objectFit: "cover",
             }}
-          >
-            {plugin.monogram}
-          </Box>
+          />
           <Box sx={{ minWidth: 0 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
               {plugin.name}
