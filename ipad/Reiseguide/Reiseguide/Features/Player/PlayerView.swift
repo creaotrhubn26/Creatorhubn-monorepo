@@ -4,6 +4,7 @@
 // scrim, toppfelt (lukk, teksting av/på, del), tittel og kapittel, tid og
 // fremdriftslinje (5.13), transportkontroller (5.14), tekstingsvisning (5.16)
 // og synstolkingskort (5.15). VoiceOver-rekkefølge og -oppførsel etter 8.4.
+// Pakke 3: spørsmål underveis under tekstingen og «Spør guiden».
 
 import SwiftUI
 
@@ -43,6 +44,11 @@ struct PlayerView: View {
             let message = L10n.string("player.newChapter", lang: uiLang).replacingOccurrences(of: "%@", with: title)
             AccessibilityNotification.Announcement(message).post()
             player.pendingChapterAnnouncement = nil
+        }
+        // Kapittelbytte (pakke 1, punkt 2): egen haptikk utenom kapittel-
+        // annonseringen over, styrt av «Vibrasjon».
+        .sensoryFeedback(trigger: player.chapterIndex) { _, _ in
+            AppHaptics.feedback(.selection, enabled: env.settings.hapticsEnabled)
         }
     }
 
@@ -126,11 +132,13 @@ struct PlayerView: View {
                     }
                 }
             }
+            ChapterPromptSlot()
             variantPicker
             SecondaryButton(title: "player.finish", systemImage: "checkmark.circle") {
                 player.finishVisit()
             }
             .accessibilityHint(Text("player.finishHint"))
+            AskGuideButton(poi: player.poi, pausesPlayer: true)
             if let text = player.audioDescriptionText {
                 AudioDescriptionCard(
                     statusText: "audioDescription.now",
@@ -170,6 +178,8 @@ struct PlayerView: View {
                     .foregroundStyle(contrast.textTertiary)
                     .padding(.top, AppSpacing.xs)
             }
+            AudioLevelBars(isPlaying: player.isPlaying)
+                .padding(.top, AppSpacing.xs)
         }
     }
 
@@ -265,6 +275,8 @@ struct TransportControls: View {
     let onForward: () -> Void
     let onRate: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: AppSpacing.xxl) {
             Button(action: onBack) {
@@ -282,6 +294,8 @@ struct TransportControls: View {
                     .foregroundStyle(AppColor.onAccent)
                     .frame(width: 72, height: 72)
                     .background(AppColor.accent, in: Circle())
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : .default, value: isPlaying)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(Text(isPlaying ? "player.pause" : "player.play"))
@@ -322,6 +336,7 @@ struct TransportControls: View {
 struct MiniPlayerBar: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.contrastColors) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let player = env.player
@@ -343,6 +358,7 @@ struct MiniPlayerBar: View {
                             .foregroundStyle(contrast.textSecondary)
                             .lineLimit(2)
                     }
+                    AudioLevelBars(isPlaying: player.isPlaying, barCount: 3)
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
@@ -357,6 +373,8 @@ struct MiniPlayerBar: View {
                     .foregroundStyle(AppColor.onAccent)
                     .frame(width: 44, height: 44)
                     .background(AppColor.accent, in: Circle())
+                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                    .animation(reduceMotion ? nil : .default, value: player.isPlaying)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(Text(player.isPlaying ? "player.pause" : "player.play"))

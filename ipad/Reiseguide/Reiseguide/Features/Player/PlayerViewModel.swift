@@ -13,6 +13,9 @@
 // VisitLogStore; når siste kapittel er ferdig, eller brukeren trykker
 // «Avslutt besøket», merkes det fullført og `finishedVisit` settes så
 // avspilleren kan vise quiz, vurdering, tips og deling.
+//
+// Spørsmål underveis (pakke 3): `prompts` følger kapittel og posisjon; et
+// gjettespørsmål pauser avspillingen (logikken i Core/ChapterPrompts.swift).
 
 import Foundation
 import Observation
@@ -89,6 +92,8 @@ final class PlayerViewModel {
     var finishedVisit: FinishedVisit?
     /// Loggoppføringen for det som spilles nå.
     private(set) var currentVisitId: String?
+    /// Spørsmål underveis for kapittelet som spilles.
+    let prompts = ChapterPromptController()
 
     struct FinishedVisit: Identifiable, Equatable {
         let entryId: String
@@ -157,6 +162,7 @@ final class PlayerViewModel {
         finishedVisit = nil
         currentVisitId = visits.recordStart(poi: poi).id
         isPresented = true
+        prompts.resetSession()
         loadChapter(announce: false)
         play()
     }
@@ -169,6 +175,7 @@ final class PlayerViewModel {
         currentVisitId = entryId
         visits.markCompleted(entryId: entryId)
         finishedVisit = FinishedVisit(entryId: entryId, poi: poi)
+        endLiveActivity()
     }
 
     func selectVariant(_ kind: VariantKind) {
@@ -190,12 +197,14 @@ final class PlayerViewModel {
         engine.play()
         isPlaying = true
         startTicker()
+        startOrUpdateLiveActivity(isPlaying: true)
     }
 
     func pause() {
         engine.pause()
         isPlaying = false
         stopTicker()
+        startOrUpdateLiveActivity(isPlaying: false)
     }
 
     func togglePlayPause() {
@@ -210,6 +219,7 @@ final class PlayerViewModel {
         let clamped = min(max(0, seconds), durationS)
         engine.seek(to: clamped)
         positionS = clamped
+        prompts.seek(to: clamped)
     }
 
     func cycleRate() {
@@ -260,6 +270,7 @@ final class PlayerViewModel {
         finishedVisit = nil
         currentVisitId = nil
         isPresented = false
+        endLiveActivity()
     }
 
     // MARK: - Privat
@@ -270,6 +281,7 @@ final class PlayerViewModel {
         let timeline = CaptionTimeline.build(chapter: chapter)
         captionSegments = timeline.segments
         captionsAreEstimated = timeline.isEstimated
+        prompts.load(chapter: chapter)
         let url = chapter.audio.flatMap { URL(string: $0.url) }
         engine.load(
             url: url,
@@ -280,6 +292,7 @@ final class PlayerViewModel {
         if announce, let title = chapter.title {
             pendingChapterAnnouncement = title
         }
+        startOrUpdateLiveActivity(isPlaying: isPlaying)
     }
 
     private func startTicker() {
@@ -301,6 +314,58 @@ final class PlayerViewModel {
     private func onTick() {
         let finished = engine.tick()
         positionS = min(engine.currentPositionS, durationS)
+        updateLiveActivityDistanceIfNeeded()
+        if prompts.advance(to: positionS, enabled: settings.inNarrationPromptsEnabled) {
+            pause()
+            return
+        }
         if finished { nextChapter() }
+    }
+
+    // MARK: - Live Activity (pakke 2, item 6)
+    //
+    // Låseskjerm + Dynamic Island. Selve implementasjonen (start/oppdater/
+    // avslutt, avstand-throttling) ligger i PlayerActivityManager — her er
+    // det bare korte kall fra de fire livssyklus-punktene spesifikasjonen
+    // nevner: start, kapittelbytte, spill/pause, avslutt/stopp.
+
+    private func startOrUpdateLiveActivity(isPlaying: Bool) {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
+            PlayerActivityManager.shared.sync(snapshot)
+        }
+        #endif
+    }
+
+    private func updateLiveActivityDistanceIfNeeded() {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
+            PlayerActivityManager.shared.updateDistanceIfNeeded(snapshot)
+        }
+        #endif
+    }
+
+    #if !targetEnvironment(macCatalyst)
+    private func liveActivitySnapshot(isPlaying: Bool) -> PlayerActivitySnapshot? {
+        guard let poi, let chapter else { return nil }
+        return PlayerActivitySnapshot(
+            poi: poi,
+            chapter: chapter,
+            chapterCount: variant?.chapters.count ?? 1,
+            positionS: positionS,
+            durationS: durationS,
+            isPlaying: isPlaying
+        )
+    }
+    #endif
+
+    private func endLiveActivity() {
+        #if !targetEnvironment(macCatalyst)
+        if #available(iOS 16.1, *) {
+            PlayerActivityManager.shared.end()
+        }
+        #endif
     }
 }
