@@ -112,8 +112,11 @@ struct RootTabView: View {
         .onChange(of: env.location.authorization) { _, _ in env.evaluateArrival() }
         .onChange(of: env.arrival.pendingAnnouncement) { _, poi in
             guard let poi else { return }
-            let message = L10n.string("arrival.announcement", lang: env.settings.uiLanguage).replacingOccurrences(of: "%@", with: poi.title)
-            AccessibilityNotification.Announcement(message).post()
+            // Ikke snakk over telefonens opplesning; kortet og haptikken kommer likevel.
+            if !env.player.isReadingAloud {
+                let message = L10n.string("arrival.announcement", lang: env.settings.uiLanguage).replacingOccurrences(of: "%@", with: poi.title)
+                AccessibilityNotification.Announcement(message).post()
+            }
             env.arrival.pendingAnnouncement = nil
         }
         .sensoryFeedback(trigger: env.arrival.pendingAnnouncement) { _, newValue in

@@ -172,12 +172,7 @@ struct PlayerView: View {
                     .font(AppFont.subtitle)
                     .foregroundStyle(contrast.textSecondary)
             }
-            if player.isSimulated {
-                Text("player.noAudioYet")
-                    .font(.caption)
-                    .foregroundStyle(contrast.textTertiary)
-                    .padding(.top, AppSpacing.xs)
-            }
+            PlaybackSourceLabel(isReadByPhone: player.isReadByPhone, isSimulated: player.isSimulated)
             AudioLevelBars(isPlaying: player.isPlaying)
                 .padding(.top, AppSpacing.xs)
         }
