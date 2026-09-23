@@ -3389,16 +3389,31 @@ export async function buildSceneManifest(db: Queryable, projectId: string, now: 
   return { ...body, generatedAt: now.toISOString(), contentHash } as SceneManifest;
 }
 
-/** Slår opp en scene på id, kode eller arbeids-ID (P01/G03A). Id vinner, så kode, så arbeids-ID. */
+export class SceneRefAmbiguousError extends Error {
+  readonly code = 'scene_ref_ambiguous';
+  constructor(readonly ref: string, readonly candidates: string[]) {
+    super(`«${ref}» matcher flere scener (${candidates.join(', ')}) — bruk scene-id eller kode.`);
+  }
+}
+
+/**
+ * Slår opp en scene på id, kode eller arbeids-ID (P01/G03A). Id og kode er
+ * unike per prosjekt og vinner; arbeids-ID er det ikke, så flere treff på
+ * arbeids-ID gir SceneRefAmbiguousError i stedet for et tilfeldig valg.
+ */
 export async function findSceneByRef(db: Queryable, projectId: string, ref: string): Promise<NarrativeScene | null> {
   const r = ref.trim();
   if (!r) return null;
   const { rows } = await db.query(
     `SELECT * FROM narrative_scenes
       WHERE project_id = $1 AND (id = $2 OR upper(code) = upper($2) OR upper(working_id) = upper($2))
-      ORDER BY (id = $2) DESC, (upper(code) = upper($2)) DESC, sort_order
-      LIMIT 1`,
+      ORDER BY sort_order, code`,
     [projectId, r],
   );
-  return rows[0] ? mapSceneRow(rows[0] as Row) : null;
+  const scenes = (rows as Row[]).map(mapSceneRow);
+  const up = r.toUpperCase();
+  const exact = scenes.find((s) => s.id === r) ?? scenes.find((s) => s.code.toUpperCase() === up);
+  if (exact) return exact;
+  if (scenes.length > 1) throw new SceneRefAmbiguousError(r, scenes.map((s) => s.code));
+  return scenes[0] ?? null;
 }

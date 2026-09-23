@@ -345,6 +345,33 @@ describe("Fase 9: scene-manifest + skriveverktøy for spillrepoet", () => {
     await expect(findCapability("rr_complete_scene_task")!.handler(pool, WCTX, { projectId: "p1", scene: "Z99", taskId: "nst_1" })).rejects.toThrow(/Fant ingen scene «Z99»/);
   });
 
+  it("arbeids-ID som matcher flere scener avvises (id/kode vinner fortsatt)", async () => {
+    const twins = [{ ...sceneRow, id: "nsc_a", code: "G5", working_id: "P05" }, { ...sceneRow, id: "nsc_b", code: "G6", working_id: "P05" }];
+    const pool = makePool([access, { match: /upper\(working_id\) = upper\(\$2\)/, rows: twins }]);
+    await expect(findCapability("rr_set_scene_gate")!.handler(pool, WCTX, { projectId: "p1", scene: "P05", gate: "greybox", status: "in_progress" }))
+      .rejects.toThrow(/matcher flere scener \(G5, G6\)/);
+    const byCode = makePool([access, { match: /upper\(working_id\) = upper\(\$2\)/, rows: twins }, { match: /UPDATE narrative_scenes SET/, rows: [twins[1]] }]);
+    const ok = await findCapability("rr_update_scene_fields")!.handler(byCode, WCTX, { projectId: "p1", scene: "G6", fields: { audio: "vind" } });
+    expect(ok).toMatchObject({ ok: true, code: "G6" });
+  });
+
+  it("rr_add_open_question prøver neste DEV-kode når en samtidig skriver tok den første", async () => {
+    let inserts = 0;
+    const qRow = (code: string) => ({ id: "noq_x", project_id: "p1", code, kind: "question", question: "q", context: "", status: "open", decision: "", decided_by: null, decided_at: null, source_refs: [], sort_order: 0, created_at: new Date(), updated_at: new Date() });
+    const pool = { query: vi.fn(async (sql: string, params?: unknown[]) => {
+      if (/UNION[\s\S]*casting_user_roles/.test(sql)) return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      if (/INSERT INTO narrative_open_questions/.test(sql)) {
+        inserts += 1;
+        if (inserts === 1) throw Object.assign(new Error("dup"), { code: "23505" });
+        return { rows: [qRow(String(params?.[2]))], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    }) } as any;
+    const out = await findCapability("rr_add_open_question")!.handler(pool, WCTX, { projectId: "p1", question: "q" });
+    expect(inserts).toBe(2);
+    expect(out).toMatchObject({ ok: true, code: "DEV-02" });
+  });
+
   it("rr_add_open_question → neste ledige DEV-kode", async () => {
     const pool = makePool([access,
       { match: /FROM narrative_open_questions WHERE project_id = \$1 ORDER BY/, rows: [{ id: "noq_1", project_id: "p1", code: "DEV-01", kind: "question", question: "q", context: "", status: "open", decision: "", decided_by: null, decided_at: null, source_refs: [], sort_order: 0, created_at: new Date(), updated_at: new Date() }] },

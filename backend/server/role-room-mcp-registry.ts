@@ -39,6 +39,8 @@ import {
   createOpenQuestion,
   listOpenQuestions,
   GateEvidenceRequiredError,
+  SceneRefAmbiguousError,
+  DuplicateCodeError,
   NARRATIVE_GATE_KEYS,
   NARRATIVE_SCENE_STATUSES,
   NARRATIVE_SCENE_TASK_STATUSES,
@@ -108,7 +110,13 @@ async function requireProject(pool: Pool, ctx: McpCallContext, args: Record<stri
 async function requireSceneRef(pool: Pool, projectId: string, args: Record<string, unknown>) {
   const ref = typeof args.scene === "string" ? args.scene.trim() : "";
   if (!ref) throw new McpToolError(-32602, "scene er påkrevd (id, kode eller arbeids-ID).");
-  const scene = await findSceneByRef(pool, projectId, ref);
+  let scene;
+  try {
+    scene = await findSceneByRef(pool, projectId, ref);
+  } catch (err) {
+    if (err instanceof SceneRefAmbiguousError) throw new McpToolError(-32602, err.message);
+    throw err;
+  }
   if (!scene) throw new McpToolError(-32602, `Fant ingen scene «${ref}» i prosjektet.`);
   return scene;
 }
@@ -888,13 +896,22 @@ export const ROLE_ROOM_CAPABILITIES: McpCapability[] = [
       const question = typeof args.question === "string" ? args.question.trim() : "";
       if (!question) throw new McpToolError(-32602, "question er påkrevd.");
       const context = typeof args.context === "string" ? args.context.trim().slice(0, 4000) : "";
-      const existing = await listOpenQuestions(pool, projectId);
-      const used = new Set(existing.map((q) => q.code));
-      let n = existing.filter((q) => q.code.startsWith("DEV-")).length + 1;
-      while (used.has(`DEV-${String(n).padStart(2, "0")}`)) n += 1;
-      const code = `DEV-${String(n).padStart(2, "0")}`;
-      const q = await createOpenQuestion(pool, projectId, ctx.userId, { code, kind: "question", question: question.slice(0, 2000), context });
-      return { ok: true, id: q.id, code: q.code, status: q.status };
+      // Neste ledige DEV-nn. To samtidige kall kan velge samme kode; den unike
+      // (project_id, code)-indeksen avviser da den ene, som prøver neste nummer.
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const existing = await listOpenQuestions(pool, projectId);
+        const used = new Set(existing.map((q) => q.code));
+        let n = existing.filter((q) => q.code.startsWith("DEV-")).length + 1 + attempt;
+        while (used.has(`DEV-${String(n).padStart(2, "0")}`)) n += 1;
+        const code = `DEV-${String(n).padStart(2, "0")}`;
+        try {
+          const q = await createOpenQuestion(pool, projectId, ctx.userId, { code, kind: "question", question: question.slice(0, 2000), context });
+          return { ok: true, id: q.id, code: q.code, status: q.status };
+        } catch (err) {
+          if (!(err instanceof DuplicateCodeError)) throw err;
+        }
+      }
+      throw new McpToolError(-32603, "Fant ingen ledig DEV-kode etter fem forsøk — prøv igjen.");
     },
   },
 
