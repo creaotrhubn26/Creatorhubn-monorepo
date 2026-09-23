@@ -28,6 +28,7 @@ const warmStart = vi.hoisted(() => ({
   previewWarmStart: vi.fn(),
   commitWarmStart: vi.fn(),
 }));
+const triage = vi.hoisted(() => ({ triageRunCandidates: vi.fn() }));
 const rateLimit = vi.hoisted(() => ({
   checkEndpointRateLimit: vi.fn(),
 }));
@@ -38,6 +39,8 @@ const access = vi.hoisted(() => ({
 const permissionResolver = vi.hoisted(() => ({
   resolveEffectivePermissions: vi.fn(),
 }));
+
+vi.mock("./leadgrid-discovery-triage.js", () => triage);
 
 vi.mock("./leadgrid-discovery-warm-start.js", () => ({
   ...warmStart,
@@ -239,6 +242,7 @@ describe("Leadgrid Discovery HTTP contract", () => {
       `GET ${base}/runs/:runId/candidates`,
       `POST ${base}/runs/:runId/candidates/:candidateId/place-details`,
       `POST ${base}/runs/:runId/candidates/:candidateId/decision`,
+      `GET ${base}/runs/:runId/triage`,
       `GET ${base}/runs/:runId/warm-start`,
       `POST ${base}/runs/:runId/warm-start`,
       `POST ${base}/runs/:runId/candidates/:candidateId/feedback`,
@@ -581,6 +585,21 @@ describe("Leadgrid Discovery HTTP contract", () => {
         decision: { decision: "approve" },
       },
     );
+  });
+
+  it("grupperer ventende kandidater uten å skrive noe", async () => {
+    triage.triageRunCandidates.mockResolvedValue({
+      pending_count: 200,
+      minimum_fit_score: 70,
+      groups: [{ key: "discard", count: 120 }],
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("GET", `${base}/runs/:runId/triage`, {
+      params: { projectId: "project-a", runId },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ pending_count: 200 });
+    expect(service.decideDiscoveryCandidate).not.toHaveBeenCalled();
   });
 
   it("viser varm start uten å skrive noe", async () => {
