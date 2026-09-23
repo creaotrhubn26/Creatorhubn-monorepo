@@ -3,6 +3,18 @@
 // Kart (UI-spesifikasjon 6.2): søk, filter-chips, MapKit med mørk stil,
 // POI-markører, min posisjon, nærmeste-kort og «Liste»-knapp som bytter til
 // MapListView (UU-krav 8.5).
+//
+// Kartforbedringene (Daniel, 23.09.2026):
+//   - Turruta: svak linje mellom områdets steder i sortOrder, og gangrute
+//     (MKDirections, WalkingRouteService) til valgt sted med gangtid og
+//     avstand; luftlinje som reserve (WalkingRoute.swift).
+//   - Besøkt-hake og «neste stopp» på markørene (POIMarker, MapAccessibility).
+//   - Lydsonen (`triggerRadiusM`) som svak sirkel rundt hvert sted.
+//   - Posisjonsknappen følger brukeren etter første trykk; kompass og
+//     målestokk via .mapControls.
+//   - VoiceOver: listen er standard når VoiceOver kjører, valget huskes i
+//     AppSettings.mapShowsList; oppsummering øverst på kartet og en rotor
+//     over stedene sortert etter avstand.
 
 import MapKit
 import SwiftUI
@@ -11,14 +23,25 @@ struct MapView: View {
     @Binding var path: NavigationPath
     @Environment(AppEnvironment.self) private var env
     @Environment(\.contrastColors) private var contrast
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var rotorNamespace
 
     @State private var searchText = ""
     @State private var selectedCategory: String?
     @State private var selectedPoiId: String?
-    @State private var showList = false
     @State private var cameraPosition: MapCameraPosition = .automatic
+    /// Posisjonsknappen er trykket før tillatelsen er gitt: følg brukeren
+    /// så snart tillatelsen og første posisjon er på plass.
+    @State private var pendingFollow = false
+    @State private var routeService = WalkingRouteService()
 
     private var locale: Locale { env.settings.locale }
+    private var uiLanguage: String { env.settings.uiLanguage }
+
+    private var showList: Bool {
+        MapViewMode.showsList(storedChoice: env.settings.mapShowsList, voiceOverRunning: voiceOverEnabled)
+    }
 
     private var filteredPois: [GuidePOI] {
         env.store.pois.filter { poi in
@@ -37,8 +60,35 @@ struct MapView: View {
         return sorted.first
     }
 
+    private var selectedPoi: GuidePOI? { selectedPoiId.flatMap { env.store.poi(id: $0) } }
+
+    private var routeLine: MapRouteLine? {
+        MapRouteLine.resolve(poi: selectedPoi, origin: env.location.fix?.coordinate, route: routeService.route)
+    }
+
+    private var tourMarkers: MapTourMarkers {
+        MapTourMarkers(
+            pois: env.store.pois,
+            completedIds: env.visits.completedPoiIds,
+            visitedIds: env.visits.visitedPoiIds,
+            excludingId: env.player.poi?.id
+        )
+    }
+
+    private var accessibilitySummary: String {
+        MapAccessibilitySummary.make(pois: filteredPois, origin: env.location.fix?.coordinate).text(
+            localize: { L10n.string($0, lang: uiLanguage) },
+            formatDistance: { L10n.distance(meters: $0, locale: locale) }
+        )
+    }
+
+    private var areaRegion: MKCoordinateRegion? {
+        guard let area = env.store.area else { return nil }
+        return MKCoordinateRegion(center: area.center.clCoordinate, span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02))
+    }
+
     private var chipItems: [(id: String?, label: String)] {
-        var items: [(id: String?, label: String)] = [(id: nil, label: L10n.string("filter.all", lang: env.settings.uiLanguage))]
+        var items: [(id: String?, label: String)] = [(id: nil, label: L10n.string("filter.all", lang: uiLanguage))]
         for category in env.store.categories {
             items.append((id: category.id, label: env.categoryLabel(category.id) ?? category.label))
         }
@@ -61,94 +111,115 @@ struct MapView: View {
         }
         .background(AppColor.bgBase)
         .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack {
-                IconCircleButton(systemImage: "chevron.left", label: "action.back") {
-                    if !path.isEmpty { path.removeLast() }
-                }
-                Spacer()
-                Button {
-                    showList.toggle()
-                } label: {
-                    Label(showList ? "map.showMap" : "map.showList", systemImage: showList ? "map" : "list.bullet")
-                        .font(AppFont.chip)
-                        .foregroundStyle(AppColor.textPrimary)
-                        .padding(.horizontal, AppSpacing.l)
-                        .frame(minHeight: AppSpacing.minTapTarget)
-                        .background(AppColor.bgElevated, in: Capsule())
-                }
-                .buttonStyle(PressableButtonStyle())
-            }
-            .padding(.horizontal, AppSpacing.screenMargin)
-            .padding(.vertical, AppSpacing.s)
-            .background(AppColor.bgBase)
-        }
+        .safeAreaInset(edge: .top, spacing: 0) { header }
         .onAppear {
-            if let area = env.store.area {
-                cameraPosition = .region(MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: area.center.lat, longitude: area.center.lng),
-                    span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02)
-                ))
+            if let areaRegion { cameraPosition = .region(areaRegion) }
+            updateRoute()
+        }
+        .onDisappear { routeService.clear() }
+        .onChange(of: selectedPoiId) { _, _ in updateRoute() }
+        .onChange(of: showList) { _, _ in updateRoute() }
+        .onChange(of: env.location.fix) { _, newFix in
+            updateRoute()
+            if pendingFollow, newFix != nil { followUser() }
+        }
+        .onChange(of: env.location.authorization) { _, status in
+            guard pendingFollow else { return }
+            switch status {
+            case .authorized: followUser()
+            case .denied: pendingFollow = false
+            case .notDetermined: break
             }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            IconCircleButton(systemImage: "chevron.left", label: "action.back") {
+                if !path.isEmpty { path.removeLast() }
+            }
+            Spacer()
+            Button {
+                env.settings.mapShowsList = !showList
+            } label: {
+                Label(showList ? "map.showMap" : "map.showList", systemImage: showList ? "map" : "list.bullet")
+                    .font(AppFont.chip)
+                    .foregroundStyle(AppColor.textPrimary)
+                    .padding(.horizontal, AppSpacing.l)
+                    .frame(minHeight: AppSpacing.minTapTarget)
+                    .background(AppColor.bgElevated, in: Capsule())
+            }
+            .buttonStyle(PressableButtonStyle())
+        }
+        .padding(.horizontal, AppSpacing.screenMargin)
+        .padding(.vertical, AppSpacing.s)
+        .background(AppColor.bgBase)
     }
 
     private var mapArea: some View {
         ZStack(alignment: .bottom) {
             Map(position: $cameraPosition, selection: $selectedPoiId) {
-                UserAnnotation()
-                ForEach(sorted, id: \.poi.id) { item in
-                    Annotation(item.poi.title, coordinate: CLLocationCoordinate2D(latitude: item.poi.lat, longitude: item.poi.lng)) {
-                        POIMarker(
-                            poi: item.poi,
-                            isHighlighted: item.poi.id == highlighted?.poi.id,
-                            distanceM: item.distanceM,
-                            locale: locale
-                        ) {
-                            selectedPoiId = item.poi.id
-                        }
-                    }
-                    .tag(item.poi.id)
-                    .annotationTitles(.hidden)
-                }
+                mapContent(markers: tourMarkers)
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
-            .mapControls {}
+            .mapControls {
+                MapCompass()
+                MapScaleView()
+            }
             .accessibilityIgnoresInvertColors()
 
             VStack(alignment: .leading, spacing: AppSpacing.l) {
+                if voiceOverEnabled { MapSummaryBanner(text: accessibilitySummary) }
+                Spacer(minLength: 0)
                 if env.location.authorization == .denied {
-                    ErrorStripe(message: L10n.string("map.locationDenied", lang: env.settings.uiLanguage), actionTitle: "map.openSettings") {
+                    ErrorStripe(message: L10n.string("map.locationDenied", lang: uiLanguage), actionTitle: "map.openSettings") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
                     }
                 }
-                HStack(alignment: .bottom) {
-                    Button {
-                        env.location.requestAndStart()
-                        if let fix = env.location.fix {
-                            cameraPosition = .region(MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(latitude: fix.coordinate.lat, longitude: fix.coordinate.lng),
-                                span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)
-                            ))
-                        }
-                    } label: {
-                        Image(systemName: "location.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(AppColor.onAccent)
-                            .frame(width: 48, height: 48)
-                            .background(AppColor.accent, in: Circle())
-                            .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 8)
+                HStack(alignment: .bottom, spacing: AppSpacing.m) {
+                    MapLocationButton(isFollowing: cameraPosition.followsUserLocation) { locateMe() }
+                    Spacer(minLength: 0)
+                    if let routeLine {
+                        MapRouteInfoPill(line: routeLine, uiLanguage: uiLanguage, locale: locale)
                     }
-                    .buttonStyle(PressableButtonStyle())
-                    .accessibilityLabel(Text("map.showMyLocation"))
-                    Spacer()
                 }
                 nearbyCard
             }
             .padding(.horizontal, AppSpacing.screenMargin)
+            .padding(.top, AppSpacing.s)
             .padding(.bottom, AppSpacing.l)
+        }
+        .accessibilityRotor(Text("map.rotor.places")) {
+            ForEach(sorted, id: \.poi.id) { item in
+                AccessibilityRotorEntry(Text(item.poi.title), id: item.poi.id, in: rotorNamespace)
+            }
+        }
+    }
+
+    /// Rekkefølgen er tegnerekkefølgen: turrute og lydsoner under, valgt
+    /// rute over dem, markørene øverst.
+    @MapContentBuilder
+    private func mapContent(markers: MapTourMarkers) -> some MapContent {
+        UserAnnotation()
+        MapTourOverlays.content(tourPois: env.store.pois, zonePois: filteredPois, routeLine: routeLine)
+        ForEach(sorted, id: \.poi.id) { item in
+            Annotation(item.poi.title, coordinate: item.poi.coordinate.clCoordinate) {
+                POIMarker(
+                    poi: item.poi,
+                    isHighlighted: item.poi.id == highlighted?.poi.id,
+                    distanceM: item.distanceM,
+                    locale: locale,
+                    status: markers.status(for: item.poi.id),
+                    uiLanguage: uiLanguage
+                ) {
+                    selectedPoiId = item.poi.id
+                }
+                .accessibilityRotorEntry(id: item.poi.id, in: rotorNamespace)
+            }
+            .tag(item.poi.id)
+            .annotationTitles(.hidden)
         }
     }
 
@@ -178,30 +249,29 @@ struct MapView: View {
                 }
                 .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 8)
             } else {
-                HStack {
-                    Text("map.nothingNearby")
-                        .font(AppFont.cardTitle)
-                        .foregroundStyle(AppColor.textPrimary)
-                    Spacer()
-                    Button("map.showDemoArea") {
-                        selectedPoiId = nil
-                        if let area = env.store.area {
-                            cameraPosition = .region(MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(latitude: area.center.lat, longitude: area.center.lng),
-                                span: MKCoordinateSpan(latitudeDelta: 0.014, longitudeDelta: 0.02)
-                            ))
-                        }
-                    }
-                    .font(AppFont.chip)
-                    .foregroundStyle(AppColor.accent)
-                    .minTapTarget()
-                }
-                .padding(AppSpacing.l)
-                .frame(minHeight: 104)
-                .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
+                nothingNearby
             }
         }
+    }
+
+    private var nothingNearby: some View {
+        HStack {
+            Text("map.nothingNearby")
+                .font(AppFont.cardTitle)
+                .foregroundStyle(AppColor.textPrimary)
+            Spacer()
+            Button("map.showDemoArea") {
+                selectedPoiId = nil
+                if let areaRegion { moveCamera(to: .region(areaRegion)) }
+            }
+            .font(AppFont.chip)
+            .foregroundStyle(AppColor.accent)
+            .minTapTarget()
+        }
+        .padding(AppSpacing.l)
+        .frame(minHeight: 104)
+        .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
     }
 
     /// Ingen POI innenfor 2 km → «Ingen severdigheter i nærheten» (6.2). Uten
@@ -212,66 +282,39 @@ struct MapView: View {
     }
 }
 
-/// Kartmarkør (5.6): sirkel 56 pt (68 for valgt/nærmeste) med bilde og accent-ring.
-struct POIMarker: View {
-    let poi: GuidePOI
-    let isHighlighted: Bool
-    let distanceM: Double?
-    let locale: Locale
-    let action: () -> Void
+// MARK: - Posisjon og rute
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Gir nærmeste/valgte pin en varsom puls (pakke 1, punkt 4). Rent
-    /// dekorativt og skjult for VoiceOver; av når «Reduser bevegelse» er på.
-    @State private var pulse = false
-
-    private var size: CGFloat { isHighlighted ? 68 : 56 }
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: -2) {
-                ZStack {
-                    if isHighlighted && !reduceMotion {
-                        Circle()
-                            .stroke(AppColor.accent.opacity(0.5), lineWidth: 3)
-                            .frame(width: size, height: size)
-                            .scaleEffect(pulse ? 1.35 : 1)
-                            .opacity(pulse ? 0 : 0.7)
-                            .accessibilityHidden(true)
-                    }
-                    RemoteImage(url: poi.heroImageUrl)
-                        .frame(width: size, height: size)
-                        .clipShape(Circle())
-                        .overlay(Circle().strokeBorder(AppColor.accent.opacity(isHighlighted ? 1 : 0.7), lineWidth: isHighlighted ? 4 : 3))
-                }
-                Image(systemName: "triangle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(AppColor.accent)
-                    .rotationEffect(.degrees(180))
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(markerLabel))
-        .accessibilityHint(Text("map.markerHint"))
-        .onAppear { startPulseIfNeeded() }
-        .onChange(of: isHighlighted) { _, _ in startPulseIfNeeded() }
-    }
-
-    private func startPulseIfNeeded() {
-        guard isHighlighted, !reduceMotion else {
-            pulse = false
-            return
-        }
-        pulse = false
-        withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
-            pulse = true
+extension MapView {
+    /// Første trykk ber om tillatelse; kartet følger brukeren så snart den er
+    /// gitt, uten å vente på et nytt trykk.
+    private func locateMe() {
+        env.location.requestAndStart()
+        switch env.location.authorization {
+        case .authorized: followUser()
+        case .notDetermined: pendingFollow = true
+        case .denied: pendingFollow = false
         }
     }
 
-    private var markerLabel: String {
-        if let distanceM {
-            return "\(poi.title), \(L10n.distance(meters: distanceM, locale: locale))"
+    private func followUser() {
+        pendingFollow = false
+        var fallback = cameraPosition
+        if let fix = env.location.fix {
+            fallback = .region(MKCoordinateRegion(center: fix.coordinate.clCoordinate, span: MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.012)))
         }
-        return poi.title
+        moveCamera(to: .userLocation(followsHeading: true, fallback: fallback))
+    }
+
+    /// Kamerabytter animeres ikke når «Reduser bevegelse» er på.
+    private func moveCamera(to position: MapCameraPosition) {
+        if reduceMotion {
+            cameraPosition = position
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) { cameraPosition = position }
+        }
+    }
+
+    private func updateRoute() {
+        routeService.update(poi: showList ? nil : selectedPoi, origin: env.location.fix?.coordinate)
     }
 }

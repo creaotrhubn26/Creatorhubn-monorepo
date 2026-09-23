@@ -161,4 +161,30 @@ describe("delingsside", () => {
     expect(english).toContain('<meta name="twitter:card" content="summary">');
     expect(english).not.toContain("og:image");
   });
+
+  it("krediterer bildet (escapet), og viser ingen kreditering uten bilde", () => {
+    const base = {
+      title: "Operaen",
+      subtitle: null,
+      summary: null,
+      locationLabel: null,
+      imageAlt: null,
+      shareUrl: "https://api.test/api/guide/share/operaen?lang=en",
+      appUrl: "senseaidexplore://poi/operaen?lang=en",
+    };
+    const html = renderSharePage({
+      ...base,
+      lang: "en",
+      imageUrl: "https://upload.wikimedia.org/a.jpg",
+      imageCredit: { author: "Kari <b>&</b>", license: "CC BY 2.0", sourceUrl: null },
+    });
+    expect(html).toContain('<p class="credit">Photo: Kari &lt;b&gt;&amp;&lt;/b&gt; · CC BY 2.0</p>');
+    const noImage = renderSharePage({
+      ...base,
+      lang: "nb",
+      imageUrl: null,
+      imageCredit: { author: "Kari", license: null, sourceUrl: "https://commons.wikimedia.org/wiki/File:A.jpg" },
+    });
+    expect(noImage).not.toContain('class="credit"');
+  });
 });
