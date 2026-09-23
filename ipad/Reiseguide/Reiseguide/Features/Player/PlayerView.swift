@@ -341,7 +341,7 @@ struct MiniPlayerBar: View {
                         Text(player.chapter?.title ?? "")
                             .font(.caption)
                             .foregroundStyle(contrast.textSecondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
                     Spacer(minLength: 0)
                 }

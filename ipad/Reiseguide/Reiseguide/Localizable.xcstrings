@@ -2584,6 +2584,23 @@
           }
         }
       }
+    },
+    "log.delete": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett fra loggen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete from log"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

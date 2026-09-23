@@ -13,6 +13,8 @@ struct PrimaryButton: View {
     var disabledHint: LocalizedStringKey?
     let action: () -> Void
 
+    @Environment(\.contrastColors) private var contrast
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.s) {
@@ -24,14 +26,20 @@ struct PrimaryButton: View {
                 Text(title)
             }
             .font(AppFont.button)
-            .foregroundStyle(isEnabled ? AppColor.onAccent : AppColor.textTertiary)
+            .foregroundStyle(isEnabled ? AppColor.onAccent : contrast.textSecondary)
             .frame(maxWidth: .infinity, minHeight: 56)
             .background(isEnabled ? AppColor.accent : AppColor.bgElevated, in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(!isEnabled || isLoading)
-        .accessibilityHint(isEnabled ? Text("") : Text(disabledHint ?? ""))
+        .accessibilityHint(Text(disabledHintKey))
+    }
+
+    /// Deaktivert-forklaringen leses bare når knappen faktisk er deaktivert.
+    private var disabledHintKey: LocalizedStringKey {
+        guard !isEnabled, let disabledHint else { return "" }
+        return disabledHint
     }
 }
 
