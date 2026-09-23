@@ -64,6 +64,8 @@ struct RootTabView: View {
                             MapView(path: $explorePath)
                         case let .poi(id):
                             POIDetailView(poiId: id, path: $explorePath)
+                        case let .veiviser(target):
+                            VeiviserView(target: target, path: $explorePath)
                         }
                     }
             }
@@ -91,6 +93,46 @@ struct RootTabView: View {
         }
         .fullScreenCover(isPresented: Bindable(env.player).isPresented) {
             PlayerView()
+        }
+        // «Du er framme» (pakke 1, punkt 1): ren logikk i
+        // Core/ProximityMonitor.swift og Core/ArrivalCoordinator.swift, bare
+        // en liten hook her som driver den fra posisjonsoppdateringer.
+        .overlay(alignment: .bottom) {
+            if let card = env.arrival.card {
+                ArrivalCardView(
+                    card: card,
+                    locale: env.settings.locale,
+                    onPlay: { env.arrival.playCardPoi() },
+                    onDismiss: { env.arrival.dismissCard() }
+                )
+                .padding(.bottom, env.player.hasContent && !env.player.isPresented ? 64 : AppSpacing.s)
+            }
+        }
+        .onChange(of: env.location.fix) { _, _ in env.evaluateArrival() }
+        .onChange(of: env.location.authorization) { _, _ in env.evaluateArrival() }
+        .onChange(of: env.arrival.pendingAnnouncement) { _, poi in
+            guard let poi else { return }
+            let message = L10n.string("arrival.announcement", lang: env.settings.uiLanguage).replacingOccurrences(of: "%@", with: poi.title)
+            AccessibilityNotification.Announcement(message).post()
+            env.arrival.pendingAnnouncement = nil
+        }
+        .sensoryFeedback(trigger: env.arrival.pendingAnnouncement) { _, newValue in
+            newValue != nil ? AppHaptics.feedback(.impact(weight: .heavy), enabled: env.settings.hapticsEnabled) : nil
+        }
+        // Turprogresjon (pakke 1, punkt 3): feiringen når siste sted er fullført.
+        .onChange(of: env.visits.entries) { _, _ in env.evaluateTourProgress() }
+        .onChange(of: env.tourProgress.celebration) { _, newValue in
+            guard newValue != nil else { return }
+            let message = L10n.string("tour.celebration.title", lang: env.settings.uiLanguage)
+            AccessibilityNotification.Announcement(message).post()
+        }
+        .sensoryFeedback(trigger: env.tourProgress.celebration) { _, newValue in
+            newValue != nil ? AppHaptics.feedback(.success, enabled: env.settings.hapticsEnabled) : nil
+        }
+        .sheet(item: Bindable(env.tourProgress).celebration) { area in
+            TourCelebrationView(area: area) {
+                env.tourProgress.dismissCelebration()
+            }
         }
     }
 

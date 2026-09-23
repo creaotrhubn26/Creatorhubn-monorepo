@@ -90,6 +90,8 @@ struct GuideChapter: Codable, Sendable, Identifiable, Equatable {
     let estimatedDurationS: Int?
     let audio: ChapterAudio?
     let captions: ChapterCaptions?
+    /// Spørsmål underveis (0662); valgfri så eldre cache dekodes. Se ChapterPrompts.swift.
+    var prompts: [ChapterPrompt]?
 
     /// Varighet brukt av avspilleren: ekte lyd hvis den finnes, ellers
     /// manusets anslag, ellers 60 s så tidslinjen aldri er tom.

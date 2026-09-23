@@ -56,6 +56,10 @@ final class VisitLogStore {
 
     var visitedPoiIds: Set<String> { Set(entries.map(\.poiId)) }
 
+    /// Steder med et fullført besøk (turprogresjon, pakke 1 punkt 3): et sted
+    /// startet men ikke fullført teller ikke ennå.
+    var completedPoiIds: Set<String> { Set(entries.filter(\.isCompleted).map(\.poiId)) }
+
     func entry(id: String) -> VisitEntry? { entries.first { $0.id == id } }
 
     func latestEntry(poiId: String) -> VisitEntry? { entries.first { $0.poiId == poiId } }

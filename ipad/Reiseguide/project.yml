@@ -30,6 +30,11 @@ targets:
     platform: iOS
     sources:
       - path: Reiseguide
+    dependencies:
+      # Live Activity (pakke 2, item 6): låseskjerm + Dynamic Island for
+      # «Nå spilles». Samme mønster som LeadMapApp -> LeadMapWidget.
+      - target: ReiseguideWidgets
+        platformFilter: iOS
     info:
       path: Reiseguide/Generated/Info.plist
       properties:
@@ -54,6 +59,9 @@ targets:
         # (UI-spesifikasjon 8.4, punkt 9).
         UIBackgroundModes:
           - audio
+        # Live Activity (pakke 2, item 6): «Nå spilles» på låseskjerm og i
+        # Dynamic Island, se ReiseguideWidgets/.
+        NSSupportsLiveActivities: true
         # Deep link fra delingssiden (backend /api/guide/share/{slug}):
         # senseaidexplore://poi/{slug}?lang=nb, se Core/DeepLink.swift.
         CFBundleURLTypes:
@@ -61,9 +69,47 @@ targets:
             CFBundleURLSchemes:
               - senseaidexplore
     settings:
+      # Manuell Release-signering m/ App Store-profilen fastlane henter før
+      # arkivering (samme mønster som LeadMapApp — se fastlane/Fastfile).
+      # Debug er fortsatt automatisk (lokal utvikling upåvirket).
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "SenseAid Explore App Store"
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.reiseguide
         # Kun iPhone i POC.
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+
+  # Widget Extension: kun Live Activity («Nå spilles»), ingen widget på
+  # hjemskjermen (pakke 2, item 6). ActivityKit leverer dataflyten mellom
+  # hovedappen og extension-prosessen selv — trenger ikke en App Group slik
+  # LeadMapWidget gjør for sin hjemskjerm-widget.
+  ReiseguideWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ReiseguideWidgets
+      # Delte ActivityKit-attributter — kompileres i begge targets.
+      - path: Reiseguide/Core/PlayerActivityAttributes.swift
+    info:
+      path: ReiseguideWidgets/Generated/Info.plist
+      properties:
+        CFBundleDisplayName: SenseAid Explore
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "SenseAid Explore Widgets App Store"
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.creatorhubn.reiseguide.widgets
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: NO
 

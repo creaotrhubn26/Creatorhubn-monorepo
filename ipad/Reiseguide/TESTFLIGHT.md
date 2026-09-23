@@ -17,7 +17,7 @@ Signering og opplasting bruker de samme repo-secrets som LeadMap og Capture
 
 ## Engangs-steg (ca. 5 minutter)
 
-### 1. Bundle-ID og profil (automatisk)
+### 1. Bundle-ID-er og profiler (automatisk)
 
 Første kjøring av workflowen registrerer bundle-ID-en `com.creatorhubn.reiseguide`
 (navn «SenseAid Explore», ingen ekstra capabilities: bakgrunnslyd og deep link
@@ -26,12 +26,21 @@ provisioning-profilen «SenseAid Explore App Store» mot «Apple Distribution:
 Creatorhub AS»-certet i secrets. Det krever at ASC-nøkkelen i secrets har
 App Manager- eller Admin-rolle.
 
-Skulle det feile, gjør det manuelt på
+Samme kjøring registrerer også widget-extension-en `com.creatorhubn.reiseguide.widgets`
+(pakke 2, item 6: «Nå spilles»-Live Activity på låseskjerm og i Dynamic
+Island) og lager provisioning-profilen «SenseAid Explore Widgets App Store»
+mot samme cert. Extension-en trenger IKKE et eget app-record i App Store
+Connect (steg 2 gjelder bare hovedappen) — den arkiveres og lastes opp
+sammen med hovedappen i samme `.ipa`.
+
+Skulle noe av dette feile, gjør det manuelt på
 [developer.apple.com/account](https://developer.apple.com/account) →
 Certificates, Identifiers & Profiles: Identifiers → **+** → App IDs → App
-(Description `SenseAid Explore`, explicit bundle ID `com.creatorhubn.reiseguide`),
-og Profiles → **+** → App Store Connect → velg bundle-ID-en og
-distribusjons-certet → navn `SenseAid Explore App Store`.
+(Description `SenseAid Explore`, explicit bundle ID `com.creatorhubn.reiseguide`,
+og tilsvarende for extension-en med bundle ID `com.creatorhubn.reiseguide.widgets`),
+og Profiles → **+** → App Store Connect → velg riktig bundle-ID og
+distribusjons-certet → navn `SenseAid Explore App Store` (hovedapp) eller
+`SenseAid Explore Widgets App Store` (extension).
 
 ### 2. Opprett app-recordet (må klikkes)
 
@@ -89,6 +98,14 @@ App Store Connect → appen → **TestFlight**:
 - Mock-paywall: første sted er åpent, resten låses opp med «kjøp» uten betaling.
 - Posisjon bes om først ved «Bruk posisjonen min»; testere langt fra Oslo kan
   bruke listen og kartet uten posisjon.
+- Veiviseren («Vis veien» på severdighetssiden og kartets nærmeste-kort)
+  trenger både posisjon og et ekte kompass (fungerer ikke i Simulator; på en
+  fysisk enhet uten pålitelig retningssensor faller den tilbake til
+  himmelretning i tekst, se `Reiseguide/Features/Veiviser/`).
+- Live Activity («Nå spilles» på låseskjerm/Dynamic Island) starter når
+  fortellingen begynner å spille og krever at brukeren har tillatt Live
+  Activities for appen (Innstillinger → SenseAid Explore); Dynamic Island
+  vises kun på iPhone 14 Pro og nyere.
 
 ## Neste testversjon
 
@@ -98,11 +115,18 @@ settes automatisk.
 
 ## Hvis noe feiler
 
-- `Fant ikke app-record for com.creatorhubn.reiseguide`: steg 2 er ikke gjort.
-- `403` / `FORBIDDEN` fra `ensure_bundle_id` eller sigh, eller
-  `No profiles for 'com.creatorhubn.reiseguide' were found`: ASC-nøkkelen
-  mangler App Manager-rolle (ASC → Users and Access → Integrations →
-  nøkkelen → Edit Access), eller gjør steg 1 manuelt.
+- `Fant ikke app-record for com.creatorhubn.reiseguide`: steg 2 er ikke gjort
+  (extension-en `com.creatorhubn.reiseguide.widgets` trenger ikke noe eget
+  app-record, kun bundle-ID + profil fra steg 1).
+- `403` / `FORBIDDEN` fra `ensure_bundle_ids` eller sigh, eller
+  `No profiles for 'com.creatorhubn.reiseguide' were found` (evt. med
+  `.widgets`-suffikset): ASC-nøkkelen mangler App Manager-rolle (ASC → Users
+  and Access → Integrations → nøkkelen → Edit Access), eller gjør steg 1
+  manuelt for begge bundle-ID-ene.
+- `Embedded binary not signed with same certificate as parent app` /
+  provisioning-feil på kun extension-en: profilnavnet
+  `SenseAid Explore Widgets App Store` i `ExportOptions.plist` og
+  `Fastfile` (`BUNDLES`) må være identisk med navnet sigh opprettet.
 - `Cloud signing permission error`: ExportOptions bruker manuell signering
   nettopp for å unngå dette; sjekk at profilnavnet i `ExportOptions.plist` og
   `Fastfile` (`PROFILE_NAME`) er identiske.

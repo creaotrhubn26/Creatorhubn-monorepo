@@ -25,6 +25,11 @@
  * personlige loggen ligger på telefonen og, når brukeren har samtykket,
  * på serveren (GDPR-premissene står i reiseguide-visits.ts).
  *
+ * «Spørsmål underveis» (pakke 3, 0662_reiseguide_chapter_prompts.sql): hvert
+ * fortellingskapittel har `prompts` (look/guess med atFraction) på samme språk
+ * som fortellingen API-et valgte, altså samme fallback som manusene. Kapitler
+ * i synstolkingen har alltid en tom liste.
+ *
  * Språk (POC-skisse 17.09.2026): ønsket språk → primærtag (nb-NO → nb) → en →
  * områdets default_lang, avgjort per POI. Svaret sier hvilket språk som ble
  * brukt og om teksten er maskinoversatt (editorial_status = auto). Synstolking
@@ -54,6 +59,7 @@ import {
   type RatingAggregateRow,
   type RatingSummary,
 } from "./reiseguide-after-visit.js";
+import { buildChapterPrompts, type ChapterPromptRow, type ChapterPromptView } from "./reiseguide-chapter-prompts.js";
 import { registerReiseguideVisitRoutes } from "./reiseguide-visits.js";
 import { isSenseAidStorageKey, senseAidMediaUrl } from "./reiseguide-storage.js";
 
@@ -169,6 +175,8 @@ export interface ChapterView {
   estimatedDurationS: number | null;
   audio: { url: string; format: string; durationS: number } | null;
   captions: { url: string | null; cues: unknown[] } | null;
+  /** Spørsmål underveis (0662); tom for synstolking og når kapittelet ikke har noen. */
+  prompts: ChapterPromptView[];
 }
 
 export interface VariantView {
@@ -293,6 +301,7 @@ function buildVariant(
   rows: ScriptRow[],
   mediaBase: string,
   publicApiBase?: string,
+  promptRows: ChapterPromptRow[] = [],
 ): VariantView | null {
   const chapters = rows
     .filter((r) => r.kind === kind && r.lang === lang)
@@ -332,6 +341,7 @@ function buildVariant(
       estimatedDurationS: r.estimated_duration_s,
       audio,
       captions,
+      prompts: kind === "narration" ? buildChapterPrompts(promptRows, r.poi_id, lang, r.chapter_no) : [],
     };
   });
 
@@ -356,6 +366,7 @@ export function buildPoiView(args: {
   scripts: ScriptRow[];
   quiz?: QuizRow[];
   ratings?: RatingAggregateRow[];
+  prompts?: ChapterPromptRow[];
   requestedLang: string;
   defaultLang: string;
   mediaBase: string;
@@ -365,6 +376,7 @@ export function buildPoiView(args: {
   const translations = args.translations.filter((t) => t.poi_id === poi.id);
   const scripts = args.scripts.filter((s) => s.poi_id === poi.id);
   const quizRows = args.quiz ?? [];
+  const promptRows = (args.prompts ?? []).filter((p) => p.poi_id === poi.id);
   const ratingRow = (args.ratings ?? []).find((r) => r.poi_id === poi.id);
   const available = Array.from(new Set(translations.map((t) => t.lang.toLowerCase()))).sort();
   const resolved = resolveLang(available, requestedLang, defaultLang);
@@ -413,7 +425,9 @@ export function buildPoiView(args: {
       available,
     },
     variants: {
-      narration: scriptLang ? buildVariant("narration", scriptLang, scripts, mediaBase, publicApiBase) : null,
+      narration: scriptLang
+        ? buildVariant("narration", scriptLang, scripts, mediaBase, publicApiBase, promptRows)
+        : null,
       audioDescription: scriptLang
         ? buildVariant("audio_description", scriptLang, scripts, mediaBase, publicApiBase)
         : null,
@@ -494,6 +508,13 @@ const QUIZ_SELECT = `
    WHERE poi_id = ANY($1::text[])
    ORDER BY poi_id, lang, sort_order`;
 
+const PROMPT_SELECT = `
+  SELECT id, poi_id, lang, chapter_no, kind, at_fraction, prompt_text, options,
+         answer_index, reveal_text, sort_order
+    FROM guide_poi_chapter_prompts
+   WHERE poi_id = ANY($1::text[])
+   ORDER BY poi_id, lang, chapter_no, sort_order`;
+
 const RATING_AGGREGATE_SELECT = `
   SELECT poi_id, avg(stars)::float8 AS average, count(*)::int AS count
     FROM guide_poi_ratings
@@ -557,6 +578,19 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
       }
     };
 
+  /**
+   * Spørsmål underveis er et tillegg: mangler tabellen (0662 ikke kjørt ennå),
+   * får kapitlene tomme lister i stedet for at hele området svarer 500.
+   */
+  async function loadPromptRows(ids: string[]): Promise<ChapterPromptRow[]> {
+    try {
+      return (await pool.query<ChapterPromptRow>(PROMPT_SELECT, [ids])).rows;
+    } catch (err) {
+      if ((err as { code?: unknown } | null)?.code === "42P01") return [];
+      throw err;
+    }
+  }
+
   async function loadPoiViews(
     poiRows: PoiRow[],
     requestedLang: string,
@@ -565,11 +599,12 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
   ): Promise<PoiView[]> {
     if (poiRows.length === 0) return [];
     const ids = poiRows.map((p) => p.id);
-    const [translations, scripts, quiz, ratings] = await Promise.all([
+    const [translations, scripts, quiz, ratings, prompts] = await Promise.all([
       pool.query<TranslationRow>(TRANSLATION_SELECT, [ids]),
       pool.query<ScriptRow>(SCRIPT_SELECT, [ids]),
       pool.query<QuizRow>(QUIZ_SELECT, [ids]),
       pool.query<RatingAggregateRow>(RATING_AGGREGATE_SELECT, [ids]),
+      loadPromptRows(ids),
     ]);
     return poiRows.map((poi) =>
       buildPoiView({
@@ -578,6 +613,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
         scripts: scripts.rows,
         quiz: quiz.rows,
         ratings: ratings.rows,
+        prompts,
         requestedLang,
         defaultLang,
         mediaBase,
