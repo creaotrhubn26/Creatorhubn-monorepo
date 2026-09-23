@@ -2143,6 +2143,23 @@
         }
       }
     },
+    "player.readByPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opplest av telefonen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read by your phone"
+          }
+        }
+      }
+    },
     "player.stop": {
       "extractionState": "manual",
       "localizations": {

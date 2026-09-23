@@ -16,6 +16,10 @@
 //
 // Spørsmål underveis (pakke 3): `prompts` følger kapittel og posisjon; et
 // gjettespørsmål pauser avspillingen (logikken i Core/ChapterPrompts.swift).
+//
+// Uten lydfil leses manuset opp av telefonen (SpeechNarrator via AudioEngine).
+// Da annonseres ikke kapittelbytte (det ville snakket over opplesningen);
+// med VoiceOver leses kapitteltittelen i stedet før teksten.
 
 import Foundation
 import Observation
@@ -133,6 +137,10 @@ final class PlayerViewModel {
     var rate: Double { settings.playbackRate }
     var captionsEnabled: Bool { settings.captionsEnabled }
     var isSimulated: Bool { engine.isSimulated }
+    /// Kapittelet leses opp av telefonen fordi lydfilen ikke finnes ennå.
+    var isReadByPhone: Bool { engine.isReadByPhone }
+    /// Telefonen leser høyt akkurat nå; ingen annonseringer da.
+    var isReadingAloud: Bool { isPlaying && engine.isReadByPhone }
 
     var currentCaption: String? {
         CaptionTimeline.segment(at: positionS, in: captionSegments)?.text
@@ -283,13 +291,21 @@ final class PlayerViewModel {
         captionsAreEstimated = timeline.isEstimated
         prompts.load(chapter: chapter)
         let url = chapter.audio.flatMap { URL(string: $0.url) }
+        let speech = url != nil ? nil : SpeechScript.make(
+            chapter: chapter,
+            segments: timeline.segments,
+            language: variant?.lang ?? settings.guideLanguage,
+            announceTitle: announce,
+            uiLanguage: settings.uiLanguage
+        )
         engine.load(
             url: url,
             durationS: chapter.playbackDurationS,
-            nowPlaying: AudioEngine.NowPlaying(title: poi.title, chapterTitle: chapter.title, durationS: chapter.playbackDurationS)
+            nowPlaying: AudioEngine.NowPlaying(title: poi.title, chapterTitle: chapter.title, durationS: chapter.playbackDurationS),
+            speech: speech
         )
         engine.setRate(settings.playbackRate)
-        if announce, let title = chapter.title {
+        if announce, let title = chapter.title, !engine.isReadByPhone {
             pendingChapterAnnouncement = title
         }
         startOrUpdateLiveActivity(isPlaying: isPlaying)
