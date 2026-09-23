@@ -86,7 +86,10 @@ def main() -> None:
     signature = args.signature_file.read_text(encoding="utf-8").strip()
     payload = {
         "version": args.version,
-        "notes": json.dumps(release, ensure_ascii=False, separators=(",", ":")),
+        # Keep updater notes human-readable for Desk versions released before the
+        # structured update center. Newer clients parse this canonical Markdown
+        # back into sections, while older clients can display it as plain text.
+        "notes": render_markdown(release),
         "pub_date": release["publishedAt"],
         "platforms": {
             args.platform: {
