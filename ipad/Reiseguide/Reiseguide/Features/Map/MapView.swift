@@ -167,7 +167,13 @@ struct MapView: View {
             }
         case .loaded:
             if let item = highlighted, isWithinReach(item.distanceM) {
-                NearbyCard(poi: item.poi, distanceM: item.distanceM, isLocked: env.isLocked(item.poi), locale: locale) {
+                NearbyCard(
+                    poi: item.poi,
+                    distanceM: item.distanceM,
+                    isLocked: env.isLocked(item.poi),
+                    locale: locale,
+                    onShowDirections: { path.append(Route.veiviser(.poi(id: item.poi.id))) }
+                ) {
                     path.append(Route.poi(item.poi.id))
                 }
                 .shadow(color: .black.opacity(0.35), radius: 16, x: 0, y: 8)
@@ -214,15 +220,30 @@ struct POIMarker: View {
     let locale: Locale
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Gir nærmeste/valgte pin en varsom puls (pakke 1, punkt 4). Rent
+    /// dekorativt og skjult for VoiceOver; av når «Reduser bevegelse» er på.
+    @State private var pulse = false
+
     private var size: CGFloat { isHighlighted ? 68 : 56 }
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: -2) {
-                RemoteImage(url: poi.heroImageUrl)
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-                    .overlay(Circle().strokeBorder(AppColor.accent.opacity(isHighlighted ? 1 : 0.7), lineWidth: isHighlighted ? 4 : 3))
+                ZStack {
+                    if isHighlighted && !reduceMotion {
+                        Circle()
+                            .stroke(AppColor.accent.opacity(0.5), lineWidth: 3)
+                            .frame(width: size, height: size)
+                            .scaleEffect(pulse ? 1.35 : 1)
+                            .opacity(pulse ? 0 : 0.7)
+                            .accessibilityHidden(true)
+                    }
+                    RemoteImage(url: poi.heroImageUrl)
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(AppColor.accent.opacity(isHighlighted ? 1 : 0.7), lineWidth: isHighlighted ? 4 : 3))
+                }
                 Image(systemName: "triangle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(AppColor.accent)
@@ -232,6 +253,19 @@ struct POIMarker: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(markerLabel))
         .accessibilityHint(Text("map.markerHint"))
+        .onAppear { startPulseIfNeeded() }
+        .onChange(of: isHighlighted) { _, _ in startPulseIfNeeded() }
+    }
+
+    private func startPulseIfNeeded() {
+        guard isHighlighted, !reduceMotion else {
+            pulse = false
+            return
+        }
+        pulse = false
+        withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
+            pulse = true
+        }
     }
 
     private var markerLabel: String {

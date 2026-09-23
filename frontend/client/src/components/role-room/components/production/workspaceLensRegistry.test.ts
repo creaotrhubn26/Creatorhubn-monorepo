@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ROLE_ROOM_WORKSPACE_LENSES } from './productionWorkspaceLens';
+import { WORKSPACE_LENS_COMPONENTS } from './workspaceLensComponents';
 import {
   FIRST_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   SECOND_ASSISTANT_DIRECTOR_PROJECT_ROLES,
   WORKSPACE_LENS_REGISTRY,
   matchesLensProjectRole,
+  hasWorkspaceLensGrant,
   isLensDecisionPending,
   resolveLensUrlState,
   resolveWorkspaceLens,
@@ -20,6 +22,24 @@ describe('workspaceLensRegistry', () => {
     const registered = WORKSPACE_LENS_REGISTRY.map((entry) => entry.lens).sort();
     const expected = ROLE_ROOM_WORKSPACE_LENSES.filter((lens) => lens !== 'full').sort();
     expect(registered).toEqual(expected);
+  });
+
+  it('points every lens to an actual lazy workspace component', () => {
+    for (const entry of WORKSPACE_LENS_REGISTRY) {
+      expect(WORKSPACE_LENS_COMPONENTS[entry.componentKey]).toBeDefined();
+    }
+  });
+
+  it('registers a standard surface and permission bundle for every lens', () => {
+    for (const entry of WORKSPACE_LENS_REGISTRY) {
+      expect(entry).toHaveProperty('defaultSurface');
+      expect(Array.isArray(entry.permissionBundle.manageAnyOf)).toBe(true);
+    }
+    expect(WORKSPACE_LENS_REGISTRY.find((entry) => entry.lens === 'art-department'))
+      .toEqual(expect.objectContaining({ defaultSurface: 'overview' }));
+    expect(hasWorkspaceLensGrant('art-department', { canManageArtDepartment: true })).toBe(true);
+    expect(hasWorkspaceLensGrant('art-department', { canEditProduction: true })).toBe(false);
+    expect(hasWorkspaceLensGrant('post-production', { canReviewPostTurnover: true })).toBe(true);
   });
 
   it('keeps the assistant direction split in sync with the lens entry', () => {
@@ -43,6 +63,12 @@ describe('workspaceLensRegistry', () => {
     expect(matchesLensProjectRole('production-coordination', 'production_secretary')).toBe(true);
     expect(matchesLensProjectRole('production-coordination', 'office_pa')).toBe(true);
     expect(matchesLensProjectRole('location-management', 'location_scout')).toBe(true);
+    expect(matchesLensProjectRole('art-department', 'production_designer')).toBe(true);
+    expect(matchesLensProjectRole('art-department', 'property_master')).toBe(true);
+    expect(matchesLensProjectRole('production-sound', 'sound_engineer')).toBe(true);
+    expect(matchesLensProjectRole('production-sound', 'boom_operator')).toBe(true);
+    expect(matchesLensProjectRole('post-production', 'post_supervisor')).toBe(true);
+    expect(matchesLensProjectRole('post-production', 'sound_designer')).toBe(true);
     expect(matchesLensProjectRole('director', 'producer')).toBe(false);
     expect(matchesLensProjectRole('director', null)).toBe(false);
     expect(matchesLensProjectRole('director', '')).toBe(false);
@@ -172,6 +198,22 @@ describe('resolveLensUrlState', () => {
       lens: 'continuity',
       plannerSurface: 'roles',
     })).toEqual({ lens: 'continuity', surface: 'roles', scene: '' });
+  });
+
+  it('publishes the selected production-design surface', () => {
+    expect(resolveLensUrlState({
+      ...base,
+      lens: 'art-department',
+      surfaces: { 'art-department': 'visual-direction' },
+    })).toEqual({ lens: 'art-department', surface: 'visual-direction', scene: '' });
+  });
+
+  it('publishes the selected production-sound surface', () => {
+    expect(resolveLensUrlState({
+      ...base,
+      lens: 'production-sound',
+      surfaces: { 'production-sound': 'takes' },
+    })).toEqual({ lens: 'production-sound', surface: 'takes', scene: '' });
   });
 
   it('drops the lens parameter in the full workspace', () => {

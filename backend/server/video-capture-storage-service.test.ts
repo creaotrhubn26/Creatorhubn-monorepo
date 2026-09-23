@@ -78,6 +78,7 @@ describe("CreatorHub One video capture storage", () => {
     expect(insert?.params[7]).toBe("camera-operator");
     expect(insert?.params[12]).toBe("capture-ios");
     expect(insert?.params[13]).toBe("video-capture");
+    expect(insert?.params[14]).toBeNull();
     expect(JSON.parse(String(insert?.params[8]))).toMatchObject({
       entityType: "video_capture_asset",
       entityId: "20000000-0000-4000-8000-000000000003",

@@ -264,7 +264,7 @@ export function SceneCard({ projectId, graph, detail, scenes, onJumpToElement, o
       </Stack>
       <Tabs
         value={tab} onChange={(_e, v) => setTab(v as SceneTabId)} variant="scrollable" scrollButtons="auto"
-        sx={{ minHeight: 36, mb: 2, borderBottom: `1px solid ${narrativeColors.borderStrong}`, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, fontSize: 13, px: 1.5 }, '& .Mui-selected': { color: '#fff' }, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}
+        sx={{ minHeight: 36, mb: 2, borderBottom: `1px solid ${narrativeColors.borderStrong}`, '& .MuiTab-root': { textTransform: 'none', fontWeight: 600, color: narrativeColors.textDim, minHeight: 36, fontSize: 13, px: 1.5 }, '& .MuiTab-root.Mui-selected': { color: '#eafff2' } /* slår MUI textColorPrimary (UX-16) */, '& .MuiTabs-indicator': { bgcolor: narrativeColors.accent } }}
       >
         {SCENE_TABS.map((t) => {
           const badge = t.id === 'lines' && detail.lines.length ? ` ${detail.lines.length}` : t.id === 'gates' ? ` ${detail.gates.filter((g) => g.status === 'passed').length}/${NARRATIVE_GATE_KEYS.length}` : t.id === 'tasks' && detail.tasks.length ? ` ${detail.tasks.filter((x) => x.status === 'done').length}/${detail.tasks.length}` : t.id === 'storyboard' && detail.frames.length ? ` ${detail.frames.length}` : t.id === 'review' && detail.reviews.some((r) => r.status === 'in_review') ? ' •' : '';

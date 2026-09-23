@@ -22,6 +22,12 @@ describe('resolveSessionProjectRole', () => {
     expect(resolveSessionProjectRole('set_pa')).toBe('set_production_assistant');
     expect(resolveSessionProjectRole('office_pa')).toBe('office_production_assistant');
     expect(resolveSessionProjectRole('local_casting_director')).toBe('local_casting_director');
+    expect(resolveSessionProjectRole('property_master')).toBe('production_designer');
+    expect(resolveSessionProjectRole('sound_engineer')).toBe('production_sound_mixer');
+    expect(resolveSessionProjectRole('boom_operator')).toBe('production_sound_mixer');
+    expect(resolveSessionProjectRole('post_supervisor')).toBe('post_supervisor');
+    expect(resolveSessionProjectRole('sound_designer')).toBe('sound_designer');
+    expect(resolveSessionProjectRole('editor')).toBe('video_editor');
   });
 
   it('tåler skitne verdier fra sesjonen', () => {
@@ -73,5 +79,30 @@ describe('katalogen og linseregisteret er enige', () => {
     expect((entry?.projectRoles ?? []).map(resolveSessionProjectRole)).toEqual([
       'location_manager', 'location_scout', 'location_security',
     ]);
+  });
+
+  it('samler art-avdelingens fagroller under produksjonsdesignerens prosjektrolle', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'art-department');
+    expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set(['production_designer']));
+  });
+
+  it('samler opptakslyd under lydmikserens prosjektrolle', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'production-sound');
+    expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set(['production_sound_mixer']));
+  });
+
+  it('beholder post-rollene som egne personaer i den delte post-flaten', () => {
+    const entry = WORKSPACE_LENS_REGISTRY.find((item) => item.lens === 'post-production');
+    expect(new Set((entry?.projectRoles ?? []).map(resolveSessionProjectRole))).toEqual(new Set([
+      'post_supervisor',
+      'post_coordinator',
+      'sound_designer',
+      'sound_editor',
+      'foley_artist',
+      'adr_engineer',
+      'supervising_editor',
+      'video_editor',
+      'assistant_editor',
+    ]));
   });
 });

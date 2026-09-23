@@ -1,6 +1,6 @@
 // SettingsView.swift
 //
-// Innstillinger: språk, teksting, hastighet, personvern (besøksloggen på
+// Innstillinger: språk, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
 // serveren: samtykke, status og «slett mine data»), mock-kjøp (nullstill) og
 // informasjon om demo-modus og API.
 
@@ -30,6 +30,17 @@ struct SettingsView: View {
                     }
                 }
             }
+            Section("settings.interactivity") {
+                Toggle("settings.haptics", isOn: $settings.hapticsEnabled)
+                Toggle("settings.autoStartOnArrival", isOn: $settings.autoStartOnArrival)
+            }
+            Section {
+                Toggle("veiviser.speakToggle", isOn: $settings.speakDirectionsEnabled)
+            } footer: {
+                Text("veiviser.speakToggleFooter")
+                    .foregroundStyle(contrast.textSecondary)
+            }
+            InteractivitySettingsSection()
             privacySection
             Section("settings.demo") {
                 if let area = env.store.area {

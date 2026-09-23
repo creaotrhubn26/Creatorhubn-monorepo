@@ -13,6 +13,7 @@
 
 import type { ProductionWorkspaceKind } from '../../config/productionRoleCatalog';
 import type { RoleRoomWorkspaceLens } from './productionWorkspaceLens';
+import type { WorkspaceLensComponentKey } from './workspaceLensComponents';
 
 /** Lenses that map to a dedicated role workspace. `full` is the fallback. */
 export type RoleWorkspaceLens = Exclude<RoleRoomWorkspaceLens, 'full'>;
@@ -25,9 +26,28 @@ export type RoleWorkspaceLens = Exclude<RoleRoomWorkspaceLens, 'full'>;
  * - `planner`: the lens falls back to the shared planner surface.
  */
 export type LensSurfaceSource = 'own' | 'none' | 'planner';
+export type WorkspacePermissionKey =
+  | 'canEditCasting'
+  | 'canEditProduction'
+  | 'canManageProduction'
+  | 'canCoordinateProduction'
+  | 'canManageLocations'
+  | 'canManageContinuity'
+  | 'canCommentContinuity'
+  | 'canManageArtDepartment'
+  | 'canManageProductionSound'
+  | 'canPreparePostTurnover'
+  | 'canReviewPostTurnover';
+
+export interface WorkspacePermissionBundle {
+  /** Any one server-resolved grant permits operational use of this lens. */
+  readonly manageAnyOf: readonly WorkspacePermissionKey[];
+}
 
 export interface WorkspaceLensEntry {
   readonly lens: RoleWorkspaceLens;
+  /** Lazy component owned by workspaceLensComponents.ts. */
+  readonly componentKey: WorkspaceLensComponentKey;
   /**
    * Bridge to `PRODUCTION_ROLES[].workspace` in the role catalogue. Absent for
    * a lens that is a platform surface rather than a production role.
@@ -38,6 +58,9 @@ export interface WorkspaceLensEntry {
    * Persisted aliases are included so historic rows keep resolving.
    */
   readonly projectRoles: readonly string[];
+  /** Canonical first surface when the lens owns its own surface state. */
+  readonly defaultSurface: string | null;
+  readonly permissionBundle: WorkspacePermissionBundle;
   readonly surfaceSource: LensSurfaceSource;
   /** Only the director lens deep-links a scene today. */
   readonly usesSceneParam: boolean;
@@ -50,34 +73,47 @@ export interface WorkspaceLensEntry {
 export const WORKSPACE_LENS_REGISTRY = [
   {
     lens: 'producer',
+    componentKey: 'producer',
     workspaceKind: 'producer',
     projectRoles: ['executive_producer', 'producer', 'line_producer'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageProduction', 'canEditProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
   {
     lens: 'director',
+    componentKey: 'director',
     workspaceKind: 'director',
     projectRoles: ['director'],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: true,
   },
   {
     lens: 'casting',
+    componentKey: 'casting',
     workspaceKind: 'casting',
     projectRoles: ['casting_director', 'local_casting_director', 'extras_casting_director'],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canEditCasting'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
   {
     lens: 'cinematography',
+    componentKey: 'cinematography',
     workspaceKind: 'cinematography',
     projectRoles: ['cinematographer', 'director_of_photography', 'dop', 'dp'],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
   {
     lens: 'assistant-direction',
+    componentKey: 'firstAssistantDirection',
     workspaceKind: 'assistant_direction',
     projectRoles: [
       'first_ad',
@@ -91,18 +127,24 @@ export const WORKSPACE_LENS_REGISTRY = [
       'set_production_assistant',
       'set_pa',
     ],
+    defaultSurface: 'today',
+    permissionBundle: { manageAnyOf: ['canEditProduction'] },
     surfaceSource: 'own',
     usesSceneParam: false,
   },
   {
     lens: 'production-management',
+    componentKey: 'productionManagement',
     workspaceKind: 'production_management',
     projectRoles: ['production_manager', 'production_accountant'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
   {
     lens: 'production-coordination',
+    componentKey: 'productionCoordination',
     workspaceKind: 'production_coordination',
     projectRoles: [
       'production_coordinator',
@@ -111,13 +153,18 @@ export const WORKSPACE_LENS_REGISTRY = [
       'office_pa',
       'production_assistant',
     ],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canCoordinateProduction'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
   {
     lens: 'location-management',
+    componentKey: 'locationManagement',
     workspaceKind: 'location_management',
     projectRoles: ['location_manager', 'location_scout', 'location_security'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageLocations'] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -127,9 +174,68 @@ export const WORKSPACE_LENS_REGISTRY = [
     // planner surface. Give continuity an own surface only together with a
     // deliberate URL-contract change.
     lens: 'continuity',
+    componentKey: 'continuity',
     workspaceKind: 'continuity',
     projectRoles: ['script_supervisor'],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: ['canManageContinuity', 'canCommentContinuity'] },
     surfaceSource: 'planner',
+    usesSceneParam: false,
+  },
+  {
+    lens: 'art-department',
+    componentKey: 'artDepartment',
+    workspaceKind: 'art_department',
+    projectRoles: [
+      'production_designer',
+      'set_designer',
+      'concept_illustrator',
+      'storyboard_artist',
+      'costume_designer',
+      'wardrobe_supervisor',
+      'set_decorator',
+      'on_set_dresser',
+      'greensperson',
+      'property_master',
+      'assistant_property_master',
+      'key_hair_stylist',
+      'key_makeup_artist',
+      'construction_coordinator',
+    ],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canManageArtDepartment'] },
+    surfaceSource: 'own',
+    usesSceneParam: false,
+  },
+  {
+    lens: 'production-sound',
+    componentKey: 'productionSound',
+    workspaceKind: 'production_sound',
+    projectRoles: ['production_sound_mixer', 'sound_mixer', 'audio_mixer', 'sound_engineer', 'boom_operator'],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canManageProductionSound'] },
+    surfaceSource: 'own',
+    usesSceneParam: false,
+  },
+  {
+    lens: 'post-production',
+    componentKey: 'postProduction',
+    workspaceKind: 'post_production',
+    projectRoles: [
+      'post_supervisor',
+      'post_coordinator',
+      'sound_designer',
+      'sound_editor',
+      'foley_artist',
+      'adr_engineer',
+      'supervising_editor',
+      'video_editor',
+      'editor',
+      'assistant_editor',
+    ],
+    defaultSurface: 'overview',
+    permissionBundle: { manageAnyOf: ['canPreparePostTurnover', 'canReviewPostTurnover'] },
+    surfaceSource: 'own',
     usesSceneParam: false,
   },
   {
@@ -138,7 +244,10 @@ export const WORKSPACE_LENS_REGISTRY = [
     // caller the panel considers super admin. It is also the one lens that does
     // not need an open project.
     lens: 'admin',
+    componentKey: 'admin',
     projectRoles: [],
+    defaultSurface: null,
+    permissionBundle: { manageAnyOf: [] },
     surfaceSource: 'none',
     usesSceneParam: false,
   },
@@ -178,6 +287,14 @@ export function matchesLensProjectRole(lens: RoleWorkspaceLens, projectRole: unk
   const normalised = projectRole.trim().toLowerCase();
   if (!normalised) return false;
   return getWorkspaceLensEntry(lens).projectRoles.includes(normalised);
+}
+
+export function hasWorkspaceLensGrant(
+  lens: RoleWorkspaceLens,
+  grants: Readonly<Record<string, boolean>> | null | undefined,
+): boolean {
+  if (!grants) return false;
+  return getWorkspaceLensEntry(lens).permissionBundle.manageAnyOf.some((grant) => grants[grant] === true);
 }
 
 export interface WorkspaceLensResolution {

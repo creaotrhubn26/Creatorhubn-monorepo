@@ -34,9 +34,14 @@ final class LocationService: NSObject {
     private(set) var authorization: Authorization = .notDetermined
     private(set) var fix: LocationFix?
     private(set) var lastError: String?
+    /// Sann (evt. magnetisk) retning enheten peker, i grader (0 = nord).
+    /// Nil når kompasset ikke er tilgjengelig eller ikke er startet
+    /// (veiviseren, pakke 2 item 5, er eneste bruker per nå).
+    private(set) var heading: Double?
 
     @ObservationIgnored private let manager = CLLocationManager()
     @ObservationIgnored private var isUpdating = false
+    @ObservationIgnored private var isUpdatingHeading = false
 
     override init() {
         super.init()
@@ -71,6 +76,21 @@ final class LocationService: NSObject {
         manager.stopUpdatingLocation()
     }
 
+    /// Starter kompasset (veiviseren). Stopp igjen når skjermen lukkes —
+    /// CLLocationManager bruker ekstra strøm på dette utover posisjon alene.
+    func startUpdatingHeading() {
+        guard CLLocationManager.headingAvailable(), !isUpdatingHeading else { return }
+        isUpdatingHeading = true
+        manager.startUpdatingHeading()
+    }
+
+    func stopUpdatingHeading() {
+        guard isUpdatingHeading else { return }
+        isUpdatingHeading = false
+        manager.stopUpdatingHeading()
+        heading = nil
+    }
+
     nonisolated private static func map(_ status: CLAuthorizationStatus) -> Authorization {
         switch status {
         case .authorizedAlways, .authorizedWhenInUse: return .authorized
@@ -91,6 +111,10 @@ final class LocationService: NSObject {
 
     fileprivate func apply(error: String) {
         lastError = error
+    }
+
+    fileprivate func apply(heading: Double?) {
+        self.heading = heading
     }
 }
 
@@ -113,5 +137,16 @@ extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         let message = error.localizedDescription
         Task { @MainActor in self.apply(error: message) }
+    }
+
+    /// Negativ nøyaktighet = ugyldig avlesning (Apples dokumentasjon); da
+    /// nullstilles heading i stedet for å vise en tilfeldig retning.
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        guard newHeading.headingAccuracy >= 0 else {
+            Task { @MainActor in self.apply(heading: nil) }
+            return
+        }
+        let value = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        Task { @MainActor in self.apply(heading: value) }
     }
 }

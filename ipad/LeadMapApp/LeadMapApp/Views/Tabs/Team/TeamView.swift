@@ -472,8 +472,12 @@ struct TeamView: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, isCompact ? 12 : 14).padding(.vertical, 12)
+            // 12pt tekst + 12pt padding gir 38pt — samme feil som «Mer» i
+            // Leadbook-headeren hadde.
+            .frame(minHeight: 44)
             .background(
-                LinearGradient(colors: [TBrand.purple, TBrand.purpleLight],
+                LinearGradient(colors: [LgKontrast.lillaTekstflate,
+                                        LgKontrast.lillaTekstflateLys],
                                startPoint: .leading, endPoint: .trailing),
                 in: RoundedRectangle(cornerRadius: 11)
             )
@@ -499,13 +503,15 @@ struct TeamView: View {
             HStack(spacing: 10) {
                 Text(member.initials)
                     .font(.appScaled(size: 11, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                    // Medlemsfargene går fra lilla til gult; hvit tekst
+                    // faller under kravet på de lyse.
+                    .foregroundStyle(member.color.lesbarTekst)
                     .frame(width: 34, height: 34)
                     .background(member.color, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(TeamData.members.count == 1
                          ? "Ansvarlig i prosjektet"
-                         : "(TeamData.members.count) medlemmer i prosjektet")
+                         : "\(TeamData.members.count) medlemmer i prosjektet")
                         .font(.appScaled(size: 10, weight: .semibold))
                         .foregroundStyle(TBrand.textTertiary)
                     Text(member.name)

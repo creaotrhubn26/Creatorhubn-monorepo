@@ -5,7 +5,7 @@
 // Om / Opplevelse / Praktisk (innholdet i POIDetailTabContent.swift), og fast
 // bunnfelt med «Start opplevelsen» og «Legg til i mine steder». Låst POI åpner
 // mock-paywall. Er stedet besøkt, vises dato og en knapp til etter-besøket
-// (quiz, vurdering, tips, deling).
+// (quiz, vurdering, tips, deling). «Spør guiden» (pakke 3) står over fanene.
 
 import SwiftUI
 
@@ -78,6 +78,10 @@ struct POIDetailView: View {
                 }
             }
         }
+        // Favoritt av/på (pakke 1, punkt 2): begge knappene under styrer samme tilstand.
+        .sensoryFeedback(trigger: env.settings.isFavorite(poiId: poi.id)) { _, _ in
+            AppHaptics.feedback(.selection, enabled: env.settings.hapticsEnabled)
+        }
     }
 
     /// Heltebilde med scrim og knappene tilbake / favoritt / del.
@@ -100,6 +104,10 @@ struct POIDetailView: View {
                     tint: env.settings.isFavorite(poiId: poi.id) ? AppColor.accent : AppColor.textPrimary
                 ) {
                     env.settings.toggleFavorite(poiId: poi.id)
+                }
+                // Veiviseren (pakke 2, item 5): kompassretning til dette stedet.
+                IconCircleButton(systemImage: "location.north.fill", label: "detail.showDirections") {
+                    path.append(Route.veiviser(.poi(id: poi.id)))
                 }
                 ShareLinkButton(url: poi.shareURL, fallbackText: shareText(poi), subject: poi.title, message: shareText(poi)) {
                     Image(systemName: "square.and.arrow.up")
@@ -139,6 +147,7 @@ struct POIDetailView: View {
                 languageNotice(poi)
                     .padding(.top, AppSpacing.m)
             }
+            AskGuideButton(poi: poi, topPadding: AppSpacing.l)
             SegmentTabs(selection: $tab, reduceMotion: reduceMotion)
                 .padding(.top, AppSpacing.screenMargin)
             POIDetailTabContent(poi: poi, tab: tab)

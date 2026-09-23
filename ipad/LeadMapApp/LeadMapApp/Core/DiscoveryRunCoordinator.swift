@@ -42,6 +42,15 @@ final class DiscoveryRunCoordinator {
     private(set) var nextCursor: String?
     private(set) var profiles: [DiscoveryV2Profile] = []
     private(set) var campaigns: [DiscoveryV2CampaignRun] = []
+    /// Varm start: forslaget etter et søk. `nil` betyr at vi ikke har spurt,
+    /// eller at det ikke er noe å foreslå.
+    private(set) var warmStart: DiscoveryWarmStartSuggestion?
+    private(set) var warmStartPendingCount = 0
+    private(set) var warmStartBusy = false
+    private(set) var warmStartResult: DiscoveryWarmStartResult?
+    /// Triage-gruppene for kjøringen. Tom betyr ingenting å ta stilling til.
+    private(set) var triage: DiscoveryTriage?
+    private(set) var triageBusy = false
     private(set) var isCampaignBusy = false
     private(set) var isShowingCampaignOverview = false
     private(set) var selectedProfile: DiscoveryV2Profile?
@@ -712,6 +721,10 @@ final class DiscoveryRunCoordinator {
                 selectedCandidateIds.formIntersection(actionableCandidateIds)
             }
             nextCursor = page.nextCursor
+            if replace {
+                await loadWarmStart(binding: binding)
+                await loadTriage(binding: binding)
+            }
             await persist()
             guard isCurrent(binding),
                   isCurrentRunSelection(selectionGeneration, expectedRunId: expectedRunId) else { return }
@@ -720,6 +733,79 @@ final class DiscoveryRunCoordinator {
                   isCurrentRunSelection(selectionGeneration, expectedRunId: expectedRunId) else { return }
             handle(error, silentWhenCached: !candidates.isEmpty)
         }
+    }
+
+    private func loadWarmStart(binding: ConfigurationBinding) async {
+        guard let api, let projectId, let run else { return }
+        // Forslaget er hjelp, ikke innhold: feiler kallet, skal kandidatlista
+        // stå som før uten en feilmelding brukeren ikke kan gjøre noe med.
+        guard let preview = try? await api.fetchDiscoveryWarmStart(
+            projectId: projectId, runId: run.id) else { return }
+        guard isCurrent(binding) else { return }
+        warmStartPendingCount = preview.pendingCount
+        warmStart = preview.suggestion
+    }
+
+    private func loadTriage(binding: ConfigurationBinding) async {
+        guard let api, let projectId, let run else { return }
+        // Grupperingen er hjelp, ikke innhold: feiler kallet står lista som før.
+        guard let ut = try? await api.fetchDiscoveryTriage(
+            projectId: projectId, runId: run.id) else { return }
+        guard isCurrent(binding) else { return }
+        triage = ut
+    }
+
+    /// Utfører gruppas samlede handling. Returnerer antall leads som ble
+    /// opprettet — null ved avvisning, siden ingenting da opprettes.
+    @discardableResult
+    func applyTriage(_ group: DiscoveryTriageGroup) async -> Int {
+        guard let binding = currentBinding(), !triageBusy,
+              let handling = group.bulkAction else { return 0 }
+        triageBusy = true
+        defer { if isCurrent(binding) { triageBusy = false } }
+        // Gjenbruker den vanlige beslutningsveien: samme tillatelseskontroll,
+        // samme idempotens, samme feilhåndtering per kandidat.
+        let forrigeValg = selectedCandidateIds
+        selectedCandidateIds = Set(group.candidateIds)
+        let opprettet = await decideSelected(
+            handling == "approve" ? .approve : .reject,
+            reason: handling == "approve" ? .goodFit : .notRelevant)
+        guard isCurrent(binding) else { return opprettet }
+        selectedCandidateIds = forrigeValg.subtracting(group.candidateIds)
+        await loadCandidates(replace: true, binding: binding)
+        return opprettet
+    }
+
+    /// Godkjenner den foreslåtte kandidaten og lager oppfølgingsoppgaven.
+    /// Returnerer true når det ble opprettet et lead.
+    @discardableResult
+    func acceptWarmStart() async -> Bool {
+        guard let binding = currentBinding(), let api, let projectId, let run,
+              let suggestion = warmStart, !warmStartBusy else { return false }
+        warmStartBusy = true
+        defer { if isCurrent(binding) { warmStartBusy = false } }
+        do {
+            let result = try await api.commitDiscoveryWarmStart(
+                projectId: projectId,
+                runId: run.id,
+                candidateId: suggestion.candidateId)
+            guard isCurrent(binding) else { return false }
+            warmStartResult = result
+            warmStart = nil
+            await loadCandidates(replace: true, binding: binding)
+            return result.leadId != nil
+        } catch {
+            guard isCurrent(binding) else { return false }
+            // 409 betyr at noen andre rakk kandidaten først. Da henter vi
+            // forslaget på nytt i stedet for å vise en blindvei.
+            await loadWarmStart(binding: binding)
+            handle(error, silentWhenCached: false)
+            return false
+        }
+    }
+
+    func dismissWarmStart() {
+        warmStart = nil
     }
 
     @discardableResult

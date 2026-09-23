@@ -53,7 +53,7 @@ export const SCENE_STATUS_LABELS: Record<NarrativeSceneStatus, string> = {
 };
 
 export const SCENE_STATUS_COLORS: Record<NarrativeSceneStatus, string> = {
-  idea: '#6b7280',
+  idea: '#9ca3af', // 6:1 mot chip-bakgrunnen (UX QA: #6b7280 ga 3,4:1 ved 11 px)
   in_progress: '#93a4dc',
   in_review: narrativeColors.warning,
   changes_requested: narrativeColors.error,

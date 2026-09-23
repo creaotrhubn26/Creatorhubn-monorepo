@@ -24,8 +24,18 @@ struct MyPlacesView: View {
 
     private var locale: Locale { env.settings.locale }
 
+    /// Turprogresjon (pakke 1, punkt 3): stedene i området og fullførte besøk i loggen.
+    private var tourProgress: TourProgress {
+        TourProgress.compute(pois: env.store.pois, completedPoiIds: env.visits.completedPoiIds)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            if tourProgress.total > 0 {
+                TourProgressRing(progress: tourProgress, locale: locale)
+                    .padding(.horizontal, AppSpacing.screenMargin)
+                    .padding(.top, AppSpacing.s)
+            }
             Picker("myPlaces.sections", selection: $segment) {
                 Text("myPlaces.favorites").tag(Segment.favorites)
                 Text("myPlaces.log").tag(Segment.log)
@@ -96,6 +106,16 @@ struct MyPlacesView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint(Text("log.rowHint"))
+                        .accessibilityAction(named: Text("log.delete")) {
+                            env.visits.remove(entryId: entry.id)
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                env.visits.remove(entryId: entry.id)
+                            } label: {
+                                Label("log.delete", systemImage: "trash")
+                            }
+                        }
                         .listRowBackground(AppColor.bgSurface)
                         .listRowSeparatorTint(contrast.border)
                     }
@@ -114,6 +134,8 @@ struct MyPlacesView: View {
             .scrollContentBackground(.hidden)
             .background(AppColor.bgBase)
             .accessibilityLabel(Text("myPlaces.log"))
+            // Synlig slett-vei for dem som ikke sveiper (Switch Control, AssistiveTouch).
+            .toolbar { EditButton() }
         }
     }
 }

@@ -101,7 +101,7 @@ export function SceneTableRead({ lines, graph, era }: { lines: NarrativeSceneLin
         </TextField>
         <Tooltip title={aiAllowed ? 'KI-stemmer via OpenAI (koster per replikk). Av = nettleserens egne stemmer.' : 'KI-stemmer krever Pro/Studio (ai_assist).'}>
           <Stack direction="row" alignItems="center" spacing={0.5}>
-            <Switch size="small" checked={useAi && aiAllowed} disabled={!aiAllowed} onChange={(e) => setUseAi(e.target.checked)} inputProps={{ 'data-testid': 'narrative-table-read-ai' } as never} />
+            <Switch size="small" checked={useAi && aiAllowed} disabled={!aiAllowed} onChange={(e) => setUseAi(e.target.checked)} inputProps={{ 'data-testid': 'narrative-table-read-ai', 'aria-label': 'Bruk KI-stemmer' } as never} />
             <Typography sx={{ fontSize: 12, color: narrativeColors.textDim }}>KI-stemmer</Typography>
           </Stack>
         </Tooltip>

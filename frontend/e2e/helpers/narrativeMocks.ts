@@ -365,6 +365,13 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
   // Generate lager deterministiske funn fra mock-tilstanden; accept speiler applier-en (åpent spørsmål AI-<id>).
   const aiSuggestions: Rec[] = [];
   const suggestionJson = (data: unknown, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify(data) });
+  // UX-01: «Nytt prosjekt» i prosjektvelgeren (POST /api/role-room/projects).
+  await page.route('**/api/role-room/projects', async (route: Route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = (route.request().postDataJSON() ?? {}) as { name?: string };
+    const id = `proj-${String(body.name ?? 'nytt').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'nytt'}`;
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id, name: body.name ?? 'Nytt spill', status: 'active', project_type: 'game' }) });
+  });
   await page.route('**/api/role-room/projects/*/ai-suggestions**', async (route: Route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -457,6 +464,10 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
     const m = (re: RegExp) => path.match(re);
 
     if (m(/\/projects\/[^/]+\/graph$/) && method === 'GET') return route.fulfill(ok(g));
+    if (m(/\/projects\/[^/]+\/scenes\/export\.pdf$/) && method === 'GET') {
+      if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'export_pdf', planSlug: 'solo' }) });
+      return route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'content-disposition': 'attachment; filename="demo-spill-manus.pdf"' }, body: Buffer.from('%PDF-1.4\n%mock manus\n') });
+    }
     if (m(/\/projects\/[^/]+\/export\.pdf$/) && method === 'GET') {
       if (gamePlan === 'solo') return route.fulfill({ status: 402, contentType: 'application/json', body: JSON.stringify({ error: 'plan_required', feature: 'export_pdf', planSlug: 'solo' }) });
       const locale = url.searchParams.get('locale');
@@ -1056,6 +1067,13 @@ export async function installNarrativeMocks(page: Page, opts: { projectId?: stri
         episodes: episodes.map((e) => ({ id: e.id, code: e.code, title: e.title, sceneCount: scenes.filter((sc) => sc.episodeId === e.id).length, approvedCount: scenes.filter((sc) => sc.episodeId === e.id && (sc.status === 'approved' || sc.status === 'implemented')).length })),
         activity,
         unreadInbox: inbox.filter((n) => !n.readAt).length,
+        nextScene: (() => {
+          const gateOf = (sid: unknown, key: string) => gates.find((x) => x.sceneId === sid && x.gateKey === key)?.status ?? 'not_started';
+          const cand = [...scenes].filter((sc) => sc.status !== 'approved' && sc.status !== 'implemented' && gateOf(sc.id, 'greybox') !== 'passed')
+            .sort((a, b) => Number(gateOf(b.id, 'script_coverage') === 'passed') - Number(gateOf(a.id, 'script_coverage') === 'passed') || Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+          const sc = cand[0];
+          return sc ? { id: sc.id, code: sc.code, title: sc.title, scriptCovered: gateOf(sc.id, 'script_coverage') === 'passed', openTasks: tasks.filter((t) => t.sceneId === sc.id && t.status !== 'done').length } : null;
+        })(),
         playtest: (() => { const ps = playtestSummary(null); return { sessions7d: ps.sessions, worstDropOff: ps.worstDropOff }; })(),
         guardian: { pending: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending').length, high: aiSuggestions.filter((x) => x.agentName === 'script-guardian-agent' && x.status === 'pending' && (x.payload as Rec).severity === 'high').length },
       }));

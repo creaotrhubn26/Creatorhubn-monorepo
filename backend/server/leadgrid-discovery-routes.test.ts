@@ -24,6 +24,11 @@ const campaignService = vi.hoisted(() => ({
 const placesDetails = vi.hoisted(() => ({
   fetchTransientDiscoveryPlaceDetails: vi.fn(),
 }));
+const warmStart = vi.hoisted(() => ({
+  previewWarmStart: vi.fn(),
+  commitWarmStart: vi.fn(),
+}));
+const triage = vi.hoisted(() => ({ triageRunCandidates: vi.fn() }));
 const rateLimit = vi.hoisted(() => ({
   checkEndpointRateLimit: vi.fn(),
 }));
@@ -33,6 +38,17 @@ const access = vi.hoisted(() => ({
 }));
 const permissionResolver = vi.hoisted(() => ({
   resolveEffectivePermissions: vi.fn(),
+}));
+
+vi.mock("./leadgrid-discovery-triage.js", () => triage);
+
+vi.mock("./leadgrid-discovery-warm-start.js", () => ({
+  ...warmStart,
+  WarmStartStaleError: class WarmStartStaleError extends Error {
+    constructor(readonly currentCandidateId: string | null) {
+      super("warm_start_stale");
+    }
+  },
 }));
 
 vi.mock("./leadgrid-discovery-campaign-service.js", () => ({
@@ -226,6 +242,9 @@ describe("Leadgrid Discovery HTTP contract", () => {
       `GET ${base}/runs/:runId/candidates`,
       `POST ${base}/runs/:runId/candidates/:candidateId/place-details`,
       `POST ${base}/runs/:runId/candidates/:candidateId/decision`,
+      `GET ${base}/runs/:runId/triage`,
+      `GET ${base}/runs/:runId/warm-start`,
+      `POST ${base}/runs/:runId/warm-start`,
       `POST ${base}/runs/:runId/candidates/:candidateId/feedback`,
       `GET ${base}/profiles`,
       `POST ${base}/profiles`,
@@ -566,6 +585,69 @@ describe("Leadgrid Discovery HTTP contract", () => {
         decision: { decision: "approve" },
       },
     );
+  });
+
+  it("grupperer ventende kandidater uten å skrive noe", async () => {
+    triage.triageRunCandidates.mockResolvedValue({
+      pending_count: 200,
+      minimum_fit_score: 70,
+      groups: [{ key: "discard", count: 120 }],
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("GET", `${base}/runs/:runId/triage`, {
+      params: { projectId: "project-a", runId },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ pending_count: 200 });
+    expect(service.decideDiscoveryCandidate).not.toHaveBeenCalled();
+  });
+
+  it("viser varm start uten å skrive noe", async () => {
+    warmStart.previewWarmStart.mockResolvedValue({
+      pending_count: 200,
+      suggestion: { candidate_id: candidateId, name: "Norsk Filmforbund" },
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("GET", `${base}/runs/:runId/warm-start`, {
+      params: { projectId: "project-a", runId },
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ pending_count: 200 });
+    expect(warmStart.commitWarmStart).not.toHaveBeenCalled();
+  });
+
+  it("krever leads.create før varm start oppretter noe", async () => {
+    permissionResolver.resolveEffectivePermissions.mockResolvedValue({
+      role: "member",
+      permissions: new Set(),
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("POST", `${base}/runs/:runId/warm-start`, {
+      params: { projectId: "project-a", runId },
+      body: { candidate_id: candidateId },
+    });
+    expect(response.status).toBe(403);
+    expect(warmStart.commitWarmStart).not.toHaveBeenCalled();
+  });
+
+  it("binder varm start til kandidaten brukeren så", async () => {
+    warmStart.commitWarmStart.mockResolvedValue({
+      lead_id: "lead-1",
+      candidate_id: candidateId,
+      task_created: true,
+    });
+    const harness = makeHarness({ query: vi.fn() } as unknown as Pool);
+    const response = await harness.call("POST", `${base}/runs/:runId/warm-start`, {
+      params: { projectId: "project-a", runId },
+      body: { candidate_id: candidateId },
+    });
+    expect(response.status).toBe(200);
+    expect(warmStart.commitWarmStart).toHaveBeenCalledWith(expect.anything(), {
+      project,
+      userId: "user-a",
+      runId,
+      candidateId,
+    });
   });
 
   it("requires leads.create only when a decision promotes a CRM lead", async () => {

@@ -559,6 +559,28 @@ describe('narrative routes — Fase 4d: plan-gating (prosjekteierens game_plan)'
     expect((ok.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
+  it('scenes/export.pdf: solo → 402 export_pdf; studio → application/pdf «-manus.pdf» selv uten brett (UX-28)', async () => {
+    const solo = createApp(makePool(), { plan: 'solo' });
+    const res = await auth(request(solo).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.pdf`));
+    expect(res.status).toBe(402);
+    const studio = createApp(makePool([{ match: /SELECT name FROM casting_projects/, rows: [{ name: 'What Follows Us' }] }]), { plan: 'studio' });
+    const ok = await auth(request(studio).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.pdf`)).buffer(true).parse((r, cb) => { const chunks: Buffer[] = []; r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks))); });
+    expect(ok.status).toBe(200);
+    expect(ok.headers['content-type']).toMatch(/application\/pdf/);
+    expect(ok.headers['content-disposition']).toMatch(/what-follows-us-manus\.pdf"$/);
+    expect((ok.body as Buffer).subarray(0, 5).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('scenes/export.json: manifest med ETag; If-None-Match med samme hash → 304 (ugatet, også solo)', async () => {
+    const app = createApp(makePool([{ match: /SELECT name FROM casting_projects/, rows: [{ name: 'What Follows Us' }] }]), { plan: 'solo' });
+    const res = await auth(request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.json`));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ schema: 'story-graph.scene-manifest', version: 1, projectName: 'What Follows Us', scenes: [] });
+    expect(res.headers.etag).toBe(`"${res.body.contentHash}"`);
+    const again = await auth(request(app).get(`/api/role-room/narrative/projects/${PROJECT_ID}/scenes/export.json`)).set('If-None-Match', res.headers.etag);
+    expect(again.status).toBe(304);
+  });
+
   it('solo: POST import format=twee → 402 import_twine_ink; format=arcweave gates ikke', async () => {
     const app = createApp(makePool(), { plan: 'solo' });
     const twee = await auth(request(app).post(`/api/role-room/narrative/projects/${PROJECT_ID}/import`)).send({ format: 'twee', source: ':: Start\nHei' });

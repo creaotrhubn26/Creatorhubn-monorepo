@@ -54,8 +54,15 @@ jobs:
 
       # tsx er en devDependency, så dev-pakker må med (i motsetning til
       # migrasjonsrunneren). --ignore-scripts hopper over puppeteer-nedlasting.
+      # Optional-pakker MÅ med: esbuild (som tsx bruker) leverer plattform-
+      # binæren @esbuild/linux-x64 som optionalDependency, og uten den
+      # stopper tsx med «The package @esbuild/linux-x64 could not be found»
+      # (kjøring 35833288845, 23.09.2026).
       - name: Install backend runtime (tsx + pg)
-        run: npm ci --prefix backend --workspaces=false --omit=optional --ignore-scripts
+        run: npm ci --prefix backend --workspaces=false --ignore-scripts
+      - name: Verify tsx can transform TypeScript
+        run: |
+          ./backend/node_modules/.bin/tsx --eval 'const n: number = 1; console.log("tsx ok", n)'
 
       - name: Verify migration role before writing
         env:

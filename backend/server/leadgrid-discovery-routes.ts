@@ -13,6 +13,7 @@ import {
   discoveryBriefSchema,
   discoveryCandidateQuerySchema,
   discoveryDecisionSchema,
+  warmStartCommitSchema,
   discoveryFeedbackSchema,
   discoveryHash,
   discoveryPreviewSchema,
@@ -44,6 +45,13 @@ import {
   type LeadgridSession,
 } from "./leadgrid-project-access.js";
 import { resolveEffectivePermissions } from "./lead-map-permission-routes.js";
+import {
+  commitWarmStart,
+  previewWarmStart,
+  WarmStartStaleError,
+} from "./leadgrid-discovery-warm-start.js";
+import { placeLeadAfterApproval } from "./leadgrid-lead-placement.js";
+import { triageRunCandidates } from "./leadgrid-discovery-triage.js";
 import {
   assertAutoDiscoveryProfileCapacity,
   DiscoveryGovernanceError,
@@ -956,6 +964,87 @@ export function registerLeadgridDiscoveryRoutes({
     }),
   );
 
+  // Triage: varm start tar den første kandidaten. Denne tar de 199 andre, ved
+  // å gruppere dem slik at brukeren tar stilling til grupper i stedet for rader.
+  app.get(
+    `${base}/runs/:runId/triage`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await triageRunCandidates(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
+        }),
+      );
+    }),
+  );
+
+  // Varm start: ett søk gir gjerne to hundre kandidater. Uten en inngang blir
+  // de liggende. GET viser forslaget, POST oppretter først når brukeren har
+  // sett hvem det gjelder.
+  app.get(
+    `${base}/runs/:runId/warm-start`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      res.json(
+        await previewWarmStart(pool, {
+          project: context.project,
+          runId: parseUuid(req.params.runId, "runId"),
+        }),
+      );
+    }),
+  );
+
+  app.post(
+    `${base}/runs/:runId/warm-start`,
+    permission,
+    wrapped(async (req, res) => {
+      const context = await contextFor(req, res, pool, activeSessions);
+      if (!context) return;
+      const { permissions } = await resolveEffectivePermissions(
+        pool,
+        context.project.organizationId,
+        context.userId,
+      );
+      if (!permissions.has("leads.create")) {
+        res.status(403).json({
+          error: "mangler_tillatelse",
+          required: "leads.create",
+          organization_id: context.project.organizationId,
+        });
+        return;
+      }
+      const body = warmStartCommitSchema.parse(req.body ?? {});
+      try {
+        res.json(
+          await commitWarmStart(pool, {
+            project: context.project,
+            userId: context.userId,
+            runId: parseUuid(req.params.runId, "runId"),
+            candidateId: body.candidate_id,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof WarmStartStaleError) {
+          // Noen andre rakk å behandle kandidaten. Appen henter forslaget på
+          // nytt i stedet for å godkjenne en rad brukeren aldri så.
+          sendError(
+            res,
+            409,
+            "warm_start_stale",
+            "Forslaget er ikke lenger det varmeste. Hent det på nytt.",
+          );
+          return;
+        }
+        throw error;
+      }
+    }),
+  );
+
   app.post(
     `${base}/runs/:runId/candidates/:candidateId/place-details`,
     permission,
@@ -1019,16 +1108,29 @@ export function registerLeadgridDiscoveryRoutes({
       }
       const idempotencyKey = requiredIdempotencyKey(req, res);
       if (!idempotencyKey) return;
-      res.json(
-        await decideDiscoveryCandidate(pool, {
+      const utfall = await decideDiscoveryCandidate(pool, {
+        project: context.project,
+        userId: context.userId,
+        runId: parseUuid(req.params.runId, "runId"),
+        candidateId: parseUuid(req.params.candidateId, "candidateId"),
+        idempotencyKey,
+        decision,
+      });
+      res.json(utfall);
+      // Etter svaret: en godkjent kandidat uten koordinater er usynlig på
+      // kartet fra sekundet den blir lead. Oppslaget tar et par hundre
+      // millisekunder mot Kartverket og skal ikke forsinke godkjenningen.
+      if (utfall.lead_id) {
+        void placeLeadAfterApproval(pool, {
           project: context.project,
-          userId: context.userId,
-          runId: parseUuid(req.params.runId, "runId"),
-          candidateId: parseUuid(req.params.candidateId, "candidateId"),
-          idempotencyKey,
-          decision,
-        }),
-      );
+          leadId: utfall.lead_id,
+        }).catch((error: unknown) => {
+          console.warn(
+            "[discovery] plassering etter godkjenning feilet:",
+            (error as Error).message,
+          );
+        });
+      }
     }),
   );
 

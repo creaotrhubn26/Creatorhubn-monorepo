@@ -71,6 +71,10 @@ describe("resolveCastingProjectAccess", () => {
       canManageLocations: true,
       canManageContinuity: false,
       canCommentContinuity: false,
+      canManageArtDepartment: false,
+      canManageProductionSound: false,
+      canPreparePostTurnover: true,
+      canReviewPostTurnover: false,
     });
   });
 

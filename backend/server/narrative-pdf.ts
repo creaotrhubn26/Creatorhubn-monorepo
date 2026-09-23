@@ -161,12 +161,11 @@ export function composeStoryGraphPdf(doc: PdfDocLike, input: ExportGraph, option
   }
 }
 
-/** Rendrer PDF-bytes med pdfkit (A4, innebygde fonter, sidetall i bunn). */
-export function renderStoryGraphPdf(graph: ExportGraph, options: StoryGraphPdfOptions = {}): Promise<Buffer> {
+/** Felles pdfkit-oppsett (A4, innebygde fonter, sidetall i bunn) rundt en komposisjon. */
+function renderPdf(title: string, compose: (doc: PdfDocLike) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
       const f = fonts();
-      const title = options.title?.trim() || htmlToTitle(graph.settings.title ?? '') || 'Story Graph';
       const doc = new PDFDocument({ size: 'A4', margin: 56, bufferPages: true, info: { Title: title, Author: 'The Role Room · Story Graph' } });
       const chunks: Buffer[] = [];
       doc.on('data', (c: Buffer) => chunks.push(c));
@@ -175,7 +174,7 @@ export function renderStoryGraphPdf(graph: ExportGraph, options: StoryGraphPdfOp
       doc.registerFont('Sans', f.regular);
       doc.registerFont('Sans-Bold', f.bold);
       doc.registerFont('Sans-Oblique', f.oblique);
-      composeStoryGraphPdf(doc as unknown as PdfDocLike, graph, options);
+      compose(doc as unknown as PdfDocLike);
       // Sidetall (hopp over tittelsiden).
       const range = doc.bufferedPageRange();
       for (let i = 1; i < range.count; i += 1) {
@@ -190,6 +189,137 @@ export function renderStoryGraphPdf(graph: ExportGraph, options: StoryGraphPdfOp
   });
 }
 
+/** Rendrer PDF-bytes med pdfkit (A4, innebygde fonter, sidetall i bunn). */
+export function renderStoryGraphPdf(graph: ExportGraph, options: StoryGraphPdfOptions = {}): Promise<Buffer> {
+  const title = options.title?.trim() || htmlToTitle(graph.settings.title ?? '') || 'Story Graph';
+  return renderPdf(title, (doc) => composeStoryGraphPdf(doc, graph, options));
+}
+
 export function storyGraphPdfFilename(graph: ExportGraph, locale: string | null | undefined): string {
   return `${exportFileStem(graph.settings.title)}${locale && locale !== 'nb' ? `-${locale}` : ''}.pdf`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Manus-PDF av scener (Scener & gameplay) — UX-28
+//  Et scenebasert studio (WFU) har ofte ingen brett; manuset er scenekortene.
+// ═══════════════════════════════════════════════════════════════════════
+
+export interface ScenesScriptPdfScene {
+  code: string;
+  title: string;
+  subtitle: string;
+  workingId: string | null;
+  era: string;
+  location: string;
+  status: string;
+  episodeCode: string | null;
+  episodeTitle: string | null;
+  beforeState: string;
+  action: string;
+  control: string;
+  afterState: string;
+  audio: string;
+  changeNote: string;
+  bridge: string;
+  timeNote: string;
+  challenge: string;
+  gameplayMechanic: string;
+  environment: string;
+  sourceRefs: Array<{ tag: string; ref: string }>;
+  lines: Array<{ cueId: string; speakerLabel: string; textEn: string; textNb: string; sourceType: string; recordingStatus: string }>;
+  gates: Array<{ gateKey: string; status: string; evidence: string }>;
+}
+
+export interface ScenesScriptPdfInput {
+  projectName: string;
+  scenes: ScenesScriptPdfScene[];
+  generatedAt?: Date;
+}
+
+const SCENE_STATUS_LABEL: Record<string, string> = { idea: 'Idé', in_progress: 'Under arbeid', in_review: 'Til review', changes_requested: 'Endringer ønsket', approved: 'Godkjent', implemented: 'Implementert' };
+const ERA_LABEL: Record<string, string> = { pre: 'Før 1797', '1797': '1797 · barndom', '1802': '1802 · ungdom', '1817': '1817 · voksen', other: '' };
+const GATE_LABEL: Record<string, string> = { script_coverage: 'Manusdekning', greybox: 'Gråboks / regelprøve', characters_animation: 'Karakterer og animasjon', playthrough: 'iPad-gjennomspilling', picture: 'Bilde', audio: 'Foley / dialog / miks' };
+const GATE_STATUS_LABEL: Record<string, string> = { not_started: 'Ikke startet', in_progress: 'Pågår', passed: 'Bestått', failed: 'Feilet' };
+
+/** Skriver manus-PDF: tittelside, én seksjon per scene (Før/Handling/Kontroll/Etter/Lyd, replikker, gater), vedlegg med sceneliste. */
+export function composeScenesScriptPdf(doc: PdfDocLike, input: ScenesScriptPdfInput): void {
+  const h = (text: string, size: number, color = INK) => { doc.font('Sans-Bold').fontSize(size).fillColor(color).text(text); };
+  const p = (text: string, size = 10.5, color = INK) => { doc.font('Sans').fontSize(size).fillColor(color).text(text); };
+  const dim = (text: string) => p(text, 9, DIM);
+  const field = (label: string, value: string) => {
+    if (!value.trim()) return;
+    doc.moveDown(0.35);
+    h(label.toUpperCase(), 8.5, ACCENT);
+    p(value.trim());
+  };
+  const title = input.projectName.trim() || 'Manus';
+  const lineCount = input.scenes.reduce((n, s) => n + s.lines.length, 0);
+  const passed = input.scenes.reduce((n, s) => n + s.gates.filter((g) => g.status === 'passed').length, 0);
+  const gateTotal = input.scenes.reduce((n, s) => n + s.gates.length, 0);
+
+  // ── Tittelside
+  doc.moveDown(6);
+  dim('STORY GRAPH · MANUS (SCENER)');
+  doc.moveDown(0.4);
+  h(title, 26);
+  doc.moveDown(0.6);
+  p(`${input.scenes.length} scener · ${lineCount} replikker · ${passed} av ${gateTotal} gater bestått`, 10.5, DIM);
+  doc.moveDown(1);
+  dim(`Generert ${fmtDate(input.generatedAt ?? new Date())} · The Role Room`);
+
+  // ── Scener
+  let lastEpisode: string | null | undefined;
+  for (const s of input.scenes) {
+    doc.addPage();
+    const epLabel = s.episodeCode ? `${s.episodeCode}${s.episodeTitle ? ` · ${s.episodeTitle}` : ''}` : 'UTEN EPISODE';
+    if (epLabel !== lastEpisode) { dim(epLabel.toUpperCase()); lastEpisode = epLabel; } else { dim(epLabel.toUpperCase()); }
+    h(`${s.code} – ${s.title || '(uten tittel)'}`, 18, ACCENT);
+    const meta = [s.workingId && s.workingId !== s.code ? `arbeids-ID ${s.workingId}` : null, ERA_LABEL[s.era] ?? s.era, s.location.trim() || null, SCENE_STATUS_LABEL[s.status] ?? s.status].filter(Boolean).join(' · ');
+    if (meta) dim(meta);
+    if (s.subtitle.trim()) { doc.moveDown(0.2); doc.font('Sans-Oblique').fontSize(10.5).fillColor(INK).text(s.subtitle.trim()); }
+    field('Før', s.beforeState);
+    field('Handling', s.action);
+    field('Kontroll', s.control);
+    field('Etter / utløser', s.afterState);
+    field('Lyd', s.audio);
+    field('Endring', s.changeNote);
+    field('Bro', s.bridge);
+    field('Tid', s.timeNote);
+    field('Utfordring', s.challenge);
+    field('Spillmekanikk', s.gameplayMechanic);
+    field('Miljø', s.environment);
+    if (s.sourceRefs.length) { doc.moveDown(0.3); dim(`Kilder: ${s.sourceRefs.map((r) => `${r.tag} · ${r.ref}`).join(', ')}`); }
+    if (s.lines.length) {
+      doc.moveDown(0.6);
+      h(`REPLIKKER (${s.lines.length})`, 8.5, ACCENT);
+      for (const l of s.lines) {
+        const text = l.textEn.trim() || l.textNb.trim();
+        const extra = l.textEn.trim() && l.textNb.trim() ? `  /  ${l.textNb.trim()}` : '';
+        p(`${l.cueId}  ${l.speakerLabel.trim() || '—'}:  ${text}${extra}  [${l.sourceType}${l.recordingStatus && l.recordingStatus !== 'none' ? ` · ${l.recordingStatus}` : ''}]`, 10);
+      }
+    }
+    if (s.gates.length) {
+      doc.moveDown(0.6);
+      h('LEVERANSEGATER', 8.5, ACCENT);
+      for (const g of s.gates) {
+        p(`• ${GATE_LABEL[g.gateKey] ?? g.gateKey}: ${GATE_STATUS_LABEL[g.status] ?? g.status}${g.evidence.trim() ? ` — ${g.evidence.trim()}` : ''}`, 10);
+      }
+    }
+  }
+
+  // ── Vedlegg: sceneliste
+  doc.addPage();
+  dim('VEDLEGG');
+  h('Sceneliste', 16, ACCENT);
+  doc.moveDown(0.3);
+  for (const s of input.scenes) p(`${s.code}  ${s.title}  ·  ${SCENE_STATUS_LABEL[s.status] ?? s.status}${s.episodeCode ? `  ·  ${s.episodeCode}` : ''}`, 10);
+}
+
+export function renderScenesScriptPdf(input: ScenesScriptPdfInput): Promise<Buffer> {
+  const title = input.projectName.trim() || 'Manus';
+  return renderPdf(title, (doc) => composeScenesScriptPdf(doc, input));
+}
+
+export function scenesScriptPdfFilename(projectName: string): string {
+  return `${exportFileStem(projectName)}-manus.pdf`;
 }

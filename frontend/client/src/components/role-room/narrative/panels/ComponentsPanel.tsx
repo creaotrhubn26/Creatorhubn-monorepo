@@ -4,7 +4,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  Box, Button, FormControl, IconButton, InputLabel, List, ListItemButton, ListItemText,
+  Box, Button, FormControl, IconButton, InputLabel, List, ListItem, ListItemButton, ListItemText,
   MenuItem, Select, Stack, TextField, Typography,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
@@ -80,9 +80,11 @@ export function ComponentsPanel({ graph, store }: { graph: NarrativeGraph; store
         </Box>
         <List dense sx={{ overflowY: 'auto', flex: 1 }}>
           {graph.components.length === 0 ? (
-            <Typography sx={{ px: 1.5, py: 1, fontSize: 12, color: narrativeColors.textDim }}>
-              Ingen komponenter ennå. Karakterer, steder og gjenstander lever her og kan festes på elementer.
-            </Typography>
+            <ListItem>
+              <Typography sx={{ px: 1.5, py: 1, fontSize: 12, color: narrativeColors.textDim }}>
+                Ingen komponenter ennå. Karakterer, steder og gjenstander lever her og kan festes på elementer.
+              </Typography>
+            </ListItem>
           ) : null}
           {graph.components.map((c) => (
             <ListItemButton key={c.id} selected={c.id === selectedId} onClick={() => setSelectedId(c.id)} sx={{ '&.Mui-selected': { bgcolor: narrativeColors.accentSoft } }}>

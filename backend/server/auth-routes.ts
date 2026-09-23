@@ -106,6 +106,19 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
       const isRoleRoomLogin =
         loginAs === "production_team" || loginAs === "content_producer";
       const isProductionEnv = process.env.NODE_ENV === "production";
+      // Spillstudio (Story Graph, Solo gratis): eksplisitt registrering fra
+      // login-dialogen. Krever signup=true + loginAs=game_studio; passord ≥ 8
+      // tegn. Ingen kommersiell gate (Stripe skjer inne i workspacet).
+      const isGameStudioSignup =
+        req.body?.signup === true && loginAs === "game_studio";
+      if (
+        isGameStudioSignup &&
+        (typeof password !== "string" || password.trim().length < 8)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Passordet må ha minst 8 tegn." });
+      }
       const roleRoomGuestPassword =
         process.env.ROLE_ROOM_GUEST_PASSWORD ||
         process.env.PROTOTYPE_GUEST_PASSWORD ||
@@ -169,9 +182,26 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
 
       if (
         (!result.rowCount || !result.rows.length) &&
-        isRoleRoomLogin &&
-        !isProductionEnv
+        ((isRoleRoomLogin && !isProductionEnv) || isGameStudioSignup)
       ) {
+        if (isGameStudioSignup) {
+          // Bevis på at innsenderen eier postkassen før vi oppretter kontoen
+          // og utsteder sesjon: en kode fra /api/auth/email-code/send med
+          // purpose game_studio_signup må være verifisert de siste 30 min.
+          const verif = await import("./email-verification-service.js");
+          const verified = await verif.hasRecentlyVerifiedCode(pool, {
+            email: normalizedEmail,
+            purpose: "game_studio_signup",
+            withinMinutes: 30,
+          });
+          if (!verified) {
+            return res.status(403).json({
+              error: "email_verification_required",
+              message:
+                "Bekreft e-posten din med koden vi sendte før kontoen opprettes.",
+            });
+          }
+        }
         const bcrypt = await import("bcrypt");
         const safePassword =
           typeof password === "string" && password.trim().length > 0
@@ -453,7 +483,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
-    const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal"] as const;
+    const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal", "game_studio_signup"] as const;
     if (!validPurposes.includes(purpose as typeof validPurposes[number])) {
       return res.status(400).json({ error: "invalid_purpose" });
     }
@@ -487,7 +517,7 @@ export function setupAuthRoutes(deps: AuthRoutesDeps): void {
     const email = typeof body.email === "string" ? body.email : "";
     const purpose = typeof body.purpose === "string" ? body.purpose : "";
     const code = typeof body.code === "string" ? body.code : "";
-    const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal"] as const;
+    const validPurposes = ["client_portal_register", "password_change", "login_2fa_email", "account_delete", "vault_reveal", "game_studio_signup"] as const;
     if (!validPurposes.includes(purpose as typeof validPurposes[number])) {
       return res.status(400).json({ error: "invalid_purpose" });
     }

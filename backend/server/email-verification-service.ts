@@ -43,7 +43,11 @@ export type VerificationPurpose =
   | "vault_reveal"
   | "prototype_tester_sign"
   // Åpen selvregistrering for skuespillere i The Role Room Talents.
-  | "talent_signup";
+  | "talent_signup"
+  // Spillstudio (Story Graph) Solo-konto fra login-dialogen: e-posten må
+  // bekreftes FØR kontoen opprettes (ellers kan hvem som helst registrere
+  // andres adresse).
+  | "game_studio_signup";
 
 let schemaReady = false;
 
@@ -99,6 +103,7 @@ function purposeSubject(purpose: VerificationPurpose): string {
     case "vault_reveal": return "Bekreftelseskode — vis vault-passord";
     case "prototype_tester_sign": return "Bekreft signeringen i CreatorHub";
     case "talent_signup": return "Bekreftelseskode — ny skuespillerprofil";
+    case "game_studio_signup": return "Bekreftelseskode — ny Spillstudio-konto (Story Graph)";
   }
 }
 
@@ -111,6 +116,7 @@ function purposeHumanLabel(purpose: VerificationPurpose): string {
     case "vault_reveal": return "for å se et passord fra vault-en";
     case "prototype_tester_sign": return "for å signere prototype-testeravtalene";
     case "talent_signup": return "for å bekrefte e-posten din før skuespillerprofilen opprettes";
+    case "game_studio_signup": return "for å bekrefte e-posten din før Spillstudio-kontoen opprettes";
   }
 }
 

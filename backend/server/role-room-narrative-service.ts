@@ -2530,6 +2530,14 @@ export async function listSceneGates(db: Queryable, projectId: string, sceneId: 
   return fillGates(sceneId, projectId, (rows as Row[]).map(mapSceneGateRow));
 }
 
+/** Alle gater i prosjektet gruppert per scene (fylt ut med «not_started» for manglende nøkler, som listSceneGates). */
+export async function listSceneGatesByScene(db: Queryable, projectId: string, sceneIds: string[]): Promise<Map<string, NarrativeSceneGate[]>> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_gates WHERE project_id = $1`, [projectId]);
+  const stored = new Map<string, NarrativeSceneGate[]>();
+  for (const row of rows as Row[]) { const g = mapSceneGateRow(row); const list = stored.get(g.sceneId); if (list) list.push(g); else stored.set(g.sceneId, [g]); }
+  return new Map(sceneIds.map((id) => [id, fillGates(id, projectId, stored.get(id) ?? [])]));
+}
+
 export interface SceneGateInput { status: NarrativeGateStatus; evidence?: string; evidenceRefs?: string[] }
 
 /** Upsert av én gate. «passed» uten bevis avvises FØR databasen (samme regel som CHECK-en). */
@@ -2557,6 +2565,14 @@ export async function setSceneGate(
 export class DuplicateCueError extends Error {
   readonly code = 'duplicate_cue';
   constructor(readonly cueId: string) { super(`Replikk-ID «${cueId}» finnes allerede i scenen.`); }
+}
+
+/** Alle replikker i prosjektet gruppert per scene (manus-PDF: én spørring, ikke én per scene). */
+export async function listSceneLinesByScene(db: Queryable, projectId: string): Promise<Map<string, NarrativeSceneLine[]>> {
+  const { rows } = await db.query(`SELECT * FROM narrative_scene_lines WHERE project_id = $1 ORDER BY scene_id, sort_order, cue_id`, [projectId]);
+  const out = new Map<string, NarrativeSceneLine[]>();
+  for (const row of rows as Row[]) { const line = mapSceneLineRow(row); const list = out.get(line.sceneId); if (list) list.push(line); else out.set(line.sceneId, [line]); }
+  return out;
 }
 
 export async function listSceneLines(db: Queryable, projectId: string, sceneId: string): Promise<NarrativeSceneLine[]> {
@@ -2965,6 +2981,11 @@ export interface NarrativeProjectOverview {
   episodes: Array<{ id: string; code: string; title: string; sceneCount: number; approvedCount: number }>;
   activity: NarrativeActivityItem[];
   unreadInbox: number;
+  /**
+   * Fase 9: neste scene å bygge for et ett-personsstudio — første uferdige scene
+   * (sort_order) der gråboks ikke er bestått, med manus-dekkede scener først.
+   */
+  nextScene: { id: string; code: string; title: string; scriptCovered: boolean; openTasks: number } | null;
 }
 
 export async function getProjectOverview(db: Queryable, projectId: string, userId: string): Promise<NarrativeProjectOverview> {
@@ -3053,6 +3074,19 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
     const due = t.due_at ? new Date(t.due_at as string).getTime() : NaN;
     if (Number.isFinite(due) && due < now) overdue += 1;
   }
+  const next = (await db.query(
+    `SELECT s.id, s.code, s.title,
+            COALESCE(sc.status, 'not_started') = 'passed' AS script_covered,
+            (SELECT COUNT(*)::int FROM narrative_scene_tasks t WHERE t.scene_id = s.id AND t.status <> 'done') AS open_tasks
+       FROM narrative_scenes s
+       LEFT JOIN narrative_scene_gates sc ON sc.scene_id = s.id AND sc.gate_key = 'script_coverage'
+       LEFT JOIN narrative_scene_gates gb ON gb.scene_id = s.id AND gb.gate_key = 'greybox'
+      WHERE s.project_id = $1 AND s.status NOT IN ('approved', 'implemented')
+        AND COALESCE(gb.status, 'not_started') <> 'passed'
+      ORDER BY (COALESCE(sc.status, 'not_started') = 'passed') DESC, s.sort_order, s.code
+      LIMIT 1`,
+    [projectId],
+  )).rows[0] as Row | undefined;
   const qOpen = (questions.rows as Row[]).find((q) => q.kind === 'question');
   const cOpen = (questions.rows as Row[]).find((q) => q.kind === 'check');
   const primary = (platform.rows as Row[])[0];
@@ -3077,6 +3111,7 @@ export async function getProjectOverview(db: Queryable, projectId: string, userI
       at: isoTs(a.at), sceneId: strOrNull(a.scene_id),
     })),
     unreadInbox: num(unread.rows[0]?.n),
+    nextScene: next ? { id: String(next.id), code: String(next.code), title: String(next.title ?? ''), scriptCovered: next.script_covered === true, openTasks: num(next.open_tasks) } : null,
   };
 }
 
@@ -3272,4 +3307,113 @@ export async function resolveReviewer(db: Queryable, shareLinkId: string, review
   );
   const r = rows[0] as Row | undefined;
   return r ? { id: String(r.id), shareLinkId: String(r.share_link_id), displayName: String(r.display_name), email: strOrNull(r.email) } : null;
+}
+
+// ─── Fase 9: scene-manifest for spillbygget + scene-oppslag på kode ──────
+//
+// Spillet (campfire-games) henter manus og replikker herfra i stedet for å
+// kopiere dem inn for hånd. Manifestet er stabilt sortert og bærer en
+// `contentHash` over alt unntatt `generatedAt`, så byggskriptet kan hoppe
+// over skriving når ingenting er endret.
+
+export const SCENE_MANIFEST_SCHEMA = 'story-graph.scene-manifest';
+export const SCENE_MANIFEST_VERSION = 1;
+
+export interface SceneManifestLine {
+  cueId: string;
+  speaker: string;
+  speakerComponentId: string | null;
+  perspective: string;
+  sourceType: string;
+  textEn: string;
+  textNb: string;
+  recordingStatus: string;
+}
+
+export interface SceneManifestScene {
+  id: string;
+  code: string;
+  workingId: string | null;
+  title: string;
+  subtitle: string;
+  status: NarrativeSceneStatus;
+  era: string;
+  episodeCode: string | null;
+  location: string;
+  fields: { before: string; action: string; control: string; after: string; audio: string; changeNote: string; bridge: string; timeNote: string };
+  gameplay: { challenge: string; mechanic: string; environment: string };
+  lines: SceneManifestLine[];
+  gates: Record<string, NarrativeGateStatus>;
+}
+
+export interface SceneManifest {
+  schema: typeof SCENE_MANIFEST_SCHEMA;
+  version: number;
+  projectId: string;
+  projectName: string;
+  generatedAt: string;
+  contentHash: string;
+  episodes: Array<{ code: string; title: string }>;
+  scenes: SceneManifestScene[];
+}
+
+export async function buildSceneManifest(db: Queryable, projectId: string, now: Date = new Date()): Promise<SceneManifest> {
+  const [scenes, episodes, linesByScene, project] = await Promise.all([
+    listScenes(db, projectId),
+    listEpisodes(db, projectId),
+    listSceneLinesByScene(db, projectId),
+    db.query('SELECT name FROM casting_projects WHERE id = $1', [projectId]),
+  ]);
+  const gatesByScene = await listSceneGatesByScene(db, projectId, scenes.map((s) => s.id));
+  const episodeById = new Map(episodes.map((e) => [e.id, e]));
+  const body = {
+    schema: SCENE_MANIFEST_SCHEMA,
+    version: SCENE_MANIFEST_VERSION,
+    projectId,
+    projectName: String((project.rows[0] as Row | undefined)?.name ?? ''),
+    episodes: episodes.map((e) => ({ code: e.code, title: e.title })),
+    scenes: scenes.map((s): SceneManifestScene => ({
+      id: s.id, code: s.code, workingId: s.workingId, title: s.title, subtitle: s.subtitle, status: s.status, era: s.era,
+      episodeCode: s.episodeId ? episodeById.get(s.episodeId)?.code ?? null : null,
+      location: s.location,
+      fields: { before: s.beforeState, action: s.action, control: s.control, after: s.afterState, audio: s.audio, changeNote: s.changeNote, bridge: s.bridge, timeNote: s.timeNote },
+      gameplay: { challenge: s.challenge, mechanic: s.gameplayMechanic, environment: s.environment },
+      lines: (linesByScene.get(s.id) ?? []).map((l) => ({
+        cueId: l.cueId, speaker: l.speakerLabel, speakerComponentId: l.speakerComponentId, perspective: l.perspective,
+        sourceType: l.sourceType, textEn: l.textEn, textNb: l.textNb, recordingStatus: l.recordingStatus,
+      })),
+      gates: Object.fromEntries((gatesByScene.get(s.id) ?? []).map((g) => [g.gateKey, g.status])),
+    })),
+  };
+  const contentHash = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+  return { ...body, generatedAt: now.toISOString(), contentHash } as SceneManifest;
+}
+
+export class SceneRefAmbiguousError extends Error {
+  readonly code = 'scene_ref_ambiguous';
+  constructor(readonly ref: string, readonly candidates: string[]) {
+    super(`«${ref}» matcher flere scener (${candidates.join(', ')}) — bruk scene-id eller kode.`);
+  }
+}
+
+/**
+ * Slår opp en scene på id, kode eller arbeids-ID (P01/G03A). Id og kode er
+ * unike per prosjekt og vinner; arbeids-ID er det ikke, så flere treff på
+ * arbeids-ID gir SceneRefAmbiguousError i stedet for et tilfeldig valg.
+ */
+export async function findSceneByRef(db: Queryable, projectId: string, ref: string): Promise<NarrativeScene | null> {
+  const r = ref.trim();
+  if (!r) return null;
+  const { rows } = await db.query(
+    `SELECT * FROM narrative_scenes
+      WHERE project_id = $1 AND (id = $2 OR upper(code) = upper($2) OR upper(working_id) = upper($2))
+      ORDER BY sort_order, code`,
+    [projectId, r],
+  );
+  const scenes = (rows as Row[]).map(mapSceneRow);
+  const up = r.toUpperCase();
+  const exact = scenes.find((s) => s.id === r) ?? scenes.find((s) => s.code.toUpperCase() === up);
+  if (exact) return exact;
+  if (scenes.length > 1) throw new SceneRefAmbiguousError(r, scenes.map((s) => s.code));
+  return scenes[0] ?? null;
 }

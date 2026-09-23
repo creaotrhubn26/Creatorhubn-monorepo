@@ -62,66 +62,83 @@ struct NearbyCard: View {
     let locale: Locale
     /// Liten etikett under tittelen, f.eks. «Samme kategori» i tipsene.
     var badge: String?
+    /// Veiviseren (pakke 2, item 5): valgfri, egen knapp ved siden av
+    /// hovedknappen. Nil (standard) lar de andre kallstedene (listen, Mine
+    /// steder, tipsene etter besøket) være helt uendret.
+    var onShowDirections: (() -> Void)?
     let action: () -> Void
 
     @Environment(\.contrastColors) private var contrast
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: AppSpacing.m) {
-                RemoteImage(url: poi.heroImageUrl)
-                    .frame(width: 80, height: 80)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    HStack(spacing: AppSpacing.xs) {
-                        if isLocked {
-                            Image(systemName: "lock.fill").foregroundStyle(AppColor.accent)
-                        }
-                        Text(poi.title)
-                            .font(AppFont.cardTitle)
-                            .foregroundStyle(AppColor.textPrimary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                    }
-                    if let distanceM {
-                        Label(L10n.distance(meters: distanceM, locale: locale), systemImage: "mappin")
-                            .font(AppFont.subtitle)
-                            .foregroundStyle(contrast.textSecondary)
-                    } else if let location = poi.locationLabel {
-                        Label(location, systemImage: "mappin")
-                            .font(AppFont.subtitle)
-                            .foregroundStyle(contrast.textSecondary)
-                    }
-                    if let rating = poi.rating {
+        HStack(spacing: AppSpacing.s) {
+            Button(action: action) {
+                HStack(spacing: AppSpacing.m) {
+                    RemoteImage(url: poi.heroImageUrl)
+                        .frame(width: 80, height: 80)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         HStack(spacing: AppSpacing.xs) {
-                            Image(systemName: "star.fill").foregroundStyle(AppColor.rating)
-                            Text(rating.average, format: .number.precision(.fractionLength(1)))
+                            if isLocked {
+                                Image(systemName: "lock.fill").foregroundStyle(AppColor.accent)
+                            }
+                            Text(poi.title)
+                                .font(AppFont.cardTitle)
                                 .foregroundStyle(AppColor.textPrimary)
-                            Text("(\(rating.count.formatted(.number.locale(locale))))")
+                                .lineLimit(3)
+                        }
+                        if let distanceM {
+                            Label(L10n.distance(meters: distanceM, locale: locale), systemImage: "mappin")
+                                .font(AppFont.subtitle)
+                                .foregroundStyle(contrast.textSecondary)
+                        } else if let location = poi.locationLabel {
+                            Label(location, systemImage: "mappin")
+                                .font(AppFont.subtitle)
                                 .foregroundStyle(contrast.textSecondary)
                         }
-                        .font(AppFont.subtitle)
+                        if let rating = poi.rating {
+                            HStack(spacing: AppSpacing.xs) {
+                                Image(systemName: "star.fill").foregroundStyle(AppColor.rating)
+                                Text(rating.average, format: .number.precision(.fractionLength(1)))
+                                    .foregroundStyle(AppColor.textPrimary)
+                                Text("(\(rating.count.formatted(.number.locale(locale))))")
+                                    .foregroundStyle(contrast.textSecondary)
+                            }
+                            .font(AppFont.subtitle)
+                        }
+                        if let badge {
+                            Text(badge)
+                                .font(AppFont.iconLabel)
+                                .foregroundStyle(AppColor.accentMuted)
+                        }
                     }
-                    if let badge {
-                        Text(badge)
-                            .font(AppFont.iconLabel)
-                            .foregroundStyle(AppColor.accentMuted)
-                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(contrast.textSecondary)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(contrast.textSecondary)
+                .padding(AppSpacing.m)
+                .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(AppSpacing.m)
-            .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
-            .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(accessibilityText))
+            .accessibilityAddTraits(.isButton)
+
+            if let onShowDirections {
+                Button(action: onShowDirections) {
+                    Image(systemName: "location.north.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppColor.accent)
+                        .frame(width: AppSpacing.minTapTarget, height: AppSpacing.minTapTarget)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(Text("map.showDirections"))
+                .padding(.trailing, AppSpacing.s)
+            }
         }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(accessibilityText))
-        .accessibilityAddTraits(.isButton)
+        .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
     }
 
     private var accessibilityText: String {
@@ -145,6 +162,10 @@ struct DestinationTile: View {
     let poi: GuidePOI
     let action: () -> Void
 
+    /// 104 pt ved standard tekststørrelse; vokser med Dynamic Type så
+    /// tittelen får plass uten å krympes.
+    @ScaledMetric(relativeTo: .headline) private var tileSize: CGFloat = 104
+
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
@@ -153,11 +174,10 @@ struct DestinationTile: View {
                 Text(poi.title)
                     .font(AppFont.cardTitle)
                     .foregroundStyle(AppColor.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(3)
                     .padding(AppSpacing.m)
             }
-            .frame(width: 104, height: 104)
+            .frame(width: tileSize, height: tileSize)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
         }
         .buttonStyle(PressableButtonStyle())
@@ -176,6 +196,8 @@ struct InfoIconRow: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.contrastColors) private var contrast
+    /// Sirkelen rundt ikonet: 48 pt ved standard tekststørrelse.
+    @ScaledMetric(relativeTo: .title3) private var iconCircle: CGFloat = 48
 
     private struct Item {
         let icon: String
@@ -222,9 +244,9 @@ struct InfoIconRow: View {
 
     private func icon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 22))
+            .font(.title3.weight(.medium))
             .foregroundStyle(AppColor.textPrimary)
-            .frame(width: 48, height: 48)
+            .frame(width: iconCircle, height: iconCircle)
             .overlay(Circle().strokeBorder(AppColor.borderStrong, lineWidth: 1))
     }
 
@@ -258,6 +280,7 @@ struct AudioDescriptionCard: View {
                 RemoteImage(url: imageUrl)
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(statusText)
                         .font(.caption)

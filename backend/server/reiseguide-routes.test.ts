@@ -535,3 +535,143 @@ describe("etter besøket: quiz, vurdering og deling", () => {
     expect((await request(app).get("/api/guide/share/ukjent")).status).toBe(404);
   });
 });
+
+describe("spørsmål underveis (0662)", () => {
+  const promptRows = [
+    {
+      id: "pr_nb_1_2", poi_id: "poi_akershus", lang: "nb", chapter_no: 1, kind: "look", at_fraction: "0.8100",
+      prompt_text: "Se opp: tårnene.", options: null, answer_index: null, reveal_text: null, sort_order: 2,
+    },
+    {
+      id: "pr_nb_1_1", poi_id: "poi_akershus", lang: "nb", chapter_no: 1, kind: "guess", at_fraction: "0.2600",
+      prompt_text: "Hva gjorde Christen Munk?", options: ["Stengte portene", "Brant byen"], answer_index: 1,
+      reveal_text: "Han brant byen.", sort_order: 1,
+    },
+    {
+      id: "pr_en_1_1", poi_id: "poi_akershus", lang: "en", chapter_no: 1, kind: "look", at_fraction: "0.5",
+      prompt_text: "Look up: the towers.", options: null, answer_index: null, reveal_text: null, sort_order: 1,
+    },
+    {
+      id: "pr_de_1_1", poi_id: "poi_akershus", lang: "de", chapter_no: 1, kind: "look", at_fraction: "0.5",
+      prompt_text: "Schau nach oben.", options: null, answer_index: null, reveal_text: null, sort_order: 1,
+    },
+    {
+      id: "pr_bad", poi_id: "poi_akershus", lang: "nb", chapter_no: 2, kind: "guess", at_fraction: "0.5",
+      prompt_text: "Ugyldig", options: ["Bare ett"], answer_index: 0, reveal_text: null, sort_order: 1,
+    },
+  ];
+
+  it("buildPoiView legger innslagene på fortellingskapitlene i samme språk som fortellingen", () => {
+    const view = buildPoiView({
+      poi: poiRows[0],
+      translations: translationRows,
+      scripts: scriptRows,
+      prompts: promptRows,
+      requestedLang: "nb",
+      defaultLang: "nb",
+      mediaBase: MEDIA,
+    });
+    const [kap1, kap2] = view.variants.narration!.chapters;
+    expect(kap1.prompts).toEqual([
+      {
+        id: "pr_nb_1_1", kind: "guess", atFraction: 0.26, text: "Hva gjorde Christen Munk?",
+        options: ["Stengte portene", "Brant byen"], answerIndex: 1, revealText: "Han brant byen.",
+      },
+      { id: "pr_nb_1_2", kind: "look", atFraction: 0.81, text: "Se opp: tårnene.", options: null, answerIndex: null, revealText: null },
+    ]);
+    // Ugyldig guess (ett alternativ) hoppes over; kapittelet får tom liste.
+    expect(kap2.prompts).toEqual([]);
+    // Synstolking får aldri innslag.
+    expect(view.variants.audioDescription!.chapters[0].prompts).toEqual([]);
+  });
+
+  it("følger fortellingens språkfallback og blander aldri språk", () => {
+    const view = buildPoiView({
+      poi: poiRows[0],
+      translations: translationRows,
+      scripts: scriptRows,
+      prompts: promptRows,
+      requestedLang: "de",
+      defaultLang: "nb",
+      mediaBase: MEDIA,
+    });
+    // Ingen tysk fortelling: fortellingen faller til engelsk, og innslagene følger
+    // den. Den tyske raden brukes ikke, fordi den ikke hører til noen fortelling.
+    expect(view.variants.narration?.lang).toBe("en");
+    expect(view.variants.narration!.chapters[0].prompts.map((p) => p.id)).toEqual(["pr_en_1_1"]);
+  });
+
+  it("uten innslag i databasen får hvert kapittel en tom liste", () => {
+    const view = buildPoiView({
+      poi: poiRows[0],
+      translations: translationRows,
+      scripts: scriptRows,
+      requestedLang: "nb",
+      defaultLang: "nb",
+      mediaBase: MEDIA,
+    });
+    for (const chapter of view.variants.narration!.chapters) expect(chapter.prompts).toEqual([]);
+  });
+
+  const handlers: Handler[] = [
+    {
+      match: /FROM guide_areas a WHERE \(a\.id = \$1 OR a\.slug = \$1\)/,
+      rows: (p) => (p[0] === "area_oslo" ? [areaRow] : []),
+    },
+    { match: /FROM guide_categories/, rows: [] },
+    { match: /FROM guide_pois WHERE area_id = \$1/, rows: poiRows },
+    {
+      match: /FROM guide_pois p\s+JOIN guide_areas a/,
+      rows: (p) => (p[0] === "akershus-festning" ? [{ ...poiRows[0], default_lang: "nb" }] : []),
+    },
+    { match: /FROM guide_poi_translations/, rows: translationRows },
+    { match: /FROM guide_poi_scripts s/, rows: scriptRows },
+    { match: /FROM guide_poi_chapter_prompts/, rows: promptRows },
+  ];
+
+  it("GET område gir prompts på hvert fortellingskapittel og henter dem for alle POI-ene", async () => {
+    const pool = makePool(handlers);
+    const res = await request(makeApp(pool)).get("/api/guide/areas/area_oslo?lang=nb");
+    expect(res.status).toBe(200);
+    const [akershus, opera] = res.body.pois;
+    expect(akershus.variants.narration.chapters[0].prompts.map((p: { id: string }) => p.id)).toEqual([
+      "pr_nb_1_1",
+      "pr_nb_1_2",
+    ]);
+    expect(akershus.variants.narration.chapters[0].prompts[0]).toMatchObject({ kind: "guess", atFraction: 0.26, answerIndex: 1 });
+    expect(akershus.variants.audioDescription.chapters[0].prompts).toEqual([]);
+    expect(opera.variants.narration).toBeNull();
+
+    const promptCall = pool.query.mock.calls.find(([sql]) => /FROM guide_poi_chapter_prompts/.test(sql));
+    expect(promptCall?.[1]).toEqual([["poi_akershus", "poi_opera"]]);
+  });
+
+  it("svarer med tomme prompts når tabellen mangler (0662 ikke kjørt), men 500 på andre feil", async () => {
+    const failWith = (code: string) => {
+      const pool = makePool(handlers);
+      const inner = pool.query.getMockImplementation()!;
+      pool.query.mockImplementation(async (sql: string, params: unknown[] = []) => {
+        if (/FROM guide_poi_chapter_prompts/.test(sql)) throw Object.assign(new Error("feil"), { code });
+        return inner(sql, params);
+      });
+      return pool;
+    };
+    const missing = await request(makeApp(failWith("42P01"))).get("/api/guide/pois/akershus-festning?lang=nb");
+    expect(missing.status).toBe(200);
+    expect(missing.body.poi.variants.narration.chapters[0].prompts).toEqual([]);
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const broken = await request(makeApp(failWith("57P01"))).get("/api/guide/pois/akershus-festning?lang=nb");
+    spy.mockRestore();
+    expect(broken.status).toBe(500);
+  });
+
+  it("GET severdighet gir samme prompts på engelsk", async () => {
+    const res = await request(makeApp(makePool(handlers))).get("/api/guide/pois/akershus-festning?lang=en");
+    expect(res.status).toBe(200);
+    expect(res.body.poi.variants.narration.lang).toBe("en");
+    expect(res.body.poi.variants.narration.chapters[0].prompts).toEqual([
+      { id: "pr_en_1_1", kind: "look", atFraction: 0.5, text: "Look up: the towers.", options: null, answerIndex: null, revealText: null },
+    ]);
+  });
+});

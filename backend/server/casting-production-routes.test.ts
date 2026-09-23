@@ -944,7 +944,7 @@ describe('casting production-day access', () => {
     expect(response.body.equipmentBookingsSynced).toBe(false);
   });
 
-  it('keeps management, coordination and continuity state outside generic production-day writes', async () => {
+  it('keeps management, coordination, continuity and sound state outside generic production-day writes', async () => {
     const query = vi.fn(async (text: string, values?: unknown[]) => {
       if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
       if (text.includes('AS member_role')) {
@@ -958,9 +958,12 @@ describe('casting production-day access', () => {
         expect(savedData.coordinationVersion).toBeUndefined();
         expect(savedData.productionContinuity).toBeUndefined();
         expect(savedData.continuityVersion).toBeUndefined();
+        expect(savedData.productionSound).toBeUndefined();
+        expect(savedData.soundVersion).toBeUndefined();
         expect(text).toContain("casting_production_days.data -> 'productionManagement'");
         expect(text).toContain("casting_production_days.data -> 'productionCoordination'");
         expect(text).toContain("casting_production_days.data -> 'productionContinuity'");
+        expect(text).toContain("casting_production_days.data -> 'productionSound'");
         return {
           rows: [{ id: 'day-1', project_id: PROJECT_ID, date: '2026-09-11', scene_ids: [], crew_ids: [], prop_ids: [], data: savedData }],
           rowCount: 1,
@@ -985,6 +988,8 @@ describe('casting production-day access', () => {
         coordinationVersion: 99,
         productionContinuity: { takes: [{ id: 'forged' }] },
         continuityVersion: 99,
+        productionSound: { takeReports: [{ id: 'forged' }] },
+        soundVersion: 99,
       });
 
     expect(response.status).toBe(201);
@@ -1325,6 +1330,52 @@ describe('casting production-day access', () => {
     expect(response.body.productionDay.productionContinuity.comments).toEqual([]);
   });
 
+  it('refuses to delete a canonical take while Production Sound still references it', async () => {
+    const query = vi.fn(async (text: string) => {
+      if (text.includes('ALTER TABLE') || text.includes('CREATE TABLE') || text.includes('CREATE UNIQUE INDEX') || text.includes('CREATE INDEX')) return { rows: [], rowCount: 0 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{ project_exists: true, is_owner: true, member_role: null, member_permissions: null }], rowCount: 1 };
+      }
+      if (text.startsWith('SELECT * FROM casting_production_days')) {
+        return {
+          rows: [{
+            id: 'day-1', project_id: PROJECT_ID, date: '2026-09-11', scene_ids: ['scene-1'], continuity_version: 2,
+            data: {
+              productionContinuity: {
+                sceneRecords: [{ sceneId: 'scene-1', status: 'in_progress' }],
+                takes: [{ id: 'take-1', sceneId: 'scene-1', takeNumber: 1, status: 'good', circled: false }],
+                entries: [], deviations: [],
+              },
+              productionSound: {
+                takeReports: [{ id: 'sound-report-1', continuityTakeId: 'take-1' }],
+              },
+            },
+          }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+
+    const response = await request(createApp(query))
+      .patch(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({
+        expectedVersion: 2,
+        operations: {
+          sceneRecords: [{ sceneId: 'scene-1', status: 'in_progress' }],
+          takes: [], entries: [], deviations: [],
+        },
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual(expect.objectContaining({
+      error: 'take_dependency_conflict',
+      productionDay: expect.objectContaining({ continuityVersion: 2 }),
+    }));
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('UPDATE casting_production_days'))).toBe(false);
+  });
+
   it('allows a comment without granting access to rewrite the continuity log', async () => {
     const existing = {
       sceneRecords: [{ sceneId: 'scene-1', status: 'in_progress' }],
@@ -1514,7 +1565,8 @@ describe('casting production-day access', () => {
       },
     }));
 
-    const response = await request(createApp(query, { uploadContinuityMedia }))
+    const app = createApp(query, { uploadContinuityMedia });
+    const response = await request(app)
       .post(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity/media`)
       .set('authorization', `Bearer ${SESSION_TOKEN}`)
       .field('sceneId', 'scene-1')
@@ -1537,6 +1589,52 @@ describe('casting production-day access', () => {
       sceneId: 'scene-1',
       kind: 'photo',
     }));
+  });
+
+  it('lets an art-department assignee upload the same private continuity asset without granting take-log writes', async () => {
+    const fileId = '21691ee5-d9c4-43cf-a345-ae9412cc7f8b';
+    const query = vi.fn(async (text: string) => {
+      if (/ALTER TABLE|CREATE TABLE|CREATE UNIQUE INDEX|CREATE INDEX/.test(text)) return { rows: [], rowCount: 0 };
+      if (text.includes('AS member_role')) {
+        return { rows: [{
+          project_exists: true, is_owner: false, member_role: 'property_master',
+          member_permissions: null, member_additional_roles: null,
+        }], rowCount: 1 };
+      }
+      if (text.startsWith('SELECT scene_ids FROM casting_production_days')) {
+        return { rows: [{ scene_ids: ['scene-1'] }], rowCount: 1 };
+      }
+      throw new Error(`Unexpected SQL: ${text}`);
+    });
+    const uploadContinuityMedia = vi.fn(async (_pool, input) => ({
+      ok: true as const,
+      media: {
+        id: fileId, projectId: PROJECT_ID, productionDayId: 'day-1', sceneId: 'scene-1',
+        uploadedBy: input.userId, displayName: input.displayName, sizeBytes: input.sizeBytes,
+        contentType: input.contentType, kind: input.kind, checksumSha256: 'b'.repeat(64),
+        createdAt: new Date().toISOString(),
+      },
+    }));
+
+    const app = createApp(query, { uploadContinuityMedia });
+    const response = await request(app)
+      .post(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity/media`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .field('sceneId', 'scene-1')
+      .attach('file', Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...new Array(28).fill(0)]), {
+        filename: 'hammer-preset.jpg',
+        contentType: 'image/jpeg',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.reference).toEqual(expect.objectContaining({ storageFileId: fileId }));
+    const takeWrite = await request(app)
+      .patch(`/api/role-room/projects/${PROJECT_ID}/production-days/day-1/continuity`)
+      .set('authorization', `Bearer ${SESSION_TOKEN}`)
+      .send({ expectedVersion: 0, operations: { sceneRecords: [], takes: [], entries: [], deviations: [] } });
+    expect(takeWrite.status).toBe(404);
+    const accessCall = query.mock.calls.find(([sql]) => String(sql).includes('AS member_role'));
+    expect(accessCall).toBeTruthy();
   });
 
   it('rejects an unauthenticated media body before multer accepts the upload', async () => {

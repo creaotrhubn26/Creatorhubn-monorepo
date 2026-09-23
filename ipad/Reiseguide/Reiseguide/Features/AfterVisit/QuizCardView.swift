@@ -43,6 +43,11 @@ struct QuizCardView: View {
                 questionView(question)
             }
         }
+        // Riktig/feil svar (pakke 1, punkt 2): fyres når svaret settes, ikke ved hvert trykk på et låst alternativ.
+        .sensoryFeedback(trigger: quiz.currentAnswer) { _, newValue in
+            guard let newValue, let question = quiz.current else { return nil }
+            return AppHaptics.feedback(newValue == question.correctIndex ? .success : .error, enabled: env.settings.hapticsEnabled)
+        }
     }
 
     private func questionView(_ question: QuizQuestion) -> some View {
@@ -147,7 +152,7 @@ struct QuizOptionButton: View {
                     .accessibilityHidden(true)
                 Text(text)
                     .font(AppFont.body)
-                    .foregroundStyle(mode == .locked ? contrast.textTertiary : AppColor.textPrimary)
+                    .foregroundStyle(mode == .locked ? contrast.textSecondary : AppColor.textPrimary)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
             }
@@ -175,10 +180,10 @@ struct QuizOptionButton: View {
 
     private var iconColor: Color {
         switch mode {
-        case .open: return AppColor.textSecondary
+        case .open: return contrast.textSecondary
         case .correct: return AppColor.accent
         case .wrong: return AppColor.error
-        case .locked: return AppColor.textTertiary
+        case .locked: return contrast.textTertiary
         }
     }
 
