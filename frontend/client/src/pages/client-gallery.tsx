@@ -357,6 +357,9 @@ export default function ClientGallery({}: ClientGalleryProps) {
       imageMetadata: image.imageMetadata || (image.metadata as GalleryImage['imageMetadata']),
     }));
   }, [imagesResponse]);
+  const mediaAccess = (imagesResponse as any)?.mediaAccess as
+    | { state: 'active' | 'download_only' | 'expired'; canDownload: boolean; daysRemaining: number | null; downloadOnlyUntil: string | null; automaticDeletion: false }
+    | undefined;
 
   // Fetch existing selections (linked to project and client). Backend
   // returns { galleryId, selections: [...] } for the whole gallery;
@@ -1080,6 +1083,14 @@ export default function ClientGallery({}: ClientGalleryProps) {
             så brand-block kan strekke seg helt til kanten */}
         <Box sx={{ px: 2, flex: 1, display: 'flex', flexDirection: 'column' }}>
 
+        {mediaAccess?.state !== 'active' && mediaAccess && (
+          <Alert severity={mediaAccess.canDownload ? 'warning' : 'info'} sx={{ mb: 2 }}>
+            {mediaAccess.canDownload
+              ? `Dette galleriet kan lastes ned i ${mediaAccess.daysRemaining ?? 0} dager til. Last ned originalene før ${mediaAccess.downloadOnlyUntil ? new Intl.DateTimeFormat('nb-NO', { dateStyle: 'long' }).format(new Date(mediaAccess.downloadOnlyUntil)) : 'fristen'}.`
+              : 'Nedlastingsvinduet er utløpt. Bildene er ikke slettet; fotografen kan åpne dem igjen ved å reaktivere CreatorHub.'}
+          </Alert>
+        )}
+
         {/* Selection Summary with Psychology */}
         <Paper
           sx={{
@@ -1347,7 +1358,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 bilde-count + er bevisst om at extra utover
                 contractedImages koster mer (eksisterende UX i
                 progress-bar over). */}
-            {gallery?.gallerySettings?.allowDownload !== false && visibleImages.length > 0 && (
+            {gallery?.gallerySettings?.allowDownload !== false && mediaAccess?.canDownload !== false && visibleImages.length > 0 && (
               <Button
                 variant="text"
                 size="small"
@@ -1370,7 +1381,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 en snarvei til "velg alle favoritter". Vanlig flow:
                 browse → hjerte 30 av 200 → bestem seg for å ta dem som
                 final. Uten snarveien måtte man re-klikke alle 30. */}
-            {gallery?.gallerySettings?.allowDownload !== false && favoriteImages.size > 0 && (
+            {gallery?.gallerySettings?.allowDownload !== false && mediaAccess?.canDownload !== false && favoriteImages.size > 0 && (
               <Button
                 variant="text"
                 size="small"
@@ -1393,7 +1404,7 @@ export default function ClientGallery({}: ClientGalleryProps) {
                 blob URL to trigger the browser download dialog.
                 Returns 402 if pricing has unpaid extras — we surface
                 a clear message and pivot to checkout (Slice 10). */}
-            {gallery?.gallerySettings?.allowDownload !== false && (
+            {gallery?.gallerySettings?.allowDownload !== false && mediaAccess?.canDownload !== false && (
               <Button
                 variant="outlined"
                 fullWidth
@@ -1429,7 +1440,10 @@ export default function ClientGallery({}: ClientGalleryProps) {
                       return;
                     }
                     if (!res.ok) {
-                      setDownloadError(`Kunne ikke laste ned (HTTP ${res.status}).`);
+                      const problem = await res.json().catch(() => null) as { error?: string; message?: string } | null;
+                      setDownloadError(problem?.error === 'download_window_expired'
+                        ? '30-dagers nedlastingsvindu er utløpt. Fotografen må reaktivere CreatorHub.'
+                        : problem?.message || `Kunne ikke laste ned (HTTP ${res.status}).`);
                       return;
                     }
                     const blob = await res.blob();

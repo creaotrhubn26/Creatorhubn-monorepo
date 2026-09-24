@@ -222,9 +222,10 @@ describe("workspace mutation guard", () => {
       request(app).patch("/api/projects/project-1/photo-review/00000000-0000-4000-8000-000000000001").send({ reviewStatus: "approved" }),
       request(app).post("/api/projects/project-1/photo-review/bulk").send({ assetIds: ["00000000-0000-4000-8000-000000000001"], reviewStatus: "approved" }),
       request(app).post("/api/projects/project-1/photo-comments").send({ assetId: "00000000-0000-4000-8000-000000000001", comment: "No write" }),
+      request(app).post("/api/projects/project-1/photo-review/organize").send({ action: "add_collection", assetIds: ["00000000-0000-4000-8000-000000000001"], collection: "Selects" }),
       request(app).post("/api/projects/project-1/ai/image-edit").send({ assetId: "00000000-0000-4000-8000-000000000001", prompt: "No write" }),
       request(app).post("/api/projects/project-1/photo-deliveries").send({ assetIds: ["00000000-0000-4000-8000-000000000001"] }),
     ]);
-    expect(photoMutations.map((item) => item.status)).toEqual([403, 403, 403, 403, 403]);
+    expect(photoMutations.map((item) => item.status)).toEqual([403, 403, 403, 403, 403, 403]);
   });
 });

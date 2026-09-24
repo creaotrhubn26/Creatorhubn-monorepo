@@ -101,4 +101,19 @@ describe("VideoRoomTab version scoping", () => {
       "/api/projects/project-1/video-room?versionId=v1",
     );
   });
+
+  it("navigates versions from the shared media-room keyboard layer", async () => {
+    render(<VideoRoomTab projectId="project-1" />);
+    expect((await screen.findByTestId("player")).textContent).toContain(
+      "/v2.mp4|v2 comment",
+    );
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("player").textContent).toContain(
+        "/v1.mp4|v1 comment",
+      ),
+    );
+  });
 });

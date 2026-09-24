@@ -33,6 +33,7 @@ import Groups from "@mui/icons-material/Groups";
 import Subtitles from "@mui/icons-material/Subtitles";
 import FactCheck from "@mui/icons-material/FactCheck";
 import SyncAlt from "@mui/icons-material/SyncAlt";
+import Keyboard from "@mui/icons-material/Keyboard";
 import { apiRequest } from "@/lib/queryClient";
 import { uploadVideoToCloudflareStream } from "@/lib/cloudflareStreamTusUpload";
 import CinematicVideoPlayer from "@/components/gallery/CinematicVideoPlayer";
@@ -42,6 +43,8 @@ import { wsIcon } from "../crewIcons";
 import { WsCard, WsTag, WsModal } from "../ui";
 import AiBuyCreditsModal from "../AiBuyCreditsModal";
 import VideoVersionCompare from "../video-room/VideoVersionCompare";
+import MediaRoomCommandCenter, { type MediaRoomCommand } from "../media-room/MediaRoomCommandCenter";
+import { useMediaRoomShortcuts } from "../media-room/useMediaRoomShortcuts";
 import {
   buildVideoRoomStateUrl,
   filterVideoComments,
@@ -112,6 +115,8 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [collab, setCollab] = useState<any>({ tasks: [], rounds: [], approvalSteps: [], transcript: [], captions: [], qc: [], liveSession: null, members: [] });
   const livePushTimer = useRef<any>(null);
   const markerImportInput = useRef<HTMLInputElement | null>(null);
+  const roomRef = useRef<HTMLDivElement | null>(null);
+  const [commandCenter, setCommandCenter] = useState<"commands" | "help" | null>(null);
 
   const [aiCfg, setAiCfg] = useState<any | null>(null);
   const [credits, setCredits] = useState<any | null>(null);
@@ -285,6 +290,30 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     intro: chapter.intro || null,
   }));
   const canEdit = Boolean(data?.permissions?.canEdit);
+
+  const moveVersion = (delta: number) => {
+    if (!versions.length || !current) return;
+    const index = versions.findIndex((version: any) => version.id === current.id);
+    const next = versions[(Math.max(0, index) + delta + versions.length) % versions.length];
+    if (next?.id) selectVersion(next.id);
+  };
+  const toggleRoomFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else if (roomRef.current?.requestFullscreen) void roomRef.current.requestFullscreen();
+  };
+  const roomCommands: MediaRoomCommand[] = [
+    { id: "previous", label: "Forrige versjon", shortcut: "←", disabled: versions.length < 2, run: () => moveVersion(-1) },
+    { id: "next", label: "Neste versjon", shortcut: "→", disabled: versions.length < 2, run: () => moveVersion(1) },
+    { id: "compare", label: "Sammenlign versjoner", shortcut: "C", disabled: versions.length < 2, run: () => openCompare() },
+    { id: "report", label: "Åpne review-rapport", disabled: !current, run: () => setReportOpen(true) },
+    { id: "share", label: "Opprett klientlenke", disabled: !canEdit, run: () => openShare() },
+  ];
+  useMediaRoomShortcuts({
+    previous: () => moveVersion(-1), next: () => moveVersion(1),
+    compare: () => versions.length > 1 && openCompare(), fullscreen: toggleRoomFullscreen,
+    commands: () => setCommandCenter("commands"), help: () => setCommandCenter("help"),
+    clear: () => setCommandCenter(null),
+  });
   const counts = useMemo(
     () => ({
       all: comments.length,
@@ -713,7 +742,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     );
 
   return (
-    <Box>
+    <Box ref={roomRef}>
       <Stack
         direction={{ xs: "column", md: "row" }}
         justifyContent="space-between"
@@ -741,6 +770,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button startIcon={<Keyboard />} onClick={() => setCommandCenter("help")} sx={{ color: ws.text, textTransform: "none" }}>Hurtigtaster</Button>
           {current && (
             <Button
               startIcon={<Summarize />}
@@ -1411,6 +1441,7 @@ const VideoRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
           </Button>
         </Stack>
       )}
+      <MediaRoomCommandCenter open={commandCenter !== null} mode={commandCenter || "commands"} locale="no" commands={roomCommands} shortcutIds={["previous", "next", "compare", "fullscreen", "commands", "help", "clear"]} onClose={() => setCommandCenter(null)} />
 
       <WsModal
         open={addOpen}
