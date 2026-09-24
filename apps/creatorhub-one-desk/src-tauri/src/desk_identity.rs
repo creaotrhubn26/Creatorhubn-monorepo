@@ -98,6 +98,12 @@ pub fn load_or_create_lightroom_broker_secret() -> Result<String, String> {
     load_or_create_hex_secret(&lightroom_broker_secret_path())
 }
 
+/// Invalidates every previously installed Lightroom loopback capability.
+/// The next install/repair receives the replacement secret.
+pub fn rotate_lightroom_broker_secret() -> Result<String, String> {
+    write_new_hex_secret(&lightroom_broker_secret_path())
+}
+
 fn load_or_create_hex_secret(path: &std::path::Path) -> Result<String, String> {
     if let Ok(raw) = std::fs::read_to_string(path) {
         let value = raw.trim();
@@ -106,6 +112,10 @@ fn load_or_create_hex_secret(path: &std::path::Path) -> Result<String, String> {
         }
     }
 
+    write_new_hex_secret(path)
+}
+
+fn write_new_hex_secret(path: &std::path::Path) -> Result<String, String> {
     let mut bytes = [0_u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     let token = hex::encode(bytes);

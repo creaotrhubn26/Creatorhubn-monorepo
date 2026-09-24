@@ -16,7 +16,7 @@ import {
   type StructuredGoogleDocumentBlock,
 } from './customer-drive-sync.js';
 
-type RoleRoomGoogleConnectionRow = {
+type CreatorHubGoogleConnectionRow = {
   user_id: string | null;
   google_email: string | null;
   google_subject: string | null;
@@ -403,7 +403,7 @@ async function ensureContractGoogleSigningSchema(pool: Pool) {
   return ensureContractsCompatibilitySchemaPromise;
 }
 
-export async function resolveRoleRoomGoogleConnection(
+export async function resolveCreatorHubGoogleConnection(
   pool: Pool,
   preferredUserId?: string | null,
   options?: {
@@ -470,10 +470,10 @@ export async function resolveRoleRoomGoogleConnection(
         },
       ];
 
-  let connection: RoleRoomGoogleConnectionRow | null = null;
+  let connection: CreatorHubGoogleConnectionRow | null = null;
   for (const query of queries) {
     try {
-      const result = await pool.query<RoleRoomGoogleConnectionRow>(query.sql, query.params);
+      const result = await pool.query<CreatorHubGoogleConnectionRow>(query.sql, query.params);
       if (result.rows.length > 0) {
         for (const preferredApp of preferredOauthApps) {
           const match = result.rows.find(
@@ -574,6 +574,9 @@ export async function resolveRoleRoomGoogleConnection(
     },
   };
 }
+
+/** @deprecated Use the product-neutral CreatorHub resolver in new code. */
+export const resolveRoleRoomGoogleConnection = resolveCreatorHubGoogleConnection;
 
 function serializeContractDocument(contract: Record<string, unknown>, branding?: DocumentBrandingProfile | null) {
   const sections = readJsonArray(contract.sections);

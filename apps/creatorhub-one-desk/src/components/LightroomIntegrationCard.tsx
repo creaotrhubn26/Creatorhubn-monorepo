@@ -17,11 +17,15 @@ import {
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ExtensionOutlinedIcon from "@mui/icons-material/ExtensionOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import creatorHubLogo from "../assets/desk-icon.svg";
 import lightroomClassicLogo from "../assets/lightroom-classic-logo.svg";
 import {
   getLightroomIntegrationStatus,
   installLightroomPlugin,
   LightroomIntegrationStatus,
+  LightroomConnectionCheck,
+  testLightroomConnection,
   uninstallLightroomPlugin,
 } from "../api";
 
@@ -43,6 +47,9 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
   const [action, setAction] = useState<"install" | "uninstall" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [connection, setConnection] = useState<LightroomConnectionCheck | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -59,6 +66,13 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void getLightroomIntegrationStatus().then(setStatus).catch(() => undefined);
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (
@@ -107,6 +121,31 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
     }
   };
 
+  const pluginReady = Boolean(
+    status?.plugin_installed &&
+    status.broker_running &&
+    status.plugin_runtime_active &&
+    !status.plugin_update_required &&
+    status.connected_user_email,
+  );
+
+  const testConnection = async (showDetails = false) => {
+    setChecking(true);
+    setError(null);
+    try {
+      const result = await testLightroomConnection();
+      setConnection(result);
+      if (showDetails) setDetailsOpen(true);
+      await refresh();
+      return result;
+    } catch (nextError) {
+      setError(errorMessage(nextError));
+      return null;
+    } finally {
+      setChecking(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={promptOpen} onClose={dismissPrompt} maxWidth="sm" fullWidth>
@@ -148,6 +187,28 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Siste Lightroom-eksport</DialogTitle>
+        <DialogContent>
+          {connection?.latest_export ? (
+            <Stack spacing={0.75} sx={{ pt: 0.5 }}>
+              <Typography sx={{ fontWeight: 700 }}>{connection.latest_export.filename}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {connection.latest_export.project_title} · {connection.latest_export.status}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {connection.latest_export.verified_at ?? connection.latest_export.created_at ?? "Tidspunkt mangler"}
+              </Typography>
+            </Stack>
+          ) : (
+            <Alert severity="info">Ingen Lightroom-eksporter er registrert ennå.</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetailsOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
       {compact ? (
         <Button
           variant="text"
@@ -175,7 +236,9 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
             : !status?.connected_user_email
               ? "Logg inn for Lightroom-plugin"
               : status.plugin_installed && !status.plugin_update_required
-              ? `Lightroom-plugin ${status.plugin_version ?? ""} installert`
+              ? pluginReady
+                ? `Lightroom-plugin ${status.plugin_version ?? ""} klar`
+                : `Lightroom-plugin ${status.plugin_version ?? ""} installert`
               : status.classic_installed
                 ? status.plugin_installed
                   ? "Oppdater Lightroom-plugin"
@@ -187,17 +250,11 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
         <CardContent>
         <Stack spacing={2}>
           <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
-            <Box
-              component="img"
-              src={lightroomClassicLogo}
-              alt="Lightroom Classic"
-              sx={{
-                width: 42,
-                height: 42,
-                borderRadius: 1.5,
-                flexShrink: 0,
-              }}
-            />
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: "center", flexShrink: 0 }}>
+              <Box component="img" src={creatorHubLogo} alt="CreatorHub" sx={{ width: 42, height: 42 }} />
+              <Typography color="text.secondary">×</Typography>
+              <Box component="img" src={lightroomClassicLogo} alt="Lightroom Classic" sx={{ width: 42, height: 42, borderRadius: 1.5 }} />
+            </Stack>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
@@ -206,9 +263,9 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
                 {status?.plugin_installed && (
                   <Chip
                     size="small"
-                    color="success"
+                    color={pluginReady ? "success" : "info"}
                     icon={<CheckCircleIcon />}
-                    label="Tilkoblet"
+                    label={pluginReady ? "Klar" : "Installert"}
                   />
                 )}
               </Stack>
@@ -250,6 +307,23 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
                   Pluginen er installert. Start Lightroom Classic på nytt for å aktivere den.
                 </Alert>
               )}
+              {!status.restart_required && status.plugin_update_required && (
+                <Alert severity="warning">
+                  Pluginen må oppdateres eller kobles til kontoen som er innlogget i CreatorHub Desk.
+                </Alert>
+              )}
+              {!status.restart_required && !status.plugin_update_required && !pluginReady && (
+                <Alert severity="info">
+                  {status.broker_running
+                    ? "Desk-brokeren kjører. Kontroller at pluginen er aktivert i Lightroom Classic sin Plugin Manager før første eksport."
+                    : `Desk-brokeren kjører ikke${status.broker_error ? `: ${status.broker_error}` : "."}`}
+                </Alert>
+              )}
+              {pluginReady && (
+                <Alert severity="success">
+                  Lightroom Classic har bekreftet at CreatorHub-pluginen er lastet og aktiv.
+                </Alert>
+              )}
               <Box>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   Verifisert CreatorHub-konto
@@ -261,8 +335,41 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
                 <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
                   {status.plugin_path}
                 </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                  Lokal broker: {status.broker_running ? status.broker_url : "stoppet"}
+                </Typography>
               </Box>
-              <Stack direction="row" spacing={1}>
+              {connection && (
+                <Alert severity="success">
+                  Tilkoblet som {connection.account_email} · {connection.project_count} prosjekt{connection.project_count === 1 ? "" : "er"}
+                  {connection.drive_available ? " · Google Drive tilgjengelig" : ""}
+                </Alert>
+              )}
+              <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => void testConnection()}
+                  disabled={checking || action !== null || !status.broker_running}
+                >
+                  {checking ? "Tester…" : "Test forbindelse"}
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={async () => {
+                    const result = connection ?? await testConnection();
+                    if (result?.photo_room_url) await openUrl(result.photo_room_url);
+                  }}
+                  disabled={checking || action !== null || !status.broker_running}
+                >
+                  Åpne Photo Room
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => void testConnection(true)}
+                  disabled={checking || action !== null || !status.broker_running}
+                >
+                  Vis siste eksport
+                </Button>
                 <Button
                   variant="contained"
                   onClick={() => void install()}

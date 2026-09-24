@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildLightroomMimeType,
+  canonicalizeLightroomPublicBase,
+  findEditableLightroomProject,
   issueLightroomDeskSsoToken,
   verifyLightroomDeskSsoToken,
 } from './lightroom-routes';
@@ -34,10 +37,14 @@ describe('Lightroom Classic CreatorHub bridge', () => {
     expect(packageJson.scripts.build).toContain('node scripts/copy-lightroom-plugin-template.mjs');
     for (const fileName of [
       'Info.lua',
+      'CreatorHubManifest.json',
+      'PluginInit.lua',
       'PluginInfoProvider.lua',
       'ExportServiceProvider.lua',
       'CreatorHubDefaults.lua',
       'README.txt',
+      'TranslatedStrings_en.txt',
+      'TranslatedStrings_nb.txt',
     ]) {
       expect(packagingScript).toContain(`'${fileName}'`);
     }
@@ -59,8 +66,12 @@ describe('Lightroom Classic CreatorHub bridge', () => {
     expect(routeSource).not.toContain('GOOGLE_APPLICATION_CREDENTIALS');
   });
 
-  it('owner-scopes project selection and session-authenticates browser management routes', () => {
-    expect(routeSource).toContain('WHERE id = $1 AND user_id = $2 LIMIT 1');
+  it('requires workspace write access and session-authenticates browser management routes', () => {
+    expect(routeSource).toContain('await findEditableLightroomProject(');
+    expect(routeSource).toContain('payload.projectName = writableProject.title');
+    expect(routeSource).toContain('FROM projects p');
+    expect(routeSource).toContain("member.role <> 'viewer'");
+    expect(routeSource).toContain("member.permissions @> '{\"canEdit\":true}'::jsonb");
     expect(routeSource).toContain("router.get('/status', requireSession");
     expect(routeSource).toContain("router.post('/token', requireSession");
     expect(routeSource).toContain("router.get('/download-plugin', requireSession");
@@ -71,8 +82,10 @@ describe('Lightroom Classic CreatorHub bridge', () => {
   it('streams the rendered file as multipart from Lightroom instead of base64 JSON', () => {
     expect(pluginSource).toContain('LrHttp.postMultipart');
     expect(pluginSource).toContain('local requestSucceeded, responseBody, responseInfo = LrTasks.pcall(function()');
-    expect(pluginSource).toContain('Nettverksfeil under opplasting. Den eksporterte filen er beholdt lokalt.');
-    expect(pluginSource).toContain('local callSucceeded, uploadSuccess, uploadMessage = LrTasks.pcall(');
+    expect(pluginSource).toContain('CreatorHub/Lightroom/OfflineQueue');
+    expect(pluginSource).toContain('queueRenderedPhoto');
+    expect(pluginSource).toContain('drainOfflineQueue');
+    expect(pluginSource).toContain('local callSucceeded, uploadSuccess, uploadMessage, driveStatus, publishedAssetId = LrTasks.pcall(');
     expect(pluginSource).not.toContain('= pcall(');
     expect(pluginSource).toContain('LrApplication.activeCatalog():getPath()');
     expect(pluginSource).not.toContain('LrApplication.activeCatalog():getName()');
@@ -83,11 +96,61 @@ describe('Lightroom Classic CreatorHub bridge', () => {
       routeSource.indexOf("lightroomMultipartUpload.single('file')"),
     );
     expect(routeSource).toContain('CREATORHUB_PROJECTS_LUA');
-    expect(pluginSource).toContain("items = Defaults.projects");
-    expect(pluginSource).toContain('enabled = Defaults.driveAvailable');
+    expect(pluginSource).toContain("items = bind 'creatorhubProjectItems'");
+    expect(pluginSource).toContain("enabled = bind 'creatorhubDriveAvailable'");
+    expect(pluginSource).toContain("extractJsonString(responseBody, 'projectOptions')");
+    expect(pluginSource).toContain("allowFileFormats = { 'JPEG', 'TIFF' }");
+    expect(pluginSource).toContain('supportsIncrementalPublish = true');
+    expect(pluginSource).toContain('recordPublishedPhotoId');
+    expect(pluginSource).toContain('deletePhotosFromPublishedCollection');
     expect(pluginSource).toContain("Defaults.deskBrokerUrl .. '/v1/lightroom/session'");
     expect(pluginSource).toContain("value = 'Bearer ' .. Defaults.deskBrokerSecret");
     expect(pluginSource).toContain('prefs.pluginToken = nil');
+    expect(pluginSource).toContain("extractJsonString(responseBody, 'driveMirrorError')");
+    expect(pluginSource).toContain("driveMirroredCount > 0 and LOC '$$$/CreatorHub/Export/DriveSuffix= and mirrored to Google Drive' or ''");
+    expect(pluginSource).not.toContain("exportSettings.creatorhubMirrorToDrive == true and ' og speilet til Google Drive'");
+  });
+
+  it('uses CreatorHub naming, produces previews and includes structured EXIF metadata', () => {
+    expect(routeSource).toContain('FROM creatorhub_google_connections');
+    expect(routeSource).toContain('resolveCreatorHubGoogleConnection');
+    expect(routeSource).toContain('createLightroomPreview');
+    expect(routeSource).toContain("kind: 'preview'");
+    expect(pluginSource).toContain('cameraModel');
+    expect(pluginSource).toContain('isoSpeedRating');
+    expect(pluginSource).not.toContain('CreatorHub Norge');
+  });
+
+  it('uses the canonical www host for Lightroom API calls', () => {
+    expect(canonicalizeLightroomPublicBase('https://creatorhubn.com/')).toBe('https://www.creatorhubn.com');
+    expect(canonicalizeLightroomPublicBase('https://www.creatorhubn.com')).toBe('https://www.creatorhubn.com');
+    expect(canonicalizeLightroomPublicBase('http://localhost:3003/')).toBe('http://localhost:3003');
+  });
+
+  it('accepts only supported formats with matching MIME types', () => {
+    expect(buildLightroomMimeType('image/jpeg', 'portrait.JPG')).toBe('image/jpeg');
+    expect(buildLightroomMimeType(undefined, 'album.tiff')).toBe('image/tiff');
+    expect(() => buildLightroomMimeType('image/jpeg', 'raw.dng')).toThrow('støttes ikke');
+    expect(() => buildLightroomMimeType('image/png', 'portrait.jpg')).toThrow('samsvarer ikke');
+  });
+
+  it('scopes writable project lookup to public projects and the authenticated user', async () => {
+    const query = vi.fn(async () => ({
+      rows: [{ id: 'project-1', title: 'Workspace project', name: null }],
+    }));
+    await expect(findEditableLightroomProject({ query } as never, 'user-1', 'project-1'))
+      .resolves.toEqual({ id: 'project-1', title: 'Workspace project' });
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM projects p'),
+      ['project-1', 'user-1'],
+    );
+    expect(query.mock.calls[0]?.[0]).toContain("member.permissions @> '{\"canEdit\":true}'::jsonb");
+  });
+
+  it('recovers an abandoned upload lease but protects an active upload', () => {
+    expect(routeSource).toContain('Date.now() - duplicateUpdatedAt > 30 * 60 * 1000');
+    expect(routeSource).toContain("duplicate.rows[0]?.status === 'uploading' && !staleUpload");
+    expect(routeSource).toContain("duplicate.rows[0]?.status === 'error' || staleUpload");
   });
 
   it('issues short-lived, tamper-evident sessions bound to one Desk device', () => {
