@@ -39,6 +39,16 @@ jobs:
       - name: Parse production bundle
         run: docker run --rm --entrypoint node creatorhub-backend-ci --check /app/backend/dist/index.js
 
+      - name: Verify Lightroom plugin template is packaged
+        run: >-
+          docker run --rm --entrypoint node creatorhub-backend-ci
+          --input-type=module -e
+          "import { access } from 'node:fs/promises';
+          const root='/app/backend/dist/lightroom-plugin-template/CreatorHubNorge.lrplugin';
+          for (const file of ['Info.lua','PluginInfoProvider.lua','ExportServiceProvider.lua','CreatorHubDefaults.lua','README.txt'])
+          await access(root + '/' + file);
+          console.log('Lightroom plugin template: OK')"
+
       - name: Verify native runtime modules
         run: >-
           docker run --rm --entrypoint node creatorhub-backend-ci

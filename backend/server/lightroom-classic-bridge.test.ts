@@ -21,8 +21,29 @@ const pluginSource = readFileSync(
   )),
   'utf8',
 );
+const packageJson = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+) as { scripts: { build: string } };
+const packagingScript = readFileSync(
+  fileURLToPath(new URL('../scripts/copy-lightroom-plugin-template.mjs', import.meta.url)),
+  'utf8',
+);
 
 describe('Lightroom Classic CreatorHub bridge', () => {
+  it('packages every required Lightroom template file with the production bundle', () => {
+    expect(packageJson.scripts.build).toContain('node scripts/copy-lightroom-plugin-template.mjs');
+    for (const fileName of [
+      'Info.lua',
+      'PluginInfoProvider.lua',
+      'ExportServiceProvider.lua',
+      'CreatorHubDefaults.lua',
+      'README.txt',
+    ]) {
+      expect(packagingScript).toContain(`'${fileName}'`);
+    }
+    expect(packagingScript).toContain('source.equals(output)');
+  });
+
   it('makes private CreatorHub S3 the verified source of truth before Drive mirroring', () => {
     const s3Write = routeSource.indexOf('await putCreatorHubObject(');
     const s3Verify = routeSource.indexOf('sizeBytes = await verifyCreatorHubLightroomObject(', s3Write);
