@@ -33,6 +33,8 @@ struct ReiseguideApp: App {
                     // Besøk som ikke kom fram (uten nett) sendes når appen er i forgrunnen igjen.
                     if phase == .active {
                         Task { await environment.visitSync.flush() }
+                        // Ny lyd og nye steder uten å starte appen på nytt.
+                        Task { await environment.store.refreshIfStale(lang: environment.settings.guideLanguage) }
                     }
                 }
         }
