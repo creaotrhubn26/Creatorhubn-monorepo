@@ -621,8 +621,9 @@ mod tests {
     fn compares_plugin_versions_without_downgrading_future_versions() {
         let current = plugin_manifest().unwrap().display_version;
         assert!(version_tuple("1.2.9") < version_tuple(&current));
-        assert_eq!(version_tuple("1.4.0.2"), version_tuple(&current));
+        assert_eq!(version_tuple("1.4.0.3"), version_tuple(&current));
         assert!(version_tuple("1.5.0") > version_tuple(&current));
+        assert!(version_tuple("1.4.0.2") < version_tuple(&current));
         assert!(version_tuple("1.4.0.1") < version_tuple(&current));
         assert!(version_tuple("invalid").is_none());
     }
