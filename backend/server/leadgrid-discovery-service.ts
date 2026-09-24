@@ -31,6 +31,7 @@ import {
   type DiscoveryCandidateScore,
 } from "./leadgrid-discovery-scoring.js";
 import { normalizeWebsiteDomain } from "./lead-map-create-contract.js";
+import { startTrialOnFirstDiscovery } from "./leadgrid-trial.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 import type { BackgroundJob, JobHandler } from "./job-queue.js";
 import { broadcastLeadCreated, leadgridRealtime } from "./leadgrid-realtime.js";
@@ -5098,6 +5099,19 @@ export async function executeDiscoveryRun(
         overrides.executionLease?.leaseToken,
       );
     }
+    // Prøvetiden starter her, ikke ved registrering. Et søk som fullfører er
+    // det første øyeblikket kunden har fått noe av produktet — før det ville
+    // klokka målt kalenderdager, ikke bruk. Kallet er idempotent, så kjøring
+    // nummer to forlenger ingenting, og en feil her skal aldri kunne velte en
+    // Discovery-kjøring som ellers gikk bra.
+    void startTrialOnFirstDiscovery(pool, finishingRun.organization_id).catch(
+      (error: unknown) => {
+        console.warn(
+          "[discovery] fikk ikke startet prøvetiden:",
+          (error as Error).message,
+        );
+      },
+    );
     run = (await loadRunById(pool, run.id)) ?? run;
     emitRunProgress(emit, run, {
       status: finalStatus,
