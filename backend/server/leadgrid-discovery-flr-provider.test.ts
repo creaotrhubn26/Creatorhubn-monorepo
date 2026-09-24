@@ -275,7 +275,10 @@ describe("NHN public Fastlegeregister Discovery provider", () => {
 
     const decoded = jwt.verify(assertion, publicKey, {
       algorithms: ["RS256"],
-      audience: FLR_ENDPOINTS.test.tokenUrl,
+      // Utstederen, ikke token-endepunktet. Denne testen påsto tidligere
+      // tokenUrl — altså akkurat den verdien koden sendte — og var derfor
+      // grønn mens Maskinporten ville svart invalid_grant.
+      audience: FLR_ENDPOINTS.test.issuer,
       issuer: "client-id",
       clockTimestamp: Date.parse("2026-09-12T10:00:00Z") / 1_000,
     }) as Record<string, unknown>;

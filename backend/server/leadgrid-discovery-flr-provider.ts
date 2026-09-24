@@ -20,23 +20,32 @@ export const FLR_ENDPOINTS = {
   test: {
     apiBaseUrl: "https://api.offentlig.test.flr.nhn.no",
     tokenUrl: "https://test.maskinporten.no/token",
+    // `aud` i JWT-grant-en skal være UTSTEDEREN, ikke token-endepunktet.
+    // Maskinporten avviser assertion-en med invalid_grant hvis den peker på
+    // «…/token». Skråstreken på slutten er en del av verdien.
+    // Kilde: docs.digdir.no/docs/Maskinporten/maskinporten_protocol_jwtgrant
+    issuer: "https://test.maskinporten.no/",
   },
   production: {
     apiBaseUrl: "https://api.offentlig.flr.nhn.no",
     tokenUrl: "https://maskinporten.no/token",
+    issuer: "https://maskinporten.no/",
   },
 } as const;
 
 export const NHN_FLR_DATA_SOURCE = {
   id: "nhn_flr_public",
   provider: "Norsk helsenett – Fastlegeregisteret offentlig",
+  // Verifisert 2026-09-24: denne svarer 200. Den forrige hadde et ekstra
+  // «fastlegeregisteret-offentlig»-ledd og ga 404 — en kildehenvisning som
+  // ikke åpner seg er ingen kildehenvisning.
   providerUri:
-    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
+    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
   license: "Avtalebasert tilgang",
   licenseUri:
-    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
+    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
   notice:
-    "Kontor- og avtaledata er hentet fra Fastlegeregisterets offentlige API med godkjent Maskinporten-tilgang. Gjenbruksvilkår må være avklart før produksjonsaktivering.",
+    "Kontor- og avtaledata er hentet fra Fastlegeregisterets offentlige API. Creatorhub AS (org.nr 937518684) har godkjent Maskinporten-tilgang til nhn:flr/export i test og produksjon, innvilget av Helsedirektoratet 2026-09-24. Dataene er åpne og inneholder ingen pasientopplysninger.",
 } as const;
 
 const codeSchema = z
@@ -480,7 +489,7 @@ export function createDiscoveryFlrProvider(
     try {
       assertion = jwt.sign(
         {
-          aud: config.endpoint.tokenUrl,
+          aud: config.endpoint.issuer,
           iss: config.clientId,
           scope: FLR_SCOPE,
           iat: issuedAt,
