@@ -71,3 +71,37 @@ jobs:
       - name: Note — unsigned build (F0)
         run: |
           echo "::notice::F0 scaffold-build. Ingen signing, ingen release, ingen artifact-upload."
+
+  build-windows:
+    name: Build (Windows x86_64)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-one-desk/src-tauri
+
+      - name: Install npm deps
+        working-directory: apps/creatorhub-one-desk
+        run: npm install
+
+      - name: Cargo check
+        working-directory: apps/creatorhub-one-desk/src-tauri
+        run: cargo check --target x86_64-pc-windows-msvc
+
+      - name: TypeScript check
+        working-directory: apps/creatorhub-one-desk
+        run: npx tsc --noEmit
+
+      - name: Build Tauri app (unsigned)
+        working-directory: apps/creatorhub-one-desk
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc --no-bundle

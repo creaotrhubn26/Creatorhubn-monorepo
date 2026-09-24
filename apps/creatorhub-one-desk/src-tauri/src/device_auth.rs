@@ -17,8 +17,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::helper_client;
 use crate::projects::ProjectEntry;
+use crate::{desk_identity, helper_client};
 
 // www, ikke apex: creatorhubn.com 301/308-redirecter til www.creatorhubn.com
 // (Netlify), og reqwest fjerner Authorization-headeren på cross-host-
@@ -141,8 +141,17 @@ pub fn load_device_token() -> Result<Option<DeviceToken>, String> {
 }
 
 pub fn save_device_token(token: &DeviceToken) -> Result<(), String> {
+    let account_changed = fs::read(device_token_path())
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<StoredDeviceIdentity>(&bytes).ok())
+        .is_some_and(|identity| !identity.user_email.eq_ignore_ascii_case(&token.user_email));
+
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     keyring_set(&token.token)?;
+
+    if account_changed {
+        desk_identity::rotate_lightroom_broker_secret()?;
+    }
 
     write_device_identity(&StoredDeviceIdentity {
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -174,6 +183,34 @@ pub struct LightroomDeskSession {
     pub api_base_url: String,
     pub account_email: String,
     pub plugin_version: String,
+    #[serde(default)]
+    pub drive_available: bool,
+    #[serde(default)]
+    pub projects: Vec<LightroomProjectOption>,
+    #[serde(default)]
+    pub project_options: String,
+    #[serde(default)]
+    pub latest_export: Option<LightroomLatestExport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LightroomProjectOption {
+    pub id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LightroomLatestExport {
+    pub export_id: String,
+    pub project_id: String,
+    pub project_title: String,
+    pub asset_id: String,
+    pub filename: String,
+    pub status: String,
+    pub verified_at: Option<String>,
+    pub created_at: Option<String>,
 }
 
 pub async fn fetch_lightroom_session(device: &DeviceToken) -> Result<LightroomDeskSession, String> {
@@ -207,6 +244,14 @@ pub async fn fetch_lightroom_session(device: &DeviceToken) -> Result<LightroomDe
         api_base_url: String,
         account_email: String,
         plugin_version: String,
+        #[serde(default)]
+        drive_available: bool,
+        #[serde(default)]
+        projects: Vec<LightroomProjectOption>,
+        #[serde(default)]
+        project_options: String,
+        #[serde(default)]
+        latest_export: Option<LightroomLatestExport>,
     }
     let parsed: Response = serde_json::from_str(&body)
         .map_err(|error| format!("Ugyldig CreatorHub Desk SSO-svar: {error}"))?;
@@ -219,6 +264,10 @@ pub async fn fetch_lightroom_session(device: &DeviceToken) -> Result<LightroomDe
         api_base_url: parsed.api_base_url,
         account_email: parsed.account_email,
         plugin_version: parsed.plugin_version,
+        drive_available: parsed.drive_available,
+        projects: parsed.projects,
+        project_options: parsed.project_options,
+        latest_export: parsed.latest_export,
     })
 }
 

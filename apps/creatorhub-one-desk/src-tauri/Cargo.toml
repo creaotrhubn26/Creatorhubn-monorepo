@@ -1,8 +1,8 @@
 [package]
 name = "creatorhub-one-desk"
-version = "0.1.12"
-description = "Creatorhub One Desk — Mac-companion til iPad CaptureApp og minnekort-ingest"
-authors = ["CreatorHub Norge"]
+version = "0.1.14"
+description = "CreatorHub One Desk — desktop companion for Capture, media ingest and creative integrations"
+authors = ["CreatorHub"]
 edition = "2024"
 
 [lib]

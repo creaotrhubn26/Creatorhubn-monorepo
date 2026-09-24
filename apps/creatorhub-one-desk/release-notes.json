@@ -1,6 +1,51 @@
 {
   "releases": [
     {
+      "version": "0.1.14",
+      "publishedAt": "2026-09-24T13:00:00Z",
+      "title": "Photo Room åpner riktig etter innlogging",
+      "summary": "CreatorHub Plugins bevarer Photo Room-dyplenken gjennom nettinnlogging og velger bare prosjekter som faktisk har Photo Room.",
+      "critical": false,
+      "sections": [
+        {
+          "kind": "fixed",
+          "title": "Rettet",
+          "items": [
+            "Åpne Photo Room sender deg til samme Photo Room etter innlogging i stedet for prosjektoversikten.",
+            "Sound Room- og andre ikke-visuelle prosjekter brukes ikke lenger som mål for Lightroom eller Photo Room.",
+            "Desk forklarer tydelig når kontoen mangler et foto-/videoprosjekt med skrivetilgang."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "0.1.13",
+      "publishedAt": "2026-09-24T12:00:00Z",
+      "title": "Lightroom som en trygg CreatorHub-arbeidsflyt",
+      "summary": "Lightroom Classic 1.4.0.2 får robust Desk-innlogging, offlinekø, Publish Service, EXIF/previews og tydelig forbindelse til Photo Room.",
+      "critical": false,
+      "sections": [
+        {
+          "kind": "new",
+          "title": "Nytt",
+          "items": [
+            "Test forbindelse, Åpne Photo Room og Vis siste eksport er tilgjengelig direkte i CreatorHub Plugins.",
+            "Lightroom-filer som ikke kan sendes blir bevart i en lokal kø og forsøkt igjen ved neste eksport.",
+            "Publiserte bilder får CreatorHub-identitet, servergenerert preview og utvidet kamerametadata."
+          ]
+        },
+        {
+          "kind": "improved",
+          "title": "Forbedret",
+          "items": [
+            "Desk viser om den lokale Lightroom-brokeren faktisk kjører og velger en ledig loopback-port ved konflikt.",
+            "Lokal tilgang roteres ved utlogging og kontobytte, og versjon/build kommer fra ett manifest.",
+            "Installatøren støtter både macOS og Windows, med CreatorHub-branding og norsk/engelsk Lightroom-tekst."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.1.12",
       "publishedAt": "2026-09-23T22:30:00Z",
       "title": "Oppdateringer du kan stole på",

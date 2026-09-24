@@ -149,9 +149,26 @@ describe('CreatorHub One Desk project picker', () => {
       if (sql.includes('FROM role_room_google_connections')) {
         return { rows: [] };
       }
-      if (sql.includes('SELECT id, title, name FROM projects')) {
+      if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
         return {
-          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+          ],
         };
       }
       return { rows: [], rowCount: 1 };
@@ -175,7 +192,7 @@ describe('CreatorHub One Desk project picker', () => {
     expect(Buffer.isBuffer(response.body)).toBe(true);
     expect(response.body.length).toBeGreaterThan(500);
     const projectQuery = query.mock.calls.find(([statement]) =>
-      String(statement).includes('SELECT id, title, name FROM projects'),
+      String(statement).includes('SELECT DISTINCT p.id, p.title, p.name'),
     );
     expect(projectQuery?.[1]).toEqual(['user-1']);
   });
@@ -198,11 +215,36 @@ describe('CreatorHub One Desk project picker', () => {
             id: 'integration-1',
             user_id: params?.[1],
             plugin_token_hash: null,
-            plugin_version: '1.3.0',
+            plugin_version: '1.4.0',
             configuration: { authenticationMode: 'creatorhub_desk_sso' },
             sync_status: 'idle',
           }],
         };
+      }
+      if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
+        return {
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM role_room_google_connections')) {
+        return { rows: [] };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -217,7 +259,10 @@ describe('CreatorHub One Desk project picker', () => {
       success: true,
       token: expect.stringMatching(/^lrs_/),
       accountEmail: 'owner@example.test',
-      pluginVersion: '1.3.0',
+      pluginVersion: '1.4.0.2',
+      driveAvailable: false,
+      projects: [{ id: 'project-1', title: 'Bryllup' }],
+      projectOptions: 'project-1=Bryllup',
     }));
     expect(new Date(response.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
     vi.unstubAllEnvs();

@@ -282,6 +282,31 @@ export interface LightroomIntegrationStatus {
   plugin_update_required: boolean;
   connected_user_email: string | null;
   restart_required: boolean;
+  plugin_runtime_active: boolean;
+  plugin_runtime_last_seen_seconds: number | null;
+  broker_running: boolean;
+  broker_url: string;
+  broker_error: string | null;
+}
+
+export interface LightroomLatestExport {
+  export_id: string;
+  project_id: string;
+  project_title: string;
+  asset_id: string;
+  filename: string;
+  status: string;
+  verified_at: string | null;
+  created_at: string | null;
+}
+
+export interface LightroomConnectionCheck {
+  account_email: string;
+  plugin_version: string;
+  drive_available: boolean;
+  project_count: number;
+  photo_room_url: string | null;
+  latest_export: LightroomLatestExport | null;
 }
 
 export async function getLightroomIntegrationStatus(): Promise<LightroomIntegrationStatus> {
@@ -294,6 +319,10 @@ export async function installLightroomPlugin(): Promise<LightroomIntegrationStat
 
 export async function uninstallLightroomPlugin(): Promise<LightroomIntegrationStatus> {
   return invoke<LightroomIntegrationStatus>("uninstall_lightroom_plugin");
+}
+
+export async function testLightroomConnection(): Promise<LightroomConnectionCheck> {
+  return invoke<LightroomConnectionCheck>("test_lightroom_connection");
 }
 
 // ── Multi-project ─────────────────────────────────────────────────

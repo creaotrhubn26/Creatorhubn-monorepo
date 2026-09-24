@@ -8,10 +8,14 @@ const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const pluginDirectoryName = 'CreatorHubNorge.lrplugin';
 const requiredFiles = [
   'Info.lua',
+  'CreatorHubManifest.json',
+  'PluginInit.lua',
   'PluginInfoProvider.lua',
   'ExportServiceProvider.lua',
   'CreatorHubDefaults.lua',
   'README.txt',
+  'TranslatedStrings_en.txt',
+  'TranslatedStrings_nb.txt',
 ];
 
 export async function copyLightroomPluginTemplate({
