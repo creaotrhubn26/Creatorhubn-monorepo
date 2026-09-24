@@ -260,14 +260,39 @@ function contactReference(
     .digest("hex");
 }
 
+/**
+ * Adressetypene FLR oppgir, i den rekkefølgen en selger trenger dem.
+ *
+ * Målt mot testmiljøet 2026-09-24: 5 911 kontorer har både besøks- og
+ * postadresse, og for 1 901 av dem peker de ULIKE steder. Rekkefølgen i
+ * arrayet avgjorde hvilken vi tok, og den er ikke sortert — postadressen lå
+ * først for 2 738 kontorer. En postadresse kan være en postboks, og en
+ * postboks er ikke et sted du kan banke på.
+ *
+ * «Coordinates» er med i registeret, men radene er tomme skall
+ * (streetAddress "", postalCode 0, ingen lat/lon). De filtreres uansett bort
+ * av kravet om gateadresse — nevnt her så ingen leter etter gratis geokoding
+ * som ikke finnes.
+ */
+const ADDRESS_TYPE_PRIORITY = [
+  "RES_FLO", // Besøksadresse for Fastlegeordning — mest spesifikk
+  "RES", // Besøksadresse
+  "PST", // Postadresse — kan være postboks
+  "HP", // Folkeregisteradresse
+  "INV", // Faktureringsadresse
+] as const;
+
 function selectAddress(office: z.infer<typeof officeSchema>) {
-  return (
-    (office.addresses ?? []).find(
-      (address) => cleanText(address.streetAddress) !== null,
-    ) ??
-    (office.addresses ?? [])[0] ??
-    null
+  const brukbare = (office.addresses ?? []).filter(
+    (address) => cleanText(address.streetAddress) !== null,
   );
+  for (const type of ADDRESS_TYPE_PRIORITY) {
+    const treff = brukbare.find(
+      (address) => cleanText(address.addressType?.value) === type,
+    );
+    if (treff) return treff;
+  }
+  return brukbare[0] ?? (office.addresses ?? [])[0] ?? null;
 }
 
 function contractMunicipality(contract: FlrContract): {
@@ -278,8 +303,14 @@ function contractMunicipality(contract: FlrContract): {
     contract.office.municipality?.value ?? contract.municipality?.value,
     8,
   );
+  // FLR skriver Oslo som «301», ikke «0301». Resten av systemet — BRREG,
+  // territoriene, Kartverket — bruker firesifret med ledende null, så uten
+  // padding falt kommunenummeret bort her. Målt mot testmiljøet 2026-09-24:
+  // 985 av 6 564 avtaler, samtlige Oslo. Filtrering på kommunenummer ville
+  // stilltiende utelatt landets største marked.
+  const padded = value && /^\d{1,4}$/.test(value) ? value.padStart(4, "0") : null;
   return {
-    number: value && /^\d{4}$/.test(value) ? value : null,
+    number: padded,
     name: cleanText(
       contract.office.municipality?.name ?? contract.municipality?.name,
       120,

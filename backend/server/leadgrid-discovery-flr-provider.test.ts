@@ -341,3 +341,108 @@ describe("NHN public Fastlegeregister Discovery provider", () => {
     >({ code: "upstream_unavailable", retryable: false });
   });
 });
+
+describe("felter slik FLR faktisk leverer dem", () => {
+  // Formene under er målt mot api.offentlig.test.flr.nhn.no 2026-09-24,
+  // ikke funnet på. Begge testene var røde før fiksene.
+
+  it("padder Oslos kommunenummer til fire siffer", async () => {
+    // FLR skriver «301», ikke «0301». BRREG, territoriene og Kartverket
+    // bruker firesifret. 985 av 6 564 avtaler var Oslo, og alle mistet
+    // kommunenummeret sitt — landets største marked falt ut av enhver
+    // filtrering på kommune.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([contract({ contractId: 1, municipalityNumber: "301" })]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].municipalityNumber).toBe("0301");
+    expect(candidates[0].municipality).toBe("Oslo");
+  });
+
+  it("velger besøksadressen, ikke postadressen", async () => {
+    // 5 911 kontorer har begge. For 1 901 peker de ulike steder, og
+    // postadressen lå først for 2 738 av dem. Provideren tok første rad i
+    // arrayet, så en selger kunne bli sendt til en postboks.
+    const base = contract({ contractId: 1 });
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([
+        {
+          ...base,
+          office: {
+            ...base.office,
+            addresses: [
+              {
+                streetAddress: "Postboks 44 Sentrum",
+                postalCode: 101,
+                city: "OSLO",
+                addressType: { value: "PST", name: "Postadresse" },
+              },
+              {
+                streetAddress: "Storgata 1",
+                postalCode: 159,
+                city: "OSLO",
+                addressType: { value: "RES", name: "Besøksadresse" },
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].address).toBe("Storgata 1");
+    expect(candidates[0].postalCode).toBe("0159");
+  });
+
+  it("hopper over Coordinates-rader, som er tomme skall", async () => {
+    // 717 slike i registeret. Ingen lat/lon, tom gate, postnummer 0 —
+    // ikke gratis geokoding, bare en rad som ville tømt adressefeltet.
+    const base = contract({ contractId: 1 });
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([
+        {
+          ...base,
+          office: {
+            ...base.office,
+            addresses: [
+              {
+                streetAddress: "",
+                postalCode: 0,
+                city: "",
+                addressType: { value: "Coordinates", name: "Geografiske koordinater" },
+              },
+              {
+                streetAddress: "Storgata 1",
+                postalCode: 159,
+                city: "OSLO",
+                addressType: { value: "RES", name: "Besøksadresse" },
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].address).toBe("Storgata 1");
+  });
+});
