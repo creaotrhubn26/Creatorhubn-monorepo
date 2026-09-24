@@ -45,7 +45,7 @@ jobs:
           --input-type=module -e
           "import { access } from 'node:fs/promises';
           const root='/app/backend/dist/lightroom-plugin-template/CreatorHubNorge.lrplugin';
-          for (const file of ['Info.lua','PluginInfoProvider.lua','ExportServiceProvider.lua','CreatorHubDefaults.lua','README.txt'])
+          for (const file of ['Info.lua','CreatorHubManifest.json','PluginInit.lua','PluginInfoProvider.lua','ExportServiceProvider.lua','CreatorHubDefaults.lua','README.txt','TranslatedStrings_en.txt','TranslatedStrings_nb.txt'])
           await access(root + '/' + file);
           console.log('Lightroom plugin template: OK')"
 
