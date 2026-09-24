@@ -15,6 +15,7 @@ import {
   CANONICAL_PROFESSIONS,
   isWorkspaceCategory,
   normalizeProfession,
+  workspaceCategoryForProjectType,
 } from "../../frontend/shared/profession-types.ts";
 
 export interface ProjectsRoutesDeps {
@@ -105,12 +106,8 @@ export function setupProjectsRoutes(deps: ProjectsRoutesDeps): void {
     profession: unknown,
     projectType?: unknown,
   ) => {
-    const normalizedProjectType = (readString(projectType) || "")
-      .toLowerCase()
-      .replace(/[\s_-]+/g, "");
-    if (["music", "musikk", "audio", "song", "album", "recording"].includes(normalizedProjectType)) {
-      return "music";
-    }
+    const projectCategory = workspaceCategoryForProjectType(readString(projectType));
+    if (projectCategory) return projectCategory;
     const normalized = normalizeProfession(profession);
     const baseline = CANONICAL_PROFESSIONS.find((entry) => entry.name === normalized)?.workspaceCategory ?? "service";
     if (!normalized) return baseline;

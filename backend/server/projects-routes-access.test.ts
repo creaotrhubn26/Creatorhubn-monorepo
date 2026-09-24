@@ -60,6 +60,12 @@ function buildApp(options: { asyncSession?: boolean } = {}) {
           rowCount: 1,
         };
       }
+      if (sql.includes("FROM projects p") && sql.includes("LIMIT 1") && params[0] === "public-film-ceo") {
+        return {
+          rows: [{ id: "public-film-ceo", user_id: "owner-user", title: "Filmproduksjon", profession: "ceo", category: "service", project_type: "film", _project_source: "public" }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes("SELECT workspace_category FROM profession_types")) {
         return { rows: [{ workspace_category: params[0] === "admin" ? "service" : "music" }], rowCount: 1 };
       }
@@ -232,6 +238,20 @@ describe("generic project access routes", () => {
     expect(captured.some((call) =>
       call.sql.includes("SELECT workspace_category FROM profession_types")
       && call.params[0] === "admin",
+    )).toBe(false);
+  });
+
+  it("uses an explicit film project type even when the owner's profession is service-based", async () => {
+    const { app, captured } = buildApp();
+    const response = await request(app)
+      .get("/api/projects/public-film-ceo/workspace-bootstrap")
+      .set("x-test-user", "owner-user");
+
+    expect(response.status).toBe(200);
+    expect(response.body.workspaceCategory).toBe("visual");
+    expect(captured.some((call) =>
+      call.sql.includes("SELECT workspace_category FROM profession_types")
+      && call.params[0] === "ceo",
     )).toBe(false);
   });
 

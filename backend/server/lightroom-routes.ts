@@ -30,6 +30,7 @@ import {
   CANONICAL_PROFESSIONS,
   isWorkspaceCategory,
   normalizeProfession,
+  workspaceCategoryForProjectType,
 } from '../../frontend/shared/profession-types.ts';
 
 type LightroomSession = {
@@ -698,12 +699,8 @@ async function listEditableLightroomProjects(
   );
   return result.rows
     .filter((project) => {
-      const normalizedProjectType = (project.project_type || '')
-        .toLowerCase()
-        .replace(/[\s_-]+/g, '');
-      if (['music', 'musikk', 'audio', 'song', 'album', 'recording'].includes(normalizedProjectType)) {
-        return false;
-      }
+      const projectCategory = workspaceCategoryForProjectType(project.project_type);
+      if (projectCategory) return projectCategory === 'visual';
       const profession = normalizeProfession(project.project_profession);
       const baselineCategory = CANONICAL_PROFESSIONS.find(
         (candidate) => candidate.name === profession,
