@@ -37,7 +37,26 @@
  * nøktern («Foto av …»): ingen har sett bildet som velges, så den skal ikke
  * påstå detaljer. Seeden skriver alt-teksten; bildet og krediteringen skrives
  * bare av Commons-scriptet.
+ *
+ * Flere områder (24.09.2026): DEMO_AREAS samler Oslo (denne filen), Lørenskog
+ * (reiseguide-demo-data-lorenskog.ts) og Nesoddtangen
+ * (reiseguide-demo-data-nesoddtangen.ts). DEMO_POIS er alle stedene flatt, og
+ * DEMO_CHAPTER_PROMPTS og DEMO_HERO_IMAGES dekker alle områdene. Id-er og
+ * slugger er unike på tvers av områdene (slug er UNIQUE i guide_pois).
  */
+
+import {
+  LORENSKOG_AREA_INFO,
+  LORENSKOG_CHAPTER_PROMPTS,
+  LORENSKOG_HERO_IMAGES,
+  LORENSKOG_POIS,
+} from "./reiseguide-demo-data-lorenskog.js";
+import {
+  NESODDTANGEN_AREA_INFO,
+  NESODDTANGEN_CHAPTER_PROMPTS,
+  NESODDTANGEN_HERO_IMAGES,
+  NESODDTANGEN_POIS,
+} from "./reiseguide-demo-data-nesoddtangen.js";
 
 export type DemoLang = "nb" | "en";
 
@@ -83,6 +102,7 @@ export interface DemoPoi {
   quiz: Record<DemoLang, DemoQuizQuestion[]>;
 }
 
+/** Oslo-området (det første). Stedene ligger i OSLO_POIS; alle områdene er i DEMO_AREAS. */
 export const DEMO_AREA = {
   id: "area_oslo_kvadraturen",
   slug: "oslo-kvadraturen-festningen-operaen",
@@ -100,7 +120,7 @@ export const DEMO_CATEGORIES = [
   { id: "arkitektur", sortOrder: 4, labels: { nb: "Arkitektur", en: "Architecture" } },
 ];
 
-export const DEMO_POIS: DemoPoi[] = [
+const OSLO_POIS: DemoPoi[] = [
   {
     id: "poi_akershus_festning",
     slug: "akershus-festning",
@@ -865,6 +885,31 @@ export const DEMO_POIS: DemoPoi[] = [
   },
 ];
 
+export interface DemoArea {
+  id: string;
+  slug: string;
+  name: string;
+  defaultLang: DemoLang;
+  center: { lat: number; lng: number };
+  bbox: { south: number; west: number; north: number; east: number };
+  priceNok: number;
+  pois: DemoPoi[];
+}
+
+/**
+ * Alle demo-områdene, hvert med sine egne steder. Oslo (Kvadraturen) først og
+ * uendret; Lørenskog og Nesoddtangen (24.09.2026) ligger i egne filer med
+ * samme konvensjoner og samme pris. Seeden skriver area_id per sted herfra.
+ */
+export const DEMO_AREAS: DemoArea[] = [
+  { ...DEMO_AREA, pois: OSLO_POIS },
+  { ...LORENSKOG_AREA_INFO, priceNok: DEMO_AREA.priceNok, pois: LORENSKOG_POIS },
+  { ...NESODDTANGEN_AREA_INFO, priceNok: DEMO_AREA.priceNok, pois: NESODDTANGEN_POIS },
+];
+
+/** Alle steder i alle områder, flatt (Commons-scriptet og testene). */
+export const DEMO_POIS: DemoPoi[] = DEMO_AREAS.flatMap((area) => area.pois);
+
 export interface DemoChapterPrompt {
   chapterNo: number;
   kind: "look" | "guess";
@@ -1107,6 +1152,8 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
       },
     ],
   },
+  ...LORENSKOG_CHAPTER_PROMPTS,
+  ...NESODDTANGEN_CHAPTER_PROMPTS,
 };
 
 /**
@@ -1165,4 +1212,6 @@ export const DEMO_HERO_IMAGES: Record<string, DemoHeroImageSource> = {
     titleMustIncludeAny: ["Opera", "Operahuset", "Operaen"],
     titleMustExclude: ["Deichman", "bibliotek", "library", "Munch", "Barcode", "interior", "interiør", "foyer"],
   },
+  ...LORENSKOG_HERO_IMAGES,
+  ...NESODDTANGEN_HERO_IMAGES,
 };

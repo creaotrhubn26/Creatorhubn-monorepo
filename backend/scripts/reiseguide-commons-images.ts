@@ -12,7 +12,8 @@
  * migrasjonsbruker og MIGRATION_OWNER_ROLE som seed-reiseguide-demo.ts.
  * Commons nås bare fra runneren (utviklings-skymiljøet blokkerer det).
  *
- * Hvor det letes står i DEMO_HERO_IMAGES i server/reiseguide-demo-data.ts,
+ * Går gjennom alle stedene i alle områdene (DEMO_AREAS). Hvor det letes står
+ * i DEMO_HERO_IMAGES i server/reiseguide-demo-data.ts,
  * reglene (lisens, størrelse, titler) i server/reiseguide-commons-images.ts.
  * Finnes ingen godkjent kandidat for et sted, varsles det og stedet røres
  * ikke (eksisterende bilde beholdes); scriptet feiler aldri på det.
@@ -26,7 +27,7 @@ import {
   type FetchLike,
   type ResolveResult,
 } from "../server/reiseguide-commons-images.ts";
-import { DEMO_HERO_IMAGES, DEMO_POIS, type DemoLang } from "../server/reiseguide-demo-data.ts";
+import { DEMO_AREAS, DEMO_HERO_IMAGES, DEMO_POIS, type DemoLang } from "../server/reiseguide-demo-data.ts";
 
 const LANGS: DemoLang[] = ["nb", "en"];
 const IN_ACTIONS = process.env.GITHUB_ACTIONS === "true";
@@ -72,7 +73,7 @@ async function main(): Promise<void> {
   }
 
   const fetchImpl: FetchLike = (url, init) => fetch(url, init);
-  const results: { poiId: string; title: string; result: ResolveResult }[] = [];
+  const results: { poiId: string; area: string; title: string; result: ResolveResult }[] = [];
   for (const poi of DEMO_POIS) {
     const source = DEMO_HERO_IMAGES[poi.id];
     if (!source) {
@@ -84,12 +85,14 @@ async function main(): Promise<void> {
     if (!result.chosen) {
       warn(`${poi.slug}: ingen godkjent kandidat blant ${result.considered} filer; stedet røres ikke`);
     }
-    results.push({ poiId: poi.id, title: poi.translations.nb.title, result });
+    const area = DEMO_AREAS.find((a) => a.pois.some((p) => p.id === poi.id))?.slug ?? "";
+    results.push({ poiId: poi.id, area, title: poi.translations.nb.title, result });
   }
 
   printTable([
-    ["Sted", "Fil", "Opphav", "Lisens", "Via"],
-    ...results.map(({ title, result }) => [
+    ["Område", "Sted", "Fil", "Opphav", "Lisens", "Via"],
+    ...results.map(({ area, title, result }) => [
+      area,
       title,
       result.chosen?.title ?? "(ingen)",
       result.chosen?.author ?? "",
