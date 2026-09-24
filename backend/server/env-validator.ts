@@ -199,6 +199,89 @@ export function formatValidationReport(report: ValidationReport): string {
  * Validate, log report, og avbryt prosessen hvis REQUIRED-vars mangler.
  * Kalles ved boot i index.ts.
  */
+// ─────────────────────────────────────────────────────────
+// Hvilken database snakker vi faktisk med?
+//
+// Neon-brancher av produksjon er komplette kopier: samme tabeller, samme
+// rader, samme antall scener. Fra et spørringsresultat er de umulige å skille
+// fra prod. Eneste forskjell er verten i DATABASE_URL, og den leser ingen.
+//
+// Feilen dette fanger, begge veier:
+//   - du tror du er på prod, men skriver i en kopi (endringen «forsvinner»)
+//   - du tror du er på en kopi, men skriver i prod (ekte data endres)
+//
+// Vi logger derfor alltid verten ved boot, og roper hvis den ser ut som
+// produksjon mens NODE_ENV ikke er production.
+// ─────────────────────────────────────────────────────────
+
+/** Verten i en connection string, uten brukernavn og passord. */
+export function databaseHostLabel(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const db = u.pathname.replace(/^\//, "") || "?";
+    return `${u.hostname}/${db}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Neon-endepunkt for produksjon. Settes i Render, ikke i koden, slik at et
+ * bytte av endepunkt ikke krever ny deploy. Uten den gjetter vi ikke — da
+ * logger vi bare verten, og sier ingenting om hvorvidt det er prod.
+ */
+function productionHostHint(): string | null {
+  const v = process.env.PRODUCTION_DATABASE_HOST;
+  return typeof v === "string" && v.trim() ? v.trim().toLowerCase() : null;
+}
+
+export interface DatabaseTargetReport {
+  host: string | null;
+  looksLikeProduction: boolean | null;
+  nodeEnv: string;
+  mismatch: boolean;
+}
+
+export function describeDatabaseTarget(
+  url: string | undefined = process.env.DATABASE_URL,
+  nodeEnv: string = process.env.NODE_ENV ?? "development",
+): DatabaseTargetReport {
+  const host = databaseHostLabel(url);
+  const hint = productionHostHint();
+  const looksLikeProduction = host && hint ? host.toLowerCase().includes(hint) : null;
+  return {
+    host,
+    looksLikeProduction,
+    nodeEnv,
+    mismatch: looksLikeProduction === true && nodeEnv !== "production",
+  };
+}
+
+export function reportDatabaseTarget(): DatabaseTargetReport {
+  const r = describeDatabaseTarget();
+  if (!r.host) {
+    // eslint-disable-next-line no-console
+    console.warn("⚠️  DATABASE_URL kunne ikke tolkes — klarer ikke si hvilken database vi bruker.");
+    return r;
+  }
+  const suffix =
+    r.looksLikeProduction === true ? " (PRODUKSJON)"
+    : r.looksLikeProduction === false ? " (ikke produksjon)"
+    : " (ukjent — sett PRODUCTION_DATABASE_HOST for å skille prod fra Neon-kopier)";
+  // eslint-disable-next-line no-console
+  console.log(`🗄️  Database: ${r.host}${suffix} · NODE_ENV=${r.nodeEnv}`);
+  if (r.mismatch) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `🔴 ADVARSEL: dette ser ut som PRODUKSJONSDATABASEN, men NODE_ENV=${r.nodeEnv}. ` +
+      "Skriving herfra — inkludert drizzle-kit push og seed-skript — treffer ekte kundedata. " +
+      "Er dette med vilje? Hvis ikke: bytt DATABASE_URL til en Neon-branch før du fortsetter.",
+    );
+  }
+  return r;
+}
+
 export function validateEnvOrExit(): void {
   const report = validateEnv();
   // eslint-disable-next-line no-console
@@ -212,6 +295,8 @@ export function validateEnvOrExit(): void {
     );
     process.exit(1);
   }
+
+  reportDatabaseTarget();
 
   const missingRecommended = report.recommended.filter((r) => r.status !== "ok");
   if (missingRecommended.length > 0) {
