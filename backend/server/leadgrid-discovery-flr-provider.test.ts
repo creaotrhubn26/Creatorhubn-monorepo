@@ -446,3 +446,90 @@ describe("felter slik FLR faktisk leverer dem", () => {
     expect(candidates[0].address).toBe("Storgata 1");
   });
 });
+
+describe("når NHN taper kappløpet med sin egen timeout", () => {
+  // Produksjonsendepunktet bruker 13–15 s på å generere 23,5 MB og har en
+  // gateway-timeout på 15. Begge utfallene under er målt 2026-09-24.
+
+  it("prøver på nytt etter 504, og lykkes når cachen er varm", async () => {
+    // 504-kroppen er 24 bytes. Før denne fiksen ble 504 kastet umiddelbart:
+    // retry-listen hadde bare 429 og 503.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall < 3) {
+        return new Response('{"error":"timeout"}', {
+          status: 504,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(3);
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("prøver på nytt når strømmen dør MENS kroppen lastes ned", async () => {
+    // Statuslinjen kom med 200, så retry-løkka var alt ute av bildet da
+    // nedlastingen røk. Kroppen leses nå inne i løkka.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall === 1) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          arrayBuffer: async () => {
+            throw new TypeError("terminated");
+          },
+        } as unknown as Response;
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(2);
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("prøver IKKE på nytt når svaret er ugyldig JSON", async () => {
+    // Et ødelagt svar blir ikke gyldig av å hentes igjen. Skillet mellom
+    // transportbrudd og ugyldig innhold er hele poenget.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      return new Response("{ ikke json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    await expect(provider.search(input())).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+    expect(kall).toBe(1);
+  });
+});

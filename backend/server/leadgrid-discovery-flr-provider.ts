@@ -14,7 +14,20 @@ const FLR_SCOPE = "nhn:flr/export";
 const FLR_CONTRACTS_PATH = "/v1/contracts";
 const MAX_RESPONSE_BYTES = 50 * 1_024 * 1_024;
 const DEFAULT_TIMEOUT_MS = 20_000;
-const MAX_RETRIES = 2;
+/**
+ * Fem forsøk, ikke tre.
+ *
+ * NHNs produksjonsendepunkt bruker 13–15 sekunder på å generere svaret på
+ * 23,5 MB, og har selv en gateway-timeout på 15. Det kappløper med seg selv:
+ * et kaldt kall gir 504 omtrent like ofte som 200 (målt 2026-09-24, tre
+ * forsøk på rad tapte, det fjerde vant på 12,7 s).
+ *
+ * Kappløpet er vinnbart, og gevinsten varer: første kall som kommer gjennom
+ * varmer en cache, og da svarer den på under ett sekund. Discovery-kjøringer
+ * er bakgrunnsjobber som allerede tar minutter, så inntil ~75 sekunder brukt
+ * på å komme gjennom er en god handel mot en kjøring som feiler.
+ */
+const MAX_RETRIES = 4;
 
 export const FLR_ENDPOINTS = {
   test: {
@@ -450,12 +463,30 @@ function normalizeContracts(
     });
 }
 
+/**
+ * Leser kroppen, og skiller et transportbrudd fra et ugyldig svar.
+ *
+ * Produksjonssvaret er 23,5 MB (målt 2026-09-24, test var 15,2 MB), og NHN
+ * har en gateway-timeout på 15 sekunder. Et kaldt kall bruker 13–15 s bare på
+ * å sende det, så strømmen rekker å bli drept midtveis selv om statuslinjen
+ * kom fint tilbake med 200.
+ *
+ * Forskjellen betyr noe: et brudd skal prøves på nytt, ugyldig JSON skal
+ * ikke. Uten skillet ville vi enten gitt opp på noe forbigående, eller
+ * hamret på et svar som aldri kommer til å bli gyldig.
+ */
 async function responseJson(response: Response): Promise<unknown> {
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
     throw new DiscoveryRegistryError("invalid_response");
   }
-  const bytes = await response.arrayBuffer();
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch {
+    // Strømmen døde mens kroppen ble lest. Forbigående — prøv igjen.
+    throw new DiscoveryRegistryError("network_error", { retryable: true });
+  }
   if (bytes.byteLength > MAX_RESPONSE_BYTES) {
     throw new DiscoveryRegistryError("invalid_response");
   }
@@ -583,6 +614,7 @@ export function createDiscoveryFlrProvider(
       let token = await accessToken();
       const sourceUri = `${configured.endpoint.apiBaseUrl}${FLR_CONTRACTS_PATH}`;
       let response: Response | null = null;
+      let payload: unknown;
       let refreshedRejectedToken = false;
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
         await (
@@ -601,7 +633,23 @@ export function createDiscoveryFlrProvider(
           },
           timeoutMs,
         );
-        if (response.ok) break;
+        if (response.ok) {
+          // Kroppen leses her inne, ikke etter løkka: på denne mengden data
+          // er nedlastingen der det ryker, og et brudd midt i den fortjener
+          // samme nye forsøk som en 503. Et varmt gjenforsøk er dessuten
+          // raskt — NHN cacher svaret (0,7 s mot 13 s målt 2026-09-24).
+          try {
+            payload = await responseJson(response);
+            break;
+          } catch (error) {
+            const brudd =
+              error instanceof DiscoveryRegistryError &&
+              error.code === "network_error";
+            if (!brudd || attempt === MAX_RETRIES) throw error;
+            await wait(250 * 2 ** attempt);
+            continue;
+          }
+        }
         if (
           response.status === 401 &&
           !dependencies.accessTokenProvider &&
@@ -612,7 +660,17 @@ export function createDiscoveryFlrProvider(
           token = await accessToken();
           continue;
         }
-        const retryable = response.status === 429 || response.status === 503;
+        // 502/504 hører hjemme her sammen med 429/503. NHNs produksjons-
+        // endepunkt bruker 13–15 sekunder på å generere svaret og har selv en
+        // gateway-timeout på 15, så det kappløper med seg selv: et kaldt kall
+        // gir 504 med en 24 bytes kropp omtrent like ofte som det gir 200.
+        // Målt 2026-09-24. Første kall som kommer gjennom varmer en cache,
+        // og da svarer den på 0,7 s — så det nye forsøket er nesten gratis.
+        const retryable =
+          response.status === 429 ||
+          response.status === 502 ||
+          response.status === 503 ||
+          response.status === 504;
         if (!retryable || attempt === MAX_RETRIES) {
           throw new DiscoveryRegistryError("upstream_unavailable", {
             retryable,
@@ -631,7 +689,7 @@ export function createDiscoveryFlrProvider(
           retryable: true,
         });
       }
-      const parsed = contractsSchema.safeParse(await responseJson(response));
+      const parsed = contractsSchema.safeParse(payload);
       if (!parsed.success) throw new DiscoveryRegistryError("invalid_response");
       const normalized = normalizeContracts(
         parsed.data,
