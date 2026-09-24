@@ -19,7 +19,7 @@ import {
   type CommonsPage,
   type FetchLike,
 } from "./reiseguide-commons-images.js";
-import { DEMO_HERO_IMAGES, DEMO_POIS } from "./reiseguide-demo-data.js";
+import { DEMO_AREAS, DEMO_HERO_IMAGES, DEMO_POIS } from "./reiseguide-demo-data.js";
 
 const page = (title: string, over: {
   width?: number;
@@ -386,6 +386,22 @@ describe("demo-oppsettet", () => {
       expect(source.categories.length + source.searchTerms.length).toBeGreaterThan(0);
       expect(poi.translations.nb.heroImageAlt).toBe(`Foto av ${poi.translations.nb.title}`);
       expect(poi.translations.en.heroImageAlt).toMatch(/^Photo of /);
+    }
+  });
+
+  it("dekker alle stedene i alle områdene", () => {
+    expect(DEMO_AREAS.length).toBeGreaterThanOrEqual(3);
+    for (const area of DEMO_AREAS) {
+      expect(area.pois.length, area.slug).toBeGreaterThan(0);
+      for (const poi of area.pois) expect(DEMO_HERO_IMAGES[poi.id], `${area.slug}/${poi.id}`).toBeDefined();
+    }
+  });
+
+  it("lar et vanlig filnavn for stedet («<navn> <by>.jpg») passere sine egne filnavn-krav", () => {
+    for (const poi of DEMO_POIS) {
+      const city = poi.translations.nb.locationLabel.split(",")[0];
+      const title = `File:${poi.translations.nb.title} ${city}.jpg`;
+      expect(titleMatchesSource(title, DEMO_HERO_IMAGES[poi.id]), `${poi.id}: ${title}`).toBe(true);
     }
   });
 });

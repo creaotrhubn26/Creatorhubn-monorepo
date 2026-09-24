@@ -1,0 +1,185 @@
+name: SenseAid Explore lag Soniox-lyd
+
+# Lager lyd og teksting med Soniox TTS for alle manus i SenseAid Explore
+# (`npm run reiseguide:audio -- --area all`), legger mp3 i CreatorHubs S3-bøtte
+# under products/senseaid-explore/… og skriver guide_poi_audio/guide_poi_captions.
+# Hopper over manus som allerede har lyd for samme versjon, så jobben kan
+# kjøres på nytt etter hver seed; «force» lager alt på nytt.
+#
+# Nøklene ligger allerede i Render (CreatorHub-backenden), så jobben leser dem
+# derfra med RENDER_API_KEY i stedet for å kreve egne GitHub-secrets:
+# SENSEAID_SONIOX_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# CREATORHUB_S3_BUCKET (påkrevd) og CREATORHUB_S3_REGION, SENSEAID_SONIOX_VOICE
+# (valgfrie). Verdiene maskeres i loggen. Bare lesing, aldri skriving til Render.
+#
+# Manuell trigger i Production-miljøet (samme database som seed-jobben). Kjør
+# «SenseAid Explore seed demo-innhold» først, så manusene finnes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Bare vis hvilke manus som ville fått lyd (ingen Soniox/S3/DB-skriving)"
+        type: boolean
+        default: false
+      force:
+        description: "Lag lyd på nytt også for manus som allerede har lyd"
+        type: boolean
+        default: false
+
+concurrency:
+  group: senseaid-generate-audio
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
+  RENDER_SERVICE_ID: srv-d76ob60ule4c73dv2p60
+
+jobs:
+  audio:
+    name: Lag Soniox-lyd for SenseAid Explore
+    environment: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Validate production credentials
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::PRODUCTION_MIGRATION_DATABASE_URL is not configured in the Production environment"
+            exit 1
+          fi
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::error::RENDER_API_KEY is not configured"
+            exit 1
+          fi
+          echo "::add-mask::$DATABASE_URL"
+          echo "::add-mask::$RENDER_API_KEY"
+          node -e 'const u=new URL(process.env.DATABASE_URL);if(!["postgres:","postgresql:"].includes(u.protocol)||!u.hostname||!u.username)process.exit(1)'
+
+      # Leser én variabel om gangen (GET /env-vars/<KEY>), maskerer verdien og
+      # gir den videre til senere steg via GITHUB_ENV.
+      - name: Hent Soniox- og S3-nøkler fra Render
+        if: ${{ !inputs.dry_run }}
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          fetch_var() {
+            local key="$1" required="$2" body value
+            if ! body=$(curl -fsS --retry 3 --retry-all-errors --connect-timeout 5 -m 30 \
+                -H "Authorization: Bearer $RENDER_API_KEY" \
+                -H "Accept: application/json" \
+                "https://api.render.com/v1/services/$RENDER_SERVICE_ID/env-vars/$key"); then
+              body=""
+            fi
+            value=$(printf '%s' "$body" | python3 -c 'import json,sys
+          raw=sys.stdin.read()
+          try:
+              data=json.loads(raw) if raw else {}
+          except ValueError:
+              data={}
+          nested=data.get("envVar", {}) if isinstance(data, dict) else {}
+          print(data.get("value", nested.get("value", "")) if isinstance(data, dict) else "")')
+            if [ -z "$value" ]; then
+              if [ "$required" = "required" ]; then
+                echo "::error::$key finnes ikke som miljøvariabel på Render-tjenesten $RENDER_SERVICE_ID"
+                return 1
+              fi
+              echo "$key er ikke satt i Render (valgfri)."
+              return 0
+            fi
+            echo "::add-mask::$value"
+            {
+              echo "$key<<__SENSEAID_EOF__"
+              printf '%s\n' "$value"
+              echo "__SENSEAID_EOF__"
+            } >> "$GITHUB_ENV"
+            echo "$key hentet fra Render."
+          }
+          fetch_var SENSEAID_SONIOX_API_KEY required
+          fetch_var AWS_ACCESS_KEY_ID required
+          fetch_var AWS_SECRET_ACCESS_KEY required
+          fetch_var CREATORHUB_S3_BUCKET required
+          fetch_var CREATORHUB_S3_REGION optional
+          fetch_var SENSEAID_SONIOX_VOICE optional
+
+      # Samme installasjon som seed-jobben: dev-pakker (tsx) og optional-pakker
+      # (esbuild-binæren) må med.
+      - name: Install backend runtime (tsx + pg)
+        run: npm ci --prefix backend --workspaces=false --ignore-scripts
+      - name: Verify tsx can transform TypeScript
+        run: |
+          ./backend/node_modules/.bin/tsx --eval 'const n: number = 1; console.log("tsx ok", n)'
+
+      - name: Verify migration role before writing
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          MIGRATION_LOGIN_ROLE: creatorhub_migration_login
+          MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+          MIGRATION_OWNED_SCHEMAS: public
+        run: node backend/scripts/run-production-migrations.mjs --preflight-only
+
+      - name: Lag lyd og teksting (alle områder)
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          MIGRATION_OWNER_ROLE: creatorhub_schema_owner
+          AUDIO_DRY_RUN: ${{ inputs.dry_run }}
+          AUDIO_FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          args=(--area all)
+          if [ "$AUDIO_DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$AUDIO_FORCE" = "true" ]; then args+=(--force); fi
+          npm run reiseguide:audio --prefix backend -- "${args[@]}"
+
+      # Sjekker at appen faktisk får lyd: første sted i hvert område skal ha
+      # audio.url på første kapittel, og lenken (302 til signert S3-URL) skal
+      # gi en fil. Fanger manglende IAM-tilgang til products/senseaid-explore/.
+      - name: Verify public API serves playable audio
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          areas=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas")
+          failed=0
+          for slug in $(jq -r '.areas[].slug' <<<"$areas"); do
+            area=$(curl -fsS --connect-timeout 5 --max-time 30 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas/$slug?lang=nb")
+            poi=$(jq -r '.pois[0].slug // .pois[0].id // ""' <<<"$area")
+            if [ -z "$poi" ]; then
+              echo "::warning::$slug har ingen steder"
+              continue
+            fi
+            detail=$(curl -fsS --connect-timeout 5 --max-time 30 -H "Accept: application/json" "$BACKEND_URL/api/guide/pois/$poi?lang=nb")
+            url=$(jq -r '.poi.variants.narration.chapters[0].audio.url // ""' <<<"$detail")
+            if [ -z "$url" ]; then
+              echo "::error::$slug/$poi: første kapittel har ingen lyd i API-et"
+              failed=1
+              continue
+            fi
+            bytes=$(curl -fsSL --connect-timeout 5 --max-time 30 -r 0-1023 -o /dev/null -w '%{size_download}' "$url" || echo 0)
+            if [ "$bytes" -lt 1 ]; then
+              echo "::error::$slug/$poi: lydlenken ga ingen fil (sjekk IAM-tilgang til products/senseaid-explore/)"
+              failed=1
+              continue
+            fi
+            echo "$slug/$poi: lyd OK ($bytes byte hentet)"
+          done
+          exit "$failed"

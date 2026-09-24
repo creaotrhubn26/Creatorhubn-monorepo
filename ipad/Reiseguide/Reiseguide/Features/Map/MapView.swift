@@ -117,6 +117,12 @@ struct MapView: View {
             updateRoute()
         }
         .onDisappear { routeService.clear() }
+        // Nytt område (områdevelgeren): flytt kartet dit og glem valg fra det gamle.
+        .onChange(of: env.store.area?.id) { _, _ in
+            selectedPoiId = nil
+            selectedCategory = nil
+            if let areaRegion { cameraPosition = .region(areaRegion) }
+        }
         .onChange(of: selectedPoiId) { _, _ in updateRoute() }
         .onChange(of: showList) { _, _ in updateRoute() }
         .onChange(of: env.location.fix) { _, newFix in

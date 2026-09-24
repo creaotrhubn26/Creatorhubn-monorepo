@@ -83,7 +83,7 @@ final class AudioEngine {
     }
 
     func play() {
-        activateSession()
+        Self.activatePlaybackSession()
         isPlaying = true
         if let player {
             player.rate = Float(rate)
@@ -156,7 +156,9 @@ final class AudioEngine {
         simulatedPositionS = 0
     }
 
-    private func activateSession() {
+    /// .playback + .spokenAudio: lyden (og opplesningen) høres selv med
+    /// lydløs-bryteren på. Brukes også av veiviserens tale.
+    static func activatePlaybackSession() {
         let session = AVAudioSession.sharedInstance()
         do {
             // Ikke .mixWithOthers: appen eier lydstrømmen (8.4, punkt 3).

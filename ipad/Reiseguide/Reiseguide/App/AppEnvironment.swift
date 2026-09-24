@@ -9,6 +9,13 @@
 // orkestratorer rundt ren logikk i Core/ProximityMonitor.swift og
 // Core/TourProgress.swift; RootTabView driver dem med små onChange-hooks når
 // posisjonen eller besøksloggen endrer seg.
+//
+// Flere områder: `store` starter på brukerens valgte område (eller Oslo) så
+// appen kan spille med én gang; `reconcileArea()` bytter til nærmeste område
+// når områdelisten og posisjonen er kjent og brukeren ikke har valgt selv.
+// `selectArea(_:)` er brukerens eget valg fra velgeren. Kart, liste,
+// turprogresjon og paywall leser `store`, så de følger med automatisk;
+// ArrivalCoordinator nullstilles eksplisitt.
 
 import Observation
 import SwiftUI
@@ -29,6 +36,10 @@ final class AppEnvironment {
     /// Sted som skal åpnes i Utforsk-stacken: id eller slug (deep link).
     var pendingPoi: PendingPoi?
 
+    /// Posisjonen har allerede fått velge område denne økten; ikke bytt igjen
+    /// under brukeren hvis de går videre.
+    @ObservationIgnored private var didAutoSelectFromLocation = false
+
     enum PendingPoi: Equatable {
         case id(String)
         case slug(String)
@@ -43,7 +54,10 @@ final class AppEnvironment {
     ) {
         self.settings = settings
         self.api = api
-        self.store = store ?? AreaStore(api: api)
+        self.store = store ?? AreaStore(
+            api: api,
+            areaSlug: AreaSelection.resolveSlug(storedSlug: settings.selectedAreaSlug, areas: [], location: nil)
+        )
         self.location = location
         self.visits = visits
         self.visitSync = VisitSync(settings: settings, visits: visits, transport: api)
@@ -63,6 +77,40 @@ final class AppEnvironment {
     /// Kalles når posisjonen oppdateres (RootTabView).
     func evaluateArrival() {
         arrival.handleLocationUpdate(authorization: location.authorization, fix: location.fix)
+    }
+
+    /// Henter områdelisten ved oppstart og velger område (ReiseguideApp).
+    func prepareAreas() async {
+        await store.loadAreas()
+        reconcileArea()
+    }
+
+    /// Velger område uten at brukeren har valgt selv: nærmeste når posisjonen
+    /// er kjent, ellers Oslo; et lagret valg som backend har fjernet byttes ut.
+    /// Kalles når områdelisten er hentet og når posisjonen oppdateres.
+    func reconcileArea() {
+        guard !store.areas.isEmpty else { return }
+        let fix = location.fix?.coordinate
+        if settings.selectedAreaSlug == nil {
+            guard !didAutoSelectFromLocation else { return }
+            if fix != nil { didAutoSelectFromLocation = true }
+            // Ikke bytt område under en fortelling som allerede spiller.
+            guard !player.hasContent else { return }
+        }
+        let slug = AreaSelection.resolveSlug(storedSlug: settings.selectedAreaSlug, areas: store.areas, location: fix)
+        switchStore(to: slug)
+    }
+
+    /// Brukerens eget valg i områdevelgeren; huskes i AppSettings.
+    func selectArea(_ area: GuideArea) {
+        settings.selectedAreaSlug = area.slug
+        switchStore(to: area.slug)
+    }
+
+    private func switchStore(to slug: String) {
+        guard slug != store.slug else { return }
+        store.select(slug: slug, lang: settings.guideLanguage)
+        arrival.resetForNewArea()
     }
 
     /// Kalles når besøksloggen eller stedene endrer seg (RootTabView).
