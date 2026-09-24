@@ -1807,9 +1807,17 @@ struct MainSidebarView: View {
                 }
                 return true
             }
-            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter]
+            // Nexus hører hjemme i den daglige sløyfa, ikke på hylla med
+            // tilleggsmoduler. Den er riktignok noe man kjøper, som Go,
+            // Kvalitet og Anbud — men de tre er episodiske (flåteadmin,
+            // verifiseringskø, anbudssøk), mens Nexus brukes i hvert møte.
+            // Plassering følger bruksfrekvens, ikke betalingsmodell.
+            //
+            // Entitlementet er upåvirket: visibleItems filtrerer fortsatt, så
+            // en org uten Nexus ser den ikke her heller.
+            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter, .canvas]
             let teamItems: [SidebarItem] = [.team, .leadbook, .salgsledelse]
-            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .canvas, .hub]
+            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .hub]
 
             Section("Arbeid") {
                 ForEach(workItems.filter(visibleItems.contains)) { item in
