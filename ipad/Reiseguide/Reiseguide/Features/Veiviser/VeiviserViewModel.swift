@@ -224,6 +224,8 @@ final class VeiviserViewModel {
         } else {
             let utterance = AVSpeechUtterance(string: text)
             utterance.voice = AVSpeechSynthesisVoice(language: Self.bcp47(for: settings.uiLanguage))
+            // Uten aktiv .playback-sesjon demper lydløs-bryteren talen helt.
+            AudioEngine.activatePlaybackSession()
             synthesizer.speak(utterance)
         }
     }
