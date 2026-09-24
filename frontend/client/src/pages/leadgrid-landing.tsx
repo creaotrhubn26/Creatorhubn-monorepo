@@ -1625,17 +1625,26 @@ function PricingSection() {
                     <Typography sx={{ color: PALETTE.textMuted, fontSize: 14, lineHeight: 1.55, mb: 2 }}>
                       {a.desc}
                     </Typography>
+                    {/* En modul til 0 kr er inkludert i planen, ikke gratis
+                        for alle. «kr 0/mnd» ville sagt det motsatte. */}
                     <Stack direction="row" alignItems="baseline" spacing={1}>
                       <Typography sx={{ fontWeight: 700, fontSize: 24, color: a.accent, lineHeight: 1 }}>
-                        kr {a.priceSoloPro}
+                        {a.priceSoloPro === 0 ? "Inkludert" : `kr ${a.priceSoloPro}`}
                       </Typography>
                       <Typography sx={{ color: PALETTE.textFaint, fontSize: 13 }}>
-                        /mnd på Solo Pro
+                        {a.priceSoloPro === 0 ? "i Solo Pro" : "/mnd på Solo Pro"}
                       </Typography>
                     </Stack>
                     <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
-                      kr {a.priceAgency}/mnd på Agency
+                      {a.priceAgency === 0
+                        ? "Inkludert i Agency"
+                        : `kr ${a.priceAgency}/mnd på Agency`}
                     </Typography>
+                    {typeof a.priceSoloFree === "number" && a.priceSoloFree > 0 && (
+                      <Typography sx={{ color: PALETTE.textFaint, fontSize: 12.5, mt: 0.5 }}>
+                        kr {a.priceSoloFree}/mnd på Solo Free
+                      </Typography>
+                    )}
                   </CardContent>
                 </Card>
               </Grid>

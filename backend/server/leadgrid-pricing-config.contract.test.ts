@@ -15,6 +15,9 @@ import { DEFAULT_PRICING_CONFIG } from "./leadgrid-pricing-config-routes";
 
 const TIER_KEYS = ["key", "name", "price", "tagline", "priceNote", "popular", "cta", "features"];
 const MODULE_KEYS = ["key", "title", "desc", "priceSoloPro", "priceAgency", "accent", "active"];
+// Valgfrie nøkler: Swift-DTO-en må deklarere dem som optional før de tas i
+// bruk, ellers feiler dekodingen på modulene som ikke har dem.
+const MODULE_OPTIONAL_KEYS = ["priceSoloFree"];
 const BUNDLE_KEYS = ["active", "priceAgency", "label"];
 
 const sortedKeys = (o: object) => Object.keys(o).sort();
@@ -31,11 +34,38 @@ describe("leadgrid pricing-config kontrakt", () => {
     expect(DEFAULT_PRICING_CONFIG.tiers.length).toBeGreaterThan(0);
   });
 
-  it("hver modul har nøyaktig camelCase-nøklene", () => {
+  it("hver modul har de påkrevde camelCase-nøklene", () => {
     for (const mod of DEFAULT_PRICING_CONFIG.modules) {
-      expect(sortedKeys(mod)).toEqual([...MODULE_KEYS].sort());
+      const nøkler = sortedKeys(mod);
+      // Alle påkrevde skal være der …
+      expect(nøkler).toEqual(expect.arrayContaining([...MODULE_KEYS]));
+      // … og ingenting utenfor det avtalte settet. Uten denne halvdelen
+      // kunne en ny nøkkel snike seg ut til klienter som ikke kjenner den.
+      const ukjente = nøkler.filter(
+        (n) => !MODULE_KEYS.includes(n) && !MODULE_OPTIONAL_KEYS.includes(n),
+      );
+      expect(ukjente).toEqual([]);
     }
     expect(DEFAULT_PRICING_CONFIG.modules.length).toBeGreaterThan(0);
+  });
+
+  it("priceSoloFree er et tall når den er satt", () => {
+    for (const mod of DEFAULT_PRICING_CONFIG.modules) {
+      if ("priceSoloFree" in mod && mod.priceSoloFree !== undefined) {
+        expect(typeof mod.priceSoloFree).toBe("number");
+      }
+    }
+  });
+
+  it("Nexus er inkludert i Solo Pro og Agency, og koster noe på Solo Free", () => {
+    // Pakkingen er en beslutning, ikke en detalj: notatene hoper seg opp og
+    // blir arkivet kunden ikke vil forlate. Da er Nexus mer verdt som grunn
+    // til å oppgradere enn som separat salg til dem som allerede betaler.
+    const nexus = DEFAULT_PRICING_CONFIG.modules.find((m) => m.key === "nexus");
+    expect(nexus, "Nexus mangler i modullisten").toBeDefined();
+    expect(nexus?.priceSoloPro).toBe(0);
+    expect(nexus?.priceAgency).toBe(0);
+    expect(nexus?.priceSoloFree).toBeGreaterThan(0);
   });
 
   it("bundle har nøyaktig camelCase-nøklene", () => {

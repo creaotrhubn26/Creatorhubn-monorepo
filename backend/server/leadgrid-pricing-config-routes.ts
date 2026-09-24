@@ -38,6 +38,16 @@ export interface PricingConfig {
     key: string;
     title: string;
     desc: string;
+    /**
+     * Pris for Solo Free. Utelatt = modulen selges ikke til gratisplanen.
+     *
+     * Nexus er den første som har den: inkludert i Solo Pro og Agency,
+     * 390 for Solo Free. Notatene hoper seg opp og blir arkivet kunden
+     * ikke vil forlate — da er den mer verdt som grunn til å oppgradere
+     * enn som separat salg til dem som allerede betaler.
+     */
+    priceSoloFree?: number;
+    /** 0 = inkludert i planen, ikke gratis for alle. */
     priceSoloPro: number;
     priceAgency: number;
     accent: string;
@@ -104,6 +114,12 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
       priceSoloPro: 249, priceAgency: 690, accent: "#7ab8ff", active: true,
     },
     {
+      key: "nexus", title: "Nexus",
+      desc: "Pencil-notater koblet til leads: håndskrift som blir søkbar tekst, PDF-annotering, deling i teamet og tidsreise i hver skisse.",
+      priceSoloFree: 390, priceSoloPro: 0, priceAgency: 0,
+      accent: "#f59e0b", active: true,
+    },
+    {
       key: "anbud", title: "Anbud",
       desc: "Søk og overvåk offentlige anskaffelser fra Doffin — med oppdragsgiverens org.nr klart som lead.",
       priceSoloPro: 490, priceAgency: 990, accent: "#818cf8", active: true,
@@ -162,6 +178,9 @@ export function registerLeadgridPricingConfigRoutes(deps: {
     const modOk = o.modules.every(
       (m) => typeof m.key === "string" && typeof m.title === "string" &&
         typeof m.priceSoloPro === "number" && typeof m.priceAgency === "number" &&
+        // Valgfri, men skal være et tall når den er der — ellers kan en
+        // superadmin lagre en streng som havner rett i prisvisningen.
+        (m.priceSoloFree === undefined || typeof m.priceSoloFree === "number") &&
         typeof m.active === "boolean",
     );
     const bundleOk = o.bundle && typeof o.bundle.priceAgency === "number" &&
