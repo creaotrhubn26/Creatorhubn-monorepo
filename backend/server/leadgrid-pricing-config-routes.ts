@@ -116,7 +116,7 @@ export const DEFAULT_PRICING_CONFIG: PricingConfig = {
     {
       key: "nexus", title: "Nexus",
       desc: "Pencil-notater koblet til leads: håndskrift som blir søkbar tekst, PDF-annotering, deling i teamet og tidsreise i hver skisse.",
-      priceSoloFree: 390, priceSoloPro: 0, priceAgency: 0,
+      priceSoloFree: 249, priceSoloPro: 0, priceAgency: 0,
       accent: "#f59e0b", active: true,
     },
     {
