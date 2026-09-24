@@ -55,9 +55,16 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # Gaten sto rød på main fra dag én, og grunnen var ikke produktet:
+      # playwright.config pekte på «localhost», og useAuth.ts autoseeder en
+      # local-admin-sesjon for nøyaktig det vertsnavnet. Gaten var altså
+      # innlogget mens den påsto å måle hva en anonym besøkende ser.
+      # Adressen er nå 127.0.0.1; se kommentaren i playwright.config.ts.
       - name: Run Leadgrid public runtime suite
         env:
           # Tom verdi lar playwright.config starte sin egen dev-server.
+          # PLAYWRIGHT_PREVIEW=1 kjører mot den bygde bundelen i stedet, for
+          # den som vil ha full troverdighet mot produksjon.
           PLAYWRIGHT_BASE_URL: ${{ inputs.base_url || '' }}
         run: npx playwright test e2e/leadgrid-public-runtime.spec.ts --project=chromium
 
