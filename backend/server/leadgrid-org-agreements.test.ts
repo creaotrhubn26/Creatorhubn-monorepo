@@ -21,6 +21,8 @@ const basis = {
   documentText: "Databehandleravtale mellom partene …",
   signerName: "Jon Christian Hillestad",
   signerEmail: "Jon@nerasdirekte.no",
+  signatureText: "Jon Christian Hillestad",
+  signatureStyle: "flyt" as const,
 };
 
 describe("documentHash", () => {
@@ -80,5 +82,90 @@ describe("signAgreement", () => {
     });
     const params = query.mock.calls[0][1] as string[];
     expect(params[9]).toContain("986330682");
+  });
+});
+
+describe("avtaledokumentene", () => {
+  it("navngir Creatorhub AS med organisasjonsnummer i alle påkrevde avtaler", async () => {
+    // «Leadgrid» er et produktnavn. En databehandleravtale må navngi et
+    // rettssubjekt, ellers vet ikke kunden hvem de har avtale med.
+    const { AGREEMENT_DOCUMENTS } = await import("./leadgrid-agreement-documents.js");
+    for (const doc of Object.values(AGREEMENT_DOCUMENTS)) {
+      if (!doc.required) continue;
+      expect(doc.body, doc.type).toContain("Creatorhub AS");
+      expect(doc.body, doc.type).toContain("937518684");
+    }
+  });
+
+  it("dekker punktene artikkel 28 nr. 3 krever", async () => {
+    const { AGREEMENT_DOCUMENTS } = await import("./leadgrid-agreement-documents.js");
+    // Linjeskift i avtaleteksten skal ikke avgjøre om et krav er dekket.
+    const dpa = AGREEMENT_DOCUMENTS.dpa.body.toLowerCase().replace(/\s+/g, " ");
+    for (const krav of [
+      "dokumenterte instrukser",
+      "taushetsplikt",
+      "underdatabehandler",
+      "revisjon",
+      "sletter",
+      "brudd på personopplysningssikkerheten",
+    ]) {
+      expect(dpa, krav).toContain(krav);
+    }
+  });
+
+  it("skiller personvernerklæringen fra databehandleravtalen", async () => {
+    // De regulerer ulike ting: DPA kundens data, personvern brukerens egne.
+    const { AGREEMENT_DOCUMENTS } = await import("./leadgrid-agreement-documents.js");
+    expect(AGREEMENT_DOCUMENTS.privacy.body).toContain("gjelder opplysninger om DEG");
+  });
+
+  it("sier i intensjonsavtalen at klokka starter ved første søk", async () => {
+    const { AGREEMENT_DOCUMENTS } = await import("./leadgrid-agreement-documents.js");
+    expect(AGREEMENT_DOCUMENTS.loi.body).toContain("første søk");
+    expect(AGREEMENT_DOCUMENTS.loi.body).toContain("ikke ved registrering");
+  });
+
+  it("endrer hash når en avtaletekst endres", async () => {
+    const { AGREEMENT_DOCUMENTS } = await import("./leadgrid-agreement-documents.js");
+    const original = documentHash(AGREEMENT_DOCUMENTS.dpa.body);
+    const endret = documentHash(AGREEMENT_DOCUMENTS.dpa.body + " ");
+    expect(endret).not.toBe(original);
+  });
+});
+
+describe("underskrift", () => {
+  it("avviser signering uten underskrift", async () => {
+    const { pool: p } = pool();
+    await expect(
+      signAgreement(p, { ...basis, signatureText: "   " }),
+    ).rejects.toMatchObject({ code: "missing_signature" });
+  });
+
+  it("avviser underskrift som ikke er samme navn som signataren", async () => {
+    const { pool: p } = pool();
+    await expect(
+      signAgreement(p, { ...basis, signatureText: "Kari Nordmann" }),
+    ).rejects.toMatchObject({ code: "signature_mismatch" });
+  });
+
+  it("godtar samme navn med annen bruk av mellomrom og store bokstaver", async () => {
+    const { pool: p, query } = pool();
+    await signAgreement(p, { ...basis, signatureText: "  jon christian   hillestad " });
+    // Underskriften lagres slik den ble skrevet, bare trimmet i endene.
+    expect(query.mock.calls[0][1]).toContain("jon christian   hillestad");
+  });
+
+  it("avviser en signaturstil vi ikke kjenner", async () => {
+    const { pool: p } = pool();
+    await expect(
+      signAgreement(p, { ...basis, signatureStyle: "krusedull" as never }),
+    ).rejects.toMatchObject({ code: "invalid_signature_style" });
+  });
+
+  it("returnerer underskriften slik den skal gjengis i kvitteringen", async () => {
+    const { pool: p } = pool();
+    const ut = await signAgreement(p, basis);
+    expect(ut.signature_text).toBe("Jon Christian Hillestad");
+    expect(ut.signature_style).toBe("flyt");
   });
 });
