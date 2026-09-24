@@ -17,6 +17,7 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { apiRequest } from "@/lib/queryClient";
+import { StripeConfigCard } from "./StripeConfigCard";
 
 interface Kunde {
   organization_id: string;
@@ -90,6 +91,7 @@ export function CustomerOverviewTab() {
 
   return (
     <Stack spacing={2}>
+      <StripeConfigCard />
       {medAvvik > 0 && (
         <Alert severity="warning" icon={<WarningAmberIcon />}>
           {medAvvik} av {kunder.length} kunder har noe som må håndteres.

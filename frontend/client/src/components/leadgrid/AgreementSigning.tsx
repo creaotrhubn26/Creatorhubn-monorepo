@@ -13,7 +13,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Accordion, AccordionDetails, AccordionSummary, Alert, AlertTitle, Box,
-  Button, Chip, CircularProgress, Divider, Stack, TextField, Typography,
+  Button, Chip, CircularProgress, Divider, FormControl, InputLabel, MenuItem,
+  Select, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -55,6 +56,12 @@ export function AgreementSigning({ projectId }: { projectId: string }) {
   const [stil, setStil] = useState<SignaturStil>("flyt");
   const [signerer, setSignerer] = useState<string | null>(null);
   const [kvittering, setKvittering] = useState<string | null>(null);
+  // Intensjonsavtalen er der kunden sier hva de faktisk kjøper. Uten plan og
+  // betalingsmåte er den en hensiktserklæring uten innhold, og Stripe har
+  // ingenting å bygge et abonnement på.
+  const [plan, setPlan] = useState("solo_pro");
+  const [intervall, setIntervall] = useState<"month" | "year">("month");
+  const [betaling, setBetaling] = useState<"faktura" | "kort">("faktura");
   const [feil, setFeil] = useState<string | null>(null);
 
   const hent = useCallback(async () => {
@@ -92,6 +99,13 @@ export function AgreementSigning({ projectId }: { projectId: string }) {
           signer_email: epost.trim(),
           signature_text: signatur.trim(),
           signature_style: stil,
+          ...(doc.confirmsBilling
+            ? {
+                plan_key: plan,
+                billing_interval: intervall,
+                payment_method: betaling,
+              }
+            : {}),
           confirmed_billing: doc.confirmsBilling && faktura ? faktura : null,
         },
       });
@@ -102,7 +116,7 @@ export function AgreementSigning({ projectId }: { projectId: string }) {
     } finally {
       setSignerer(null);
     }
-  }, [projectId, navn, rolle, epost, signatur, stil, faktura, hent]);
+  }, [projectId, navn, rolle, epost, signatur, stil, plan, intervall, betaling, faktura, hent]);
 
   if (laster) return <CircularProgress />;
 
@@ -203,6 +217,50 @@ export function AgreementSigning({ projectId }: { projectId: string }) {
               >
                 {doc.body}
               </Box>
+
+              {doc.confirmsBilling && !doc.signed && (
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>Hva avtalen gjelder</Typography>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                    <FormControl fullWidth>
+                      <InputLabel id="plan-valg">Plan</InputLabel>
+                      <Select
+                        labelId="plan-valg" label="Plan" value={plan}
+                        onChange={(e) => setPlan(String(e.target.value))}
+                      >
+                        <MenuItem value="solo_pro">Solo Pro</MenuItem>
+                        <MenuItem value="agency">Agency</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <FormControl fullWidth>
+                      <InputLabel id="intervall-valg">Fakturering</InputLabel>
+                      <Select
+                        labelId="intervall-valg" label="Fakturering" value={intervall}
+                        onChange={(e) => setIntervall(e.target.value as "month" | "year")}
+                      >
+                        <MenuItem value="month">Månedlig</MenuItem>
+                        <MenuItem value="year">Årlig</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2, mb: 0.75 }}>
+                    Betalingsmåte
+                  </Typography>
+                  <ToggleButtonGroup
+                    exclusive value={betaling}
+                    onChange={(_, v) => { if (v) setBetaling(v as "faktura" | "kort"); }}
+                    sx={{ "& .MuiToggleButton-root": { textTransform: "none", px: 2.5, minHeight: 44 } }}
+                  >
+                    <ToggleButton value="faktura">Faktura på e-post</ToggleButton>
+                    <ToggleButton value="kort">Kort</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                    {betaling === "faktura"
+                      ? "Faktura sendes til adressen under, med 14 dagers forfall."
+                      : "Dere får en betalingslenke fra Stripe etter signering."}
+                  </Typography>
+                </Box>
+              )}
 
               {doc.confirmsBilling && faktura && (
                 <Alert severity="info">

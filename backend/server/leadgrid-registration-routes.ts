@@ -26,6 +26,12 @@ import {
 } from "./leadgrid-org-agreements.js";
 import { sendAgreementReceipt } from "./leadgrid-agreement-receipt.js";
 import { sendTrialReminders } from "./leadgrid-trial-reminders.js";
+import {
+  LEADGRID_PLANS,
+  normalizeInterval,
+  normalizePlanKey,
+  resolvePlanPrice,
+} from "./leadgrid-stripe-plans.js";
 import { customerOverview } from "./leadgrid-customer-overview.js";
 import {
   AGREEMENT_DOCUMENTS,
@@ -204,6 +210,46 @@ export function registerLeadgridRegistrationRoutes(deps: {
       });
       return;
     }
+    // Intensjonsavtalen er stedet kunden sier hva de faktisk kjøper. Uten
+    // plan og betalingsmåte her, er avtalen en hensiktserklæring uten
+    // innhold — og Stripe har ingenting å bygge et abonnement på.
+    let bekreftetFaktura: Record<string, unknown> | null =
+      body.confirmed_billing && typeof body.confirmed_billing === "object"
+        ? { ...(body.confirmed_billing as Record<string, unknown>) }
+        : null;
+    if (type === "loi") {
+      const planKey = normalizePlanKey(body.plan_key ?? bekreftetFaktura?.plan_key);
+      const interval = normalizeInterval(body.billing_interval ?? bekreftetFaktura?.billing_interval);
+      const betaling = String(body.payment_method ?? bekreftetFaktura?.payment_method ?? "").trim();
+      if (!planKey) {
+        res.status(400).json({
+          error: "plan_påkrevd",
+          message: "Velg hvilken plan avtalen gjelder.",
+          valid: Object.keys(LEADGRID_PLANS),
+        });
+        return;
+      }
+      if (betaling !== "faktura" && betaling !== "kort") {
+        res.status(400).json({
+          error: "betalingsmåte_påkrevd",
+          message: "Velg om dere vil betale med faktura eller kort.",
+        });
+        return;
+      }
+      const pris = resolvePlanPrice(planKey, interval);
+      bekreftetFaktura = {
+        ...(bekreftetFaktura ?? {}),
+        plan_key: planKey,
+        plan_label: LEADGRID_PLANS[planKey].label,
+        billing_interval: interval,
+        payment_method: betaling,
+        // Pris-IDen lagres slik den var da de signerte. Endres prisen
+        // etterpå, kan vi se hvilken de faktisk sa ja til.
+        stripe_price_id: pris.priceId,
+        stripe_price_source: pris.source,
+      };
+    }
+
     try {
       const kvittering = await signAgreement(pool, {
           organizationId: project.organizationId,
@@ -218,10 +264,7 @@ export function registerLeadgridRegistrationRoutes(deps: {
             (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
             req.socket.remoteAddress ??
             null,
-          confirmedBilling:
-            body.confirmed_billing && typeof body.confirmed_billing === "object"
-              ? (body.confirmed_billing as Record<string, unknown>)
-              : null,
+          confirmedBilling: bekreftetFaktura,
           signatureText: String(body.signature_text ?? ""),
           signatureStyle: stil,
       });
