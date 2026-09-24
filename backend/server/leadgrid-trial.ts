@@ -15,7 +15,10 @@
  * full utestenging fjerner det eneste som får noen til å betale: at de ser
  * hva de mister.
  */
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+
+/** Pool eller klient — statusen leses både frittstående og inne i en transaksjon. */
+type Queryable = Pick<Pool | PoolClient, "query">;
 
 export const TRIAL_DAYS = 7;
 export const TRIAL_HARD_LIMIT_DAYS = 30;
@@ -133,7 +136,7 @@ function dagerMellom(fra: Date, til: Date): number {
 }
 
 export async function trialStatus(
-  pool: Pool,
+  pool: Queryable,
   organizationId: string,
   now = new Date(),
 ): Promise<TrialStatus | null> {

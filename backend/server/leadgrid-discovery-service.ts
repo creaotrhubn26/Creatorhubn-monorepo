@@ -31,7 +31,7 @@ import {
   type DiscoveryCandidateScore,
 } from "./leadgrid-discovery-scoring.js";
 import { normalizeWebsiteDomain } from "./lead-map-create-contract.js";
-import { startTrialOnFirstDiscovery } from "./leadgrid-trial.js";
+import { startTrialOnFirstDiscovery, trialStatus } from "./leadgrid-trial.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 import type { BackgroundJob, JobHandler } from "./job-queue.js";
 import { broadcastLeadCreated, leadgridRealtime } from "./leadgrid-realtime.js";
@@ -100,6 +100,7 @@ export type DiscoveryServiceErrorCode =
   | "municipality_resolution_failed"
   | "discovery_not_enabled"
   | "monthly_candidate_budget_exhausted"
+  | "trial_expired"
   | "run_already_executing"
   | "execution_lease_lost"
   | "cancelled"
@@ -186,6 +187,13 @@ const SERVICE_ERROR_DEFAULTS: Record<
   monthly_candidate_budget_exhausted: {
     message: "Organizationens månedlige Discovery-kapasitet er brukt opp.",
     status: 429,
+    retryable: false,
+  },
+  trial_expired: {
+    message:
+      "Prøveperioden er over. Du ser leadene dine, men kan ikke søke etter nye " +
+      "før du velger en avtale.",
+    status: 402,
     retryable: false,
   },
   run_already_executing: {
@@ -972,6 +980,21 @@ export async function createDiscoveryRun(
         ),
       ],
     );
+
+    // Prøvetiden håndheves her og ikke i rutene: campaign-tjenesten og den
+    // kontinuerlige kjøringen oppretter kjøringer uten å gå via HTTP, og en
+    // sperre som bare står i én rute er ingen sperre. Alle veier inn til en
+    // ny kjøring går gjennom denne funksjonen.
+    //
+    // Inne i transaksjonen, ikke foran den: da kan ikke prøvetiden løpe ut
+    // mellom sjekken og innsettingen.
+    //
+    // Skrivebeskyttet, ikke stengt: de ser leadene sine, de kan ikke søke
+    // fram nye. Det er det som koster oss penger, og det er det de mister.
+    const prøvetid = await trialStatus(client, input.project.organizationId);
+    if (prøvetid?.read_only) {
+      throw new DiscoveryServiceError("trial_expired");
+    }
 
     const replay = await client.query<RunRow>(
       `SELECT ${RUN_COLUMNS}
