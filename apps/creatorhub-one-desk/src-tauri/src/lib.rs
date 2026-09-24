@@ -346,6 +346,25 @@ struct LightroomConnectionCheck {
     latest_export: Option<device_auth::LightroomLatestExport>,
 }
 
+fn photo_room_login_url(session: &device_auth::LightroomDeskSession) -> Option<String> {
+    let project_id = session
+        .latest_export
+        .as_ref()
+        .filter(|export| {
+            session
+                .projects
+                .iter()
+                .any(|project| project.id == export.project_id)
+        })
+        .map(|export| export.project_id.as_str())
+        .or_else(|| session.projects.first().map(|project| project.id.as_str()))?;
+    let return_path = format!("/workspace/{}/photo-room", urlencoding::encode(project_id),);
+    Some(format!(
+        "https://www.creatorhubn.com/login?redirect={}",
+        urlencoding::encode(&return_path),
+    ))
+}
+
 #[tauri::command]
 async fn test_lightroom_connection() -> Result<LightroomConnectionCheck, String> {
     if !lightroom_broker::is_running() {
@@ -355,20 +374,74 @@ async fn test_lightroom_connection() -> Result<LightroomConnectionCheck, String>
     let device = device_auth::load_device_token()?
         .ok_or_else(|| "Logg inn i CreatorHub Desk først.".to_string())?;
     let session = device_auth::fetch_lightroom_session(&device).await?;
-    let project_id = session
-        .latest_export
-        .as_ref()
-        .map(|export| export.project_id.as_str())
-        .or_else(|| session.projects.first().map(|project| project.id.as_str()));
+    let photo_room_url = photo_room_login_url(&session);
     Ok(LightroomConnectionCheck {
         account_email: session.account_email,
         plugin_version: session.plugin_version,
         drive_available: session.drive_available,
         project_count: session.projects.len(),
-        photo_room_url: project_id
-            .map(|id| format!("https://www.creatorhubn.com/workspace/{id}/photo-room")),
+        photo_room_url,
         latest_export: session.latest_export,
     })
+}
+
+#[cfg(test)]
+mod lightroom_photo_room_link_tests {
+    use super::*;
+
+    fn session(
+        project_ids: &[&str],
+        latest_project_id: Option<&str>,
+    ) -> device_auth::LightroomDeskSession {
+        device_auth::LightroomDeskSession {
+            token: "lrs_test".to_string(),
+            expires_at: "2099-01-01T00:00:00Z".to_string(),
+            api_base_url: "https://www.creatorhubn.com".to_string(),
+            account_email: "owner@example.test".to_string(),
+            plugin_version: "1.4.0.2".to_string(),
+            drive_available: false,
+            projects: project_ids
+                .iter()
+                .map(|id| device_auth::LightroomProjectOption {
+                    id: (*id).to_string(),
+                    title: (*id).to_string(),
+                })
+                .collect(),
+            project_options: String::new(),
+            latest_export: latest_project_id.map(|project_id| device_auth::LightroomLatestExport {
+                export_id: "export-1".to_string(),
+                project_id: project_id.to_string(),
+                project_title: project_id.to_string(),
+                asset_id: "asset-1".to_string(),
+                filename: "portrait.jpg".to_string(),
+                status: "verified".to_string(),
+                verified_at: None,
+                created_at: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn photo_room_link_preserves_the_deep_link_through_login() {
+        assert_eq!(
+            photo_room_login_url(&session(&["visual-project"], None)).as_deref(),
+            Some(
+                "https://www.creatorhubn.com/login?redirect=%2Fworkspace%2Fvisual-project%2Fphoto-room"
+            ),
+        );
+    }
+
+    #[test]
+    fn photo_room_link_ignores_a_latest_export_outside_visual_projects() {
+        assert!(photo_room_login_url(&session(&[], Some("sound-room-project"))).is_none(),);
+        assert_eq!(
+            photo_room_login_url(&session(&["visual-project"], Some("sound-room-project")))
+                .as_deref(),
+            Some(
+                "https://www.creatorhubn.com/login?redirect=%2Fworkspace%2Fvisual-project%2Fphoto-room"
+            ),
+        );
+    }
 }
 
 // ── Multi-project commands ─────────────────────────────────────────

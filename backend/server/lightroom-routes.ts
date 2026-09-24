@@ -26,6 +26,11 @@ import {
 } from './creatorhub-object-storage.js';
 import { buildPhotoRoomCaptureKey } from './photo-room-storage-contract.js';
 import { loadPersistedAuthSession } from './auth-session-store.js';
+import {
+  CANONICAL_PROFESSIONS,
+  isWorkspaceCategory,
+  normalizeProfession,
+} from '../../frontend/shared/profession-types.ts';
 
 type LightroomSession = {
   userId: string;
@@ -151,6 +156,15 @@ type LightroomExportResult = {
 type LightroomProjectOption = {
   id: string;
   title: string;
+};
+
+type LightroomProjectCandidate = {
+  id: string;
+  title: string | null;
+  name: string | null;
+  project_profession: string | null;
+  project_type: string | null;
+  workspace_category: string | null;
 };
 
 type LightroomLatestExport = {
@@ -658,9 +672,14 @@ async function listEditableLightroomProjects(
   pool: Pool,
   userId: string,
 ): Promise<LightroomProjectOption[]> {
-  const result = await pool.query<{ id: string; title: string | null; name: string | null }>(
-    `SELECT DISTINCT p.id, p.title, p.name, p.updated_at
+  const result = await pool.query<LightroomProjectCandidate>(
+    `SELECT DISTINCT p.id, p.title, p.name, p.updated_at,
+            p.profession AS project_profession,
+            p.project_type,
+            profession_type.workspace_category
        FROM projects p
+       LEFT JOIN profession_types profession_type
+         ON profession_type.name = p.profession
       WHERE p.user_id::text = $1
          OR EXISTS (
            SELECT 1
@@ -677,10 +696,27 @@ async function listEditableLightroomProjects(
       LIMIT 250`,
     [userId],
   );
-  return result.rows.map((project) => ({
-    id: project.id,
-    title: project.title || project.name || project.id,
-  }));
+  return result.rows
+    .filter((project) => {
+      const normalizedProjectType = (project.project_type || '')
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+      if (['music', 'musikk', 'audio', 'song', 'album', 'recording'].includes(normalizedProjectType)) {
+        return false;
+      }
+      const profession = normalizeProfession(project.project_profession);
+      const baselineCategory = CANONICAL_PROFESSIONS.find(
+        (candidate) => candidate.name === profession,
+      )?.workspaceCategory ?? 'service';
+      const category = isWorkspaceCategory(project.workspace_category)
+        ? project.workspace_category
+        : baselineCategory;
+      return category === 'visual';
+    })
+    .map((project) => ({
+      id: project.id,
+      title: project.title || project.name || project.id,
+    }));
 }
 
 export async function findEditableLightroomProject(
