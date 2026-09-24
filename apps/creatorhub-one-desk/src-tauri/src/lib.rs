@@ -304,6 +304,8 @@ async fn desktop_logout(
         }
     }
     device_auth::clear_device_token()?;
+    desk_identity::rotate_lightroom_broker_secret()?;
+    lightroom_broker::reset_runtime_heartbeat();
     store.clear_all()?;
     Ok(())
 }
@@ -332,6 +334,41 @@ fn uninstall_lightroom_plugin() -> Result<lightroom_installer::LightroomIntegrat
     let mut status = lightroom_installer::uninstall()?;
     status.connected_user_email = connected_user_email;
     Ok(status)
+}
+
+#[derive(Serialize)]
+struct LightroomConnectionCheck {
+    account_email: String,
+    plugin_version: String,
+    drive_available: bool,
+    project_count: usize,
+    photo_room_url: Option<String>,
+    latest_export: Option<device_auth::LightroomLatestExport>,
+}
+
+#[tauri::command]
+async fn test_lightroom_connection() -> Result<LightroomConnectionCheck, String> {
+    if !lightroom_broker::is_running() {
+        return Err(lightroom_broker::last_error()
+            .unwrap_or_else(|| "Den lokale Lightroom-brokeren kjører ikke.".to_string()));
+    }
+    let device = device_auth::load_device_token()?
+        .ok_or_else(|| "Logg inn i CreatorHub Desk først.".to_string())?;
+    let session = device_auth::fetch_lightroom_session(&device).await?;
+    let project_id = session
+        .latest_export
+        .as_ref()
+        .map(|export| export.project_id.as_str())
+        .or_else(|| session.projects.first().map(|project| project.id.as_str()));
+    Ok(LightroomConnectionCheck {
+        account_email: session.account_email,
+        plugin_version: session.plugin_version,
+        drive_available: session.drive_available,
+        project_count: session.projects.len(),
+        photo_room_url: project_id
+            .map(|id| format!("https://www.creatorhubn.com/workspace/{id}/photo-room")),
+        latest_export: session.latest_export,
+    })
 }
 
 // ── Multi-project commands ─────────────────────────────────────────
@@ -1071,6 +1108,7 @@ pub fn run() {
             lightroom_integration_status,
             install_lightroom_plugin,
             uninstall_lightroom_plugin,
+            test_lightroom_connection,
             list_projects,
             active_project_id,
             set_active_project,

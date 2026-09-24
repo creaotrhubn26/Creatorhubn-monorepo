@@ -1,4 +1,4 @@
-CreatorHub Norge Lightroom Plugin
+CreatorHub for Lightroom Classic
 ================================
 
 Versjon: __CREATORHUB_PLUGIN_VERSION__
@@ -13,7 +13,7 @@ Installering
 2. Åpne Adobe Lightroom Classic.
 3. Gå til File > Plug-in Manager.
 4. Klikk Add og velg mappen "CreatorHubNorge.lrplugin".
-5. Eksporter via File > Export > CreatorHub Norge.
+5. Eksporter via File > Export > CreatorHub.
 
 Hva pluginen gjør
 -----------------

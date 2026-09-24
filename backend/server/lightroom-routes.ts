@@ -7,16 +7,17 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { createReadStream } from 'fs';
+import { createReadStream, readFileSync } from 'fs';
 import { createRequire } from 'module';
 import { google } from 'googleapis';
+import sharp from 'sharp';
 import { Upload } from '@aws-sdk/lib-storage';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   ensureCustomerDriveWorkspace,
   ensureDriveFolder,
 } from './customer-drive-sync.js';
-import { resolveRoleRoomGoogleConnection } from './contract-google-signing.js';
+import { resolveCreatorHubGoogleConnection } from './contract-google-signing.js';
 import {
   deleteCreatorHubObject,
   getCreatorHubObjectStorage,
@@ -147,6 +148,22 @@ type LightroomExportResult = {
   category: string;
 };
 
+type LightroomProjectOption = {
+  id: string;
+  title: string;
+};
+
+type LightroomLatestExport = {
+  exportId: string;
+  projectId: string;
+  projectTitle: string;
+  assetId: string;
+  filename: string;
+  status: string;
+  verifiedAt: string | null;
+  createdAt: string | null;
+};
+
 type ArchiverLike = {
   append(source: string | Buffer, data: { name: string }): void;
   on(event: 'warning' | 'error', listener: (error: Error) => void): void;
@@ -160,19 +177,34 @@ const archiverFactory = _require('archiver') as (
   options?: Record<string, unknown>,
 ) => ArchiverLike;
 
-const LIGHTROOM_PLUGIN_VERSION = '1.3.0';
 const LIGHTROOM_DESK_SSO_TTL_SECONDS = 10 * 60;
 const LIGHTROOM_INTEGRATION_TABLE = 'lightroom_integration';
 const LIGHTROOM_SIMULATOR_TABLE = 'lightroom_simulator';
 const LIGHTROOM_PLUGIN_DIR = fileURLToPath(
   new URL('./lightroom-plugin-template/CreatorHubNorge.lrplugin', import.meta.url),
 );
+type LightroomPluginManifest = {
+  major: number;
+  minor: number;
+  revision: number;
+  build: number;
+  displayVersion: string;
+};
+const LIGHTROOM_PLUGIN_MANIFEST = JSON.parse(readFileSync(
+  path.join(LIGHTROOM_PLUGIN_DIR, 'CreatorHubManifest.json'),
+  'utf8',
+)) as LightroomPluginManifest;
+const LIGHTROOM_PLUGIN_VERSION = LIGHTROOM_PLUGIN_MANIFEST.displayVersion;
 const LIGHTROOM_TEMPLATE_FILES = [
   'Info.lua',
+  'CreatorHubManifest.json',
+  'PluginInit.lua',
   'PluginInfoProvider.lua',
   'ExportServiceProvider.lua',
   'CreatorHubDefaults.lua',
   'README.txt',
+  'TranslatedStrings_en.txt',
+  'TranslatedStrings_nb.txt',
 ] as const;
 const SMOKE_TEST_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9s7R6aQAAAAASUVORK5CYII=';
@@ -482,7 +514,7 @@ function resolvePublicBaseUrl(req: Request): string {
       ?? process.env.PUBLIC_APP_URL,
   );
   if (envBase) {
-    return envBase.replace(/\/+$/, '');
+    return canonicalizeLightroomPublicBase(envBase);
   }
 
   const forwardedProto = readString(req.headers['x-forwarded-proto']);
@@ -493,7 +525,20 @@ function resolvePublicBaseUrl(req: Request): string {
     ? requestHost.replace(/:5001$/, ':3003')
     : requestHost;
 
-  return `${protocol}://${effectiveHost}`;
+  return canonicalizeLightroomPublicBase(`${protocol}://${effectiveHost}`);
+}
+
+export function canonicalizeLightroomPublicBase(value: string): string {
+  const normalized = value.trim().replace(/\/+$/, '');
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.hostname.toLowerCase() === 'creatorhubn.com') {
+      parsed.hostname = 'www.creatorhubn.com';
+    }
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return normalized;
+  }
 }
 
 function resolveLightroomApiBase(req: Request): string {
@@ -568,24 +613,106 @@ async function verifyCreatorHubLightroomObject(
   return head.sizeBytes;
 }
 
-function buildMimeType(value: unknown, filename: string): string {
-  const explicit = readString(value);
-  if (explicit) {
-    return explicit;
-  }
+async function createLightroomPreview(
+  payload: LightroomExportPayload,
+): Promise<Buffer> {
+  const input = payload.fileBuffer ?? payload.temporaryFilePath;
+  if (!input) throw new Error('Lightroom-preview mangler kildefil.');
+  return sharp(input, { failOn: 'error', limitInputPixels: 200_000_000 })
+    .rotate()
+    .resize({ width: 2_048, height: 2_048, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 84, chromaSubsampling: '4:4:4', mozjpeg: true })
+    .toBuffer();
+}
 
+export function buildLightroomMimeType(value: unknown, filename: string): string {
   const lowerName = filename.toLowerCase();
-  if (lowerName.endsWith('.png')) return 'image/png';
-  if (lowerName.endsWith('.webp')) return 'image/webp';
-  if (lowerName.endsWith('.gif')) return 'image/gif';
-  if (lowerName.endsWith('.tif') || lowerName.endsWith('.tiff')) return 'image/tiff';
-  return 'image/jpeg';
+  const expected = lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')
+    ? 'image/jpeg'
+    : lowerName.endsWith('.png')
+      ? 'image/png'
+      : lowerName.endsWith('.webp')
+        ? 'image/webp'
+        : lowerName.endsWith('.gif')
+          ? 'image/gif'
+          : lowerName.endsWith('.tif') || lowerName.endsWith('.tiff')
+            ? 'image/tiff'
+            : null;
+  if (!expected) {
+    throw new Error('Lightroom-formatet støttes ikke. Eksporter som JPEG, TIFF, PNG, WebP eller GIF.');
+  }
+  const explicit = readString(value);
+  if (explicit && explicit.toLowerCase() !== expected) {
+    throw new Error('Filendelse og MIME-type for Lightroom-eksporten samsvarer ikke.');
+  }
+  return expected;
 }
 
 async function ensureLightroomSchema(pool: Pool): Promise<void> {
-  // Schema is owned by migration 0665. Keep this awaitable boundary so the
+  // Schema is owned by migration 0664. Keep this awaitable boundary so the
   // query helpers remain stable without mutating production schema at runtime.
   void pool;
+}
+
+async function listEditableLightroomProjects(
+  pool: Pool,
+  userId: string,
+): Promise<LightroomProjectOption[]> {
+  const result = await pool.query<{ id: string; title: string | null; name: string | null }>(
+    `SELECT DISTINCT p.id, p.title, p.name, p.updated_at
+       FROM projects p
+      WHERE p.user_id::text = $1
+         OR EXISTS (
+           SELECT 1
+             FROM project_team_members member
+            WHERE member.project_id::text = p.id::text
+              AND member.user_id::text = $1
+              AND member.status = 'active'
+              AND member.deactivated_at IS NULL
+              AND member.role <> 'viewer'
+              AND (member.permissions->'canRead' IS NULL OR member.permissions @> '{"canRead":true}'::jsonb)
+              AND member.permissions @> '{"canEdit":true}'::jsonb
+         )
+      ORDER BY p.updated_at DESC NULLS LAST
+      LIMIT 250`,
+    [userId],
+  );
+  return result.rows.map((project) => ({
+    id: project.id,
+    title: project.title || project.name || project.id,
+  }));
+}
+
+export async function findEditableLightroomProject(
+  pool: Pool,
+  userId: string,
+  projectId: string,
+): Promise<LightroomProjectOption | null> {
+  const result = await pool.query<{ id: string; title: string | null; name: string | null }>(
+    `SELECT p.id, p.title, p.name
+       FROM projects p
+      WHERE p.id::text = $1
+        AND (
+          p.user_id::text = $2
+          OR EXISTS (
+            SELECT 1
+              FROM project_team_members member
+             WHERE member.project_id::text = p.id::text
+               AND member.user_id::text = $2
+               AND member.status = 'active'
+               AND member.deactivated_at IS NULL
+               AND member.role <> 'viewer'
+               AND (member.permissions->'canRead' IS NULL OR member.permissions @> '{"canRead":true}'::jsonb)
+               AND member.permissions @> '{"canEdit":true}'::jsonb
+          )
+        )
+      LIMIT 1`,
+    [projectId, userId],
+  );
+  const project = result.rows[0];
+  return project
+    ? { id: project.id, title: project.title || project.name || project.id }
+    : null;
 }
 
 async function getIntegrationByUserId(pool: Pool, userId: string): Promise<LightroomIntegrationRow | null> {
@@ -754,7 +881,7 @@ async function getUserScopedWorkspaceRecord(
       connection_state: string | null;
     }>(
       `SELECT google_email, scopes, connection_state
-       FROM role_room_google_connections
+       FROM creatorhub_google_connections
        WHERE user_id = $1
        ORDER BY CASE WHEN oauth_app = 'creatorhub' THEN 0 WHEN oauth_app = 'role_room' THEN 1 ELSE 2 END,
                 last_used_at DESC NULLS LAST,
@@ -799,7 +926,7 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
   }
 
   try {
-    const connection = await resolveRoleRoomGoogleConnection(pool, userId);
+    const connection = await resolveCreatorHubGoogleConnection(pool, userId);
     return {
       connected: true,
       googleEmail: readString(connection.connection.googleEmail),
@@ -807,7 +934,7 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
         ? connection.connection.storedScopes.filter((entry): entry is string => typeof entry === 'string')
         : [],
       error: null,
-      source: 'role_room_connection',
+      source: 'creatorhub_connection',
       warning: null,
     };
   } catch (error) {
@@ -816,7 +943,7 @@ async function resolveWorkspaceStatus(pool: Pool, userId: string): Promise<Light
       googleEmail: userScopedRecord.googleEmail,
       storedScopes: userScopedRecord.storedScopes,
       error: error instanceof Error ? error.message : 'Google Workspace er ikke koblet til.',
-      source: 'role_room_connection',
+      source: 'creatorhub_connection',
       warning: userScopedRecord.connectionState === 'connected'
         ? 'Google Workspace-koblingen finnes, men må fornyes før Lightroom kan bruke Google Drive.'
         : 'Koble Google Workspace på nytt for å aktivere Lightroom-eksport til Google Drive.',
@@ -895,6 +1022,10 @@ async function streamPluginPackage(
     CREATORHUB_API_BASE_URL: resolveLightroomApiBase(req),
     CREATORHUB_PLUGIN_TOKEN: token,
     CREATORHUB_PLUGIN_VERSION: LIGHTROOM_PLUGIN_VERSION,
+    CREATORHUB_VERSION_MAJOR: String(LIGHTROOM_PLUGIN_MANIFEST.major),
+    CREATORHUB_VERSION_MINOR: String(LIGHTROOM_PLUGIN_MANIFEST.minor),
+    CREATORHUB_VERSION_REVISION: String(LIGHTROOM_PLUGIN_MANIFEST.revision),
+    CREATORHUB_VERSION_BUILD: String(LIGHTROOM_PLUGIN_MANIFEST.build),
     CREATORHUB_ACCOUNT_EMAIL: escapeLuaString(userEmail || 'Tilkoblet CreatorHub-konto'),
     CREATORHUB_DESK_BROKER_URL: '',
     CREATORHUB_DESK_BROKER_SECRET: '',
@@ -958,19 +1089,13 @@ export async function streamLightroomPluginPackageForUser(
     });
   }
   const workspace = await resolveWorkspaceStatus(pool, userId);
-  const projects = await pool.query<{ id: string; title: string | null; name: string | null }>(
-    `SELECT id, title, name FROM projects WHERE user_id=$1 ORDER BY updated_at DESC NULLS LAST LIMIT 250`,
-    [userId],
-  );
+  const projects = await listEditableLightroomProjects(pool, userId);
   await streamPluginPackage(
     req,
     res,
     token,
     workspace.connected,
-    projects.rows.map((project) => ({
-      id: project.id,
-      title: project.title || project.name || project.id,
-    })),
+    projects,
     userEmail,
   );
 }
@@ -985,6 +1110,10 @@ export async function createLightroomDesktopSession(
   apiBaseUrl: string;
   accountEmail: string;
   pluginVersion: string;
+  driveAvailable: boolean;
+  projects: LightroomProjectOption[];
+  projectOptions: string;
+  latestExport: LightroomLatestExport | null;
 }> {
   const existing = await getIntegrationByUserId(pool, params.userId);
   if (!existing) {
@@ -995,11 +1124,50 @@ export async function createLightroomDesktopSession(
     });
   }
   const issued = issueLightroomDeskSsoToken(params.userId, params.deviceId);
+  const [workspace, projects, latestExportResult] = await Promise.all([
+    resolveWorkspaceStatus(pool, params.userId),
+    listEditableLightroomProjects(pool, params.userId),
+    pool.query<{
+      id: string;
+      project_id: string;
+      project_title: string;
+      asset_id: string;
+      filename: string;
+      status: string;
+      verified_at: string | Date | null;
+      created_at: string | Date | null;
+    }>(
+      `SELECT e.id, e.project_id, COALESCE(p.title, p.name, p.id::text) AS project_title,
+              e.asset_id, e.filename, e.status, e.verified_at, e.created_at
+         FROM lightroom_classic_exports e
+         JOIN projects p ON p.id = e.project_id
+        WHERE e.user_id = $1
+        ORDER BY e.created_at DESC
+        LIMIT 1`,
+      [params.userId],
+    ),
+  ]);
+  const latest = latestExportResult.rows[0];
   return {
     ...issued,
     apiBaseUrl: resolveLightroomApiBase(req),
     accountEmail: params.userEmail,
     pluginVersion: LIGHTROOM_PLUGIN_VERSION,
+    driveAvailable: workspace.connected,
+    projects,
+    projectOptions: projects
+      .map((project) => `${encodeURIComponent(project.id)}=${encodeURIComponent(project.title)}`)
+      .join('&'),
+    latestExport: latest ? {
+      exportId: latest.id,
+      projectId: latest.project_id,
+      projectTitle: latest.project_title,
+      assetId: latest.asset_id,
+      filename: latest.filename,
+      status: latest.status,
+      verifiedAt: readDateTimeValue(latest.verified_at),
+      createdAt: readDateTimeValue(latest.created_at),
+    } : null,
   };
 }
 
@@ -1065,28 +1233,32 @@ async function performLightroomExport(
     throw new Error('Velg et CreatorHub-prosjekt i Lightroom før eksport.');
   }
 
-  const ownedProject = await pool.query<{ id: string; title: string | null; name: string | null }>(
-    `SELECT id, title, name FROM projects WHERE id = $1 AND user_id = $2 LIMIT 1`,
-    [payload.projectId, integrationUserId],
+  const writableProject = await findEditableLightroomProject(
+    pool,
+    integrationUserId,
+    payload.projectId,
   );
-  if (!ownedProject.rows[0]) {
-    throw new Error('Prosjektet finnes ikke, eller tilhører en annen CreatorHub-bruker.');
+  if (!writableProject) {
+    throw new Error('Prosjektet finnes ikke, eller du mangler skriverett i prosjektets workspace.');
   }
+  payload.projectName = writableProject.title;
 
   const checksumSha256 = await checksumLightroomPayload(payload);
   const duplicate = await pool.query<{
     id: string;
     asset_id: string;
+    capture_session_id: string;
     object_key: string;
     size_bytes: string | number;
     drive_file_id: string | null;
     drive_folder_id: string | null;
     drive_folder_name: string | null;
     drive_web_view_link: string | null;
-    status: 'uploading' | 'verified' | 'error';
+    status: 'uploading' | 'verified' | 'error' | 'unpublished';
+    updated_at: string | Date;
   }>(
-    `SELECT id, asset_id, object_key, size_bytes, drive_file_id, drive_folder_id,
-            drive_folder_name, drive_web_view_link, status
+    `SELECT id, asset_id, capture_session_id, object_key, size_bytes, drive_file_id, drive_folder_id,
+            drive_folder_name, drive_web_view_link, status, updated_at
        FROM lightroom_classic_exports
       WHERE user_id = $1 AND project_id = $2 AND checksum_sha256 = $3
         AND filename = $4
@@ -1097,16 +1269,21 @@ async function performLightroomExport(
 
   let exportId = duplicate.rows[0]?.id ?? crypto.randomUUID();
   let assetId = duplicate.rows[0]?.asset_id ?? crypto.randomUUID();
+  let sessionId = duplicate.rows[0]?.capture_session_id ?? '';
   let objectKey = duplicate.rows[0]?.object_key ?? '';
   let sizeBytes = Number(duplicate.rows[0]?.size_bytes ?? payload.sizeBytes);
-  if (duplicate.rows[0]?.status === 'uploading') {
+  const duplicateUpdatedAt = duplicate.rows[0]?.updated_at
+    ? new Date(duplicate.rows[0].updated_at).getTime()
+    : 0;
+  const staleUpload = duplicate.rows[0]?.status === 'uploading'
+    && (!Number.isFinite(duplicateUpdatedAt) || Date.now() - duplicateUpdatedAt > 30 * 60 * 1000);
+  if (duplicate.rows[0]?.status === 'uploading' && !staleUpload) {
     throw new Error('Den samme Lightroom-filen lastes allerede opp. Prøv igjen om et øyeblikk.');
   }
-  const shouldUpload = !duplicate.rows[0] || duplicate.rows[0].status === 'error';
+  const shouldUpload = !duplicate.rows[0] || duplicate.rows[0].status === 'error' || staleUpload;
 
   if (!duplicate.rows[0]) {
     const client = await pool.connect();
-    let sessionId = '';
     try {
       await client.query('BEGIN');
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
@@ -1192,7 +1369,7 @@ async function performLightroomExport(
     }
   }
 
-  if (duplicate.rows[0]?.status === 'error') {
+  if (duplicate.rows[0]?.status === 'error' || staleUpload) {
     await pool.query(
       `UPDATE lightroom_classic_exports
           SET status='uploading', mirror_to_drive=$2, last_error=NULL,
@@ -1203,6 +1380,14 @@ async function performLightroomExport(
     await pool.query(
       `UPDATE capture_assets SET state='uploading', updated_at=NOW() WHERE id=$1`,
       [assetId],
+    );
+  }
+  if (duplicate.rows[0]?.status === 'unpublished') {
+    await pool.query(
+      `UPDATE lightroom_classic_exports
+          SET status='verified', unpublished_at=NULL, updated_at=NOW()
+        WHERE id=$1`,
+      [exportId],
     );
   }
 
@@ -1251,11 +1436,35 @@ async function performLightroomExport(
         payload.sizeBytes,
         checksumSha256,
       );
+      const previewBuffer = await createLightroomPreview(payload);
+      const previewKey = buildPhotoRoomCaptureKey({
+        userId: integrationUserId,
+        projectId: payload.projectId,
+        sessionId,
+        assetId,
+        kind: 'preview',
+        fileName: 'preview.jpg',
+      });
+      const previewStored = await putCreatorHubObject(
+        previewKey,
+        previewBuffer,
+        'image/jpeg',
+        {
+          ownerUserId: integrationUserId,
+          projectId: payload.projectId,
+          assetId,
+          source: 'lightroom-classic-preview',
+        },
+      );
+      if (!previewStored) {
+        throw new Error('CreatorHub S3 kunne ikke lagre Lightroom-preview.');
+      }
       await pool.query(
         `UPDATE capture_assets
-            SET full_key=$2, size_bytes=$3, checksum_sha256=$4, state='uploaded', updated_at=NOW()
+            SET full_key=$2, preview_key=$3, size_bytes=$4, checksum_sha256=$5,
+                state='uploaded', updated_at=NOW()
           WHERE id=$1`,
-        [assetId, objectKey, sizeBytes, checksumSha256],
+        [assetId, objectKey, previewKey, sizeBytes, checksumSha256],
       );
       await pool.query(
         `UPDATE lightroom_classic_exports
@@ -1273,6 +1482,17 @@ async function performLightroomExport(
         [assetId],
       ).catch(() => undefined);
       await deleteCreatorHubObject(objectKey).catch(() => undefined);
+      if (sessionId) {
+        const failedPreviewKey = buildPhotoRoomCaptureKey({
+          userId: integrationUserId,
+          projectId: payload.projectId,
+          sessionId,
+          assetId,
+          kind: 'preview',
+          fileName: 'preview.jpg',
+        });
+        await deleteCreatorHubObject(failedPreviewKey).catch(() => undefined);
+      }
       throw error;
     }
   }
@@ -1289,7 +1509,7 @@ async function performLightroomExport(
 
   if (payload.mirrorToDrive && !driveFileId) {
     try {
-      const googleConnection = await resolveRoleRoomGoogleConnection(pool, integrationUserId);
+      const googleConnection = await resolveCreatorHubGoogleConnection(pool, integrationUserId);
       const driveApi = google.drive({ version: 'v3', auth: googleConnection.oauthClient });
       const destination = await ensureLightroomDriveDestination(pool, driveApi, integrationUserId, payload);
       const created = await driveApi.files.create({
@@ -1435,7 +1655,7 @@ function normalizeExportPayload(body: Record<string, unknown>): LightroomExportP
     projectId: readString(body.projectId),
     projectName: readString(body.projectName),
     profession,
-    mimeType: buildMimeType(body.mimeType, filename),
+    mimeType: buildLightroomMimeType(body.mimeType, filename),
     fileBuffer,
     temporaryFilePath,
     sizeBytes,
@@ -1709,6 +1929,58 @@ export function createLightroomRouter(
       });
     }
   });
+
+  router.post(
+    '/plugin/unpublish-photos',
+    requirePluginToken,
+    lightroomMultipartUpload.none(),
+    async (req, res) => {
+      const integration = (req as LightroomPluginRequest).lightroomIntegration;
+      const userId = readString(integration?.user_id);
+      const rawAssetIds = readString((req.body as Record<string, unknown> | undefined)?.assetIds);
+      const assetIds = [...new Set((rawAssetIds || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(entry))
+        .slice(0, 500))];
+      if (!userId || assetIds.length === 0) {
+        res.status(400).json({ error: 'Gyldige CreatorHub asset-id-er mangler.' });
+        return;
+      }
+      try {
+        const result = await pool.query<{ asset_id: string }>(
+          `WITH requested AS (
+             SELECT DISTINCT unnest($2::uuid[]) AS asset_id
+           ), authorized AS (
+             SELECT e.asset_id
+               FROM lightroom_classic_exports e
+               JOIN requested r ON r.asset_id = e.asset_id
+              WHERE e.user_id=$1 AND e.status IN ('verified', 'unpublished')
+           ), updated AS (
+             UPDATE lightroom_classic_exports e
+                SET status='unpublished', unpublished_at=NOW(), updated_at=NOW()
+              WHERE e.user_id=$1
+                AND e.asset_id IN (SELECT asset_id FROM authorized)
+                AND (SELECT COUNT(*) FROM requested) = (SELECT COUNT(*) FROM authorized)
+            RETURNING e.asset_id
+           )
+           SELECT asset_id FROM updated`,
+          [userId, assetIds],
+        );
+        if (result.rows.length !== assetIds.length) {
+          res.status(409).json({
+            error: 'Ett eller flere bilder tilhører ikke denne CreatorHub-kontoen.',
+          });
+          return;
+        }
+        res.json({ success: true, unpublishedAssetIds: result.rows.map((row) => row.asset_id) });
+      } catch (error) {
+        res.status(500).json({
+          error: error instanceof Error ? error.message : 'Kunne ikke oppdatere Publish Service.',
+        });
+      }
+    },
+  );
 
   router.post(
     '/plugin/export-photo',
