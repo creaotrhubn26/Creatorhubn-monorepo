@@ -719,7 +719,10 @@ return {
           end
         elseif uploadSuccess then
           uploadedCount = uploadedCount + 1
-          if publishedAssetId and rendition.recordPublishedPhotoId then
+          -- Lightroom exposes recordPublishedPhotoId on export renditions too, but the
+          -- method is only legal while a Publish Service is running. A normal one-off
+          -- export must upload successfully without asking Lightroom to track it.
+          if publishedAssetId and exportContext.publishService and rendition.recordPublishedPhotoId then
             rendition:recordPublishedPhotoId(publishedAssetId)
           end
           if driveStatus == 'mirrored' then

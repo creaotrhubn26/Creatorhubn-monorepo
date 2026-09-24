@@ -168,6 +168,14 @@ describe('CreatorHub One Desk project picker', () => {
               project_type: 'recording',
               workspace_category: 'music',
             },
+            {
+              id: 'project-3',
+              title: 'CEO-film',
+              name: 'CEO-film',
+              project_profession: 'ceo',
+              project_type: 'film',
+              workspace_category: 'service',
+            },
           ],
         };
       }
@@ -240,6 +248,14 @@ describe('CreatorHub One Desk project picker', () => {
               project_type: 'recording',
               workspace_category: 'music',
             },
+            {
+              id: 'project-3',
+              title: 'CEO-film',
+              name: 'CEO-film',
+              project_profession: 'ceo',
+              project_type: 'film',
+              workspace_category: 'service',
+            },
           ],
         };
       }
@@ -259,10 +275,13 @@ describe('CreatorHub One Desk project picker', () => {
       success: true,
       token: expect.stringMatching(/^lrs_/),
       accountEmail: 'owner@example.test',
-      pluginVersion: '1.4.0.2',
+      pluginVersion: '1.4.0.3',
       driveAvailable: false,
-      projects: [{ id: 'project-1', title: 'Bryllup' }],
-      projectOptions: 'project-1=Bryllup',
+      projects: [
+        { id: 'project-1', title: 'Bryllup' },
+        { id: 'project-3', title: 'CEO-film' },
+      ],
+      projectOptions: 'project-1=Bryllup&project-3=CEO-film',
     }));
     expect(new Date(response.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
     vi.unstubAllEnvs();

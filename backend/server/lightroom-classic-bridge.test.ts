@@ -102,6 +102,9 @@ describe('Lightroom Classic CreatorHub bridge', () => {
     expect(pluginSource).toContain("allowFileFormats = { 'JPEG', 'TIFF' }");
     expect(pluginSource).toContain('supportsIncrementalPublish = true');
     expect(pluginSource).toContain('recordPublishedPhotoId');
+    expect(pluginSource).toContain(
+      'publishedAssetId and exportContext.publishService and rendition.recordPublishedPhotoId',
+    );
     expect(pluginSource).toContain('deletePhotosFromPublishedCollection');
     expect(pluginSource).toContain("Defaults.deskBrokerUrl .. '/v1/lightroom/session'");
     expect(pluginSource).toContain("value = 'Bearer ' .. Defaults.deskBrokerSecret");
