@@ -458,7 +458,7 @@ struct CanvasView: View {
                             Label("Notater", systemImage: "sidebar.left")
                                 .frame(minWidth: 44, minHeight: 44)
                         }
-                        .accessibilityHint("Åpner listen over Canvas-notater")
+                        .accessibilityHint("Åpner listen over Nexus-notater")
                     }
                 }
             }
@@ -466,7 +466,7 @@ struct CanvasView: View {
         .sheet(isPresented: $visNotatlisteSheet) {
             NavigationStack {
                 notatListe
-                    .navigationTitle("Canvas-notater")
+                    .navigationTitle("Nexus-notater")
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Ferdig") { visNotatlisteSheet = false }
@@ -501,7 +501,7 @@ struct CanvasView: View {
             Image(systemName: "pencil.and.outline")
                 .font(.appScaled(size: 16, weight: .bold))
                 .foregroundStyle(CvBrand.purpleLight)
-            Text("Canvas")
+            Text("Nexus")
                 .font(.appScaled(size: 19, weight: .black))
                 .foregroundStyle(.white)
                 .lineLimit(1)
@@ -526,7 +526,7 @@ struct CanvasView: View {
         .buttonStyle(.plain)
         .frame(minHeight: 44)
         .disabled(!rolleKanSkriveCanvas)
-        .accessibilityLabel("Opprett nytt Canvas-notat")
+        .accessibilityLabel("Opprett nytt Nexus-notat")
     }
 
     private var notatListe: some View {
@@ -1982,13 +1982,13 @@ struct CanvasView: View {
             // RBAC: org/leder styrer teamets Canvas-funksjoner.
             if erLederRolle && !isDemo {
                 Menu {
-                    Section("Selgernes Canvas") {
+                    Section("Selgernes Nexus") {
                         ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
                             Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "selger"))
                         }
                     }
                     if erAdminRolle {
-                        Section("Salgsledernes Canvas") {
+                        Section("Salgsledernes Nexus") {
                             ForEach(Self.policyFunksjoner, id: \.0) { nokkel, navn in
                                 Toggle(navn, isOn: rolleBinding(nokkel, gruppe: "leder"))
                             }
@@ -2488,7 +2488,7 @@ struct CanvasView: View {
             guard request.scope == canvasDraftScope else { return }
             saveStatus[noteID] = erRevisjonskonflikt(error)
                 ? .conflict : .failed(error.localizedDescription)
-            print("[Canvas] lagring feilet: \(error)")
+            print("[Nexus] lagring feilet: \(error)")
         }
     }
 
@@ -3446,7 +3446,7 @@ struct CanvasView: View {
     /// rendres vektor-skarpt via PDFKit — aldri som bilder.
     ///
     /// `internal` (ikke `private`) med vilje: dette er handoff-punktet for
-    /// «Åpne i Canvas» fra andre faner (f.eks. Leadbook Innsikt-rapport) —
+    /// «Åpne i Nexus» fra andre faner (f.eks. Leadbook Innsikt-rapport) —
     /// caller må selv navigere til `Destination.canvas` (entitlement-gatet,
     /// egen NavigationStack) FØR denne kalles; se FullInsiktReportSheet.
     func importerPDFData(_ data: Data, navn: String) {
@@ -3820,7 +3820,7 @@ struct CanvasView: View {
                         Button {
                             appState.requestNavigation(
                                 lat: lat, lon: lon,
-                                name: tittel.isEmpty ? "Canvas-notat" : tittel,
+                                name: tittel.isEmpty ? "Nexus-notat" : tittel,
                                 address: kobletSelskap ?? "",
                                 start: false)
                         } label: {
@@ -3879,7 +3879,7 @@ struct CanvasView: View {
                             ShareLink(
                                 item: Image(uiImage: komponertBilde()),
                                 preview: SharePreview(
-                                    tittel.isEmpty ? "Canvas-notat" : tittel,
+                                    tittel.isEmpty ? "Nexus-notat" : tittel,
                                     image: Image(uiImage: komponertBilde()))
                             ) {
                                 Label("Del som bilde", systemImage: "photo")

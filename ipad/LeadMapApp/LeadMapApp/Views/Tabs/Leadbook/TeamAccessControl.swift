@@ -127,17 +127,17 @@ enum LeadgridFeature: String, CaseIterable, Identifiable, Hashable {
     case moteBrief = "Møter · AI-møtebrief"
     // Leadgrid Canvas (2026-08-05): Pencil-first notater koblet til leads
     // (PencilKit-tegneflate + kategorier + lead-kobling). Default PÅ.
-    case leadgridCanvas = "Leadgrid Canvas · Pencil-notater"
+    case leadgridCanvas = "Leadgrid Nexus · Pencil-notater"
     // Canvas granulært (2026-08-05): hver funksjon styrbar per org —
     // ALLE default PÅ (canUse-mønsteret), superadmin kan låse.
-    case canvasDeling = "Canvas · Deling i teamet"
-    case canvasPdf = "Canvas · PDF-annotering"
-    case canvasBilder = "Canvas · Bilder"
-    case canvasLiveKort = "Canvas · Levende kort (CRM/KPI/kart)"
-    case canvasTidsreise = "Canvas · Tidsreise"
-    case canvasKundeminne = "Canvas · Kundeminnet"
-    case canvasBibliotek = "Canvas · Element-bibliotek"
-    case canvasAnalyse = "Canvas · AI-analyse (håndskrift)"
+    case canvasDeling = "Nexus · Deling i teamet"
+    case canvasPdf = "Nexus · PDF-annotering"
+    case canvasBilder = "Nexus · Bilder"
+    case canvasLiveKort = "Nexus · Levende kort (CRM/KPI/kart)"
+    case canvasTidsreise = "Nexus · Tidsreise"
+    case canvasKundeminne = "Nexus · Kundeminnet"
+    case canvasBibliotek = "Nexus · Element-bibliotek"
+    case canvasAnalyse = "Nexus · AI-analyse (håndskrift)"
 
     var id: String { rawValue }
 
