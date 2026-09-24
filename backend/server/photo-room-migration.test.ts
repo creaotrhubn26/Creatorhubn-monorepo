@@ -13,6 +13,10 @@ const captureRepairMigration = readFileSync(
   new URL("../migrations/0675_capture_assets_updated_at_backfill.sql", import.meta.url),
   "utf8",
 );
+const runtimeWriteMigration = readFileSync(
+  new URL("../migrations/0676_photo_room_runtime_write_access.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Photo Room migration contract", () => {
   it("owns the review and comment schema with project and asset constraints", () => {
@@ -50,5 +54,13 @@ describe("Photo Room migration contract", () => {
     expect(captureRepairMigration).toContain("ALTER TABLE capture_assets");
     expect(captureRepairMigration).toContain("ADD COLUMN IF NOT EXISTS updated_at");
     expect(captureRepairMigration).toContain("COALESCE(updated_at, created_at, now())");
+  });
+
+  it("repairs the legacy review shape and grants its runtime write contract", () => {
+    expect(runtimeWriteMigration).toContain("ADD COLUMN IF NOT EXISTS updated_by");
+    expect(runtimeWriteMigration).toContain("ADD COLUMN IF NOT EXISTS updated_at");
+    expect(runtimeWriteMigration).toContain("GRANT SELECT, INSERT, UPDATE, DELETE");
+    expect(runtimeWriteMigration).toContain("TO creatorhub_runtime_login");
+    expect(runtimeWriteMigration).toContain("ON TABLE capture_assets");
   });
 });
