@@ -19,6 +19,7 @@ import type { Pool, PoolClient } from "pg";
 
 import { lookupCompanyForNewLead } from "./lead-brreg-service.js";
 import { setTrialHardLimit } from "./leadgrid-trial.js";
+import { notifyAdmins } from "./admin-notify.js";
 
 export interface ManualRegistrationInput {
   /** Ni siffer. Mellomrom og punktum tåles. */
@@ -118,6 +119,24 @@ export async function registerCompanyManually(
       `SELECT trial_hard_expires_at FROM organizations WHERE id = $1::uuid`,
       [ut.organization.id],
     );
+    // Du skal få vite at en bedrift kom inn, også når noen andre registrerte
+    // dem. Varselet kaster aldri: registreringen ER fullført, og en
+    // varslingsfeil skal ikke se ut som at den ikke gikk.
+    void notifyAdmins(pool, {
+      type: "leadgrid_org_registered",
+      source: "Leadgrid · manuell registrering",
+      title: `Ny bedrift: ${ut.organization.name}`,
+      summary:
+        `Org.nr ${ut.organization.org_number}` +
+        `${ut.organization.city ? ` · ${ut.organization.city}` : ""}` +
+        ` · admin ${ut.admin.email}` +
+        `${ut.organization.reused ? " · organisasjonen fantes fra før" : ""}` +
+        ` · mangler databehandleravtale og intensjonsavtale`,
+      link: `/superadmin?org=${ut.organization.id}`,
+    }).catch((error: unknown) => {
+      console.warn("[registrering] varsel feilet:", (error as Error).message);
+    });
+
     return {
       ...ut,
       trial: {
