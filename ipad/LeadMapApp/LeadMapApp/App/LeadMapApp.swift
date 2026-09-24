@@ -1807,17 +1807,24 @@ struct MainSidebarView: View {
                 }
                 return true
             }
-            // Nexus hører hjemme i den daglige sløyfa, ikke på hylla med
-            // tilleggsmoduler. Den er riktignok noe man kjøper, som Go,
-            // Kvalitet og Anbud — men de tre er episodiske (flåteadmin,
-            // verifiseringskø, anbudssøk), mens Nexus brukes i hvert møte.
-            // Plassering følger bruksfrekvens, ikke betalingsmodell.
+            // «Arbeid» er salgsdagen i rekkefølge: se dagen, finn stedet,
+            // jobb leadet, hold møtet, skriv notatet, kjør videre.
             //
-            // Entitlementet er upåvirket: visibleItems filtrerer fortsatt, så
-            // en org uten Nexus ser den ikke her heller.
-            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter, .canvas]
+            // Nexus og Go lå på hylla med tilleggsmoduler. Begge er noe man
+            // kjøper — men plassering følger bruksfrekvens, ikke betalings-
+            // modell. Nexus brukes i hvert møte; Go er selgerens egen
+            // kjørebok, som fylles hver gang de kjører.
+            //
+            // Kvalitet og Anbud blir liggende: verifiseringskøen er en rolle
+            // få har, og anbudssøk er noe man gjør nå og da — ikke daglig.
+            //
+            // Entitlementet er upåvirket. visibleItems filtrerer fortsatt på
+            // tilgang, så en organisasjon uten modulen ser den ikke her heller.
+            let workItems: [SidebarItem] = [
+                .oversikt, .kart, .leads, .moter, .canvas, .leadgridGo,
+            ]
             let teamItems: [SidebarItem] = [.team, .leadbook, .salgsledelse]
-            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .hub]
+            let moreItems: [SidebarItem] = [.kvalitet, .anbud, .hub]
 
             Section("Arbeid") {
                 ForEach(workItems.filter(visibleItems.contains)) { item in
