@@ -320,19 +320,29 @@ struct AudioDescriptionCard: View {
     }
 }
 
-/// Tekstingsvisning (5.16): gjeldende cue, 2 linjer høyt, sentrert.
+/// Tekstingsvisning (5.16): gjeldende cue, minst 3 linjer høyt, sentrert.
 struct CaptionView: View {
     let text: String?
 
     var body: some View {
-        Text(text ?? " ")
-            .font(AppFont.body)
-            .foregroundStyle(AppColor.textPrimary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .padding(.horizontal, AppSpacing.l)
-            .background(AppColor.bgSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
-            .accessibilityLabel(Text("captions.label"))
-            .accessibilityValue(Text(text ?? ""))
+        // Fast plass til tre linjer (skalerer med Dynamic Type), så knappene
+        // under ikke hopper for hver setning. Lengre setninger får vokse.
+        ZStack {
+            Text(verbatim: "\n\n")
+                .font(AppFont.body)
+                .hidden()
+                .accessibilityHidden(true)
+            Text(text ?? " ")
+                .font(AppFont.body)
+                .foregroundStyle(AppColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 56)
+        .padding(.horizontal, AppSpacing.l)
+        .background(AppColor.bgSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("captions.label"))
+        .accessibilityValue(Text(text ?? ""))
     }
 }
