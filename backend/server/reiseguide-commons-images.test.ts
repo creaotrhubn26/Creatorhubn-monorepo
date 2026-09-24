@@ -12,6 +12,7 @@ import {
   pickBest,
   rejectReason,
   resolveHeroImage,
+  titleMatchesSource,
   stripHtml,
   toCandidate,
   type CommonsCandidate,
@@ -295,6 +296,53 @@ describe("resolveHeroImage", () => {
     expect(result.warnings.join(" ")).toContain("license_not_allowed");
   });
 
+  it("forkaster nabobygg i kategorien når filnavnet ikke passer stedet", async () => {
+    const { impl } = mockFetch([
+      {
+        match: isCategory("Oslo Opera House"),
+        pages: [
+          page("File:Deichmanske bibliotek Bjørvika 002.jpg", { width: 8000, height: 5000 }),
+          page("File:Oslo Opera House 2019.jpg", { width: 4000, height: 3000 }),
+        ],
+      },
+    ]);
+    const result = await resolveHeroImage(
+      {
+        pinnedFile: null,
+        categories: ["Oslo Opera House"],
+        searchTerms: [],
+        titleMustIncludeAny: ["Opera"],
+        titleMustExclude: ["Deichman"],
+      },
+      impl,
+    );
+    expect(result.chosen?.title).toBe("File:Oslo Opera House 2019.jpg");
+  });
+
+  it("forkaster samme navn i en annen by fra søket", async () => {
+    const { impl } = mockFetch([
+      {
+        match: isSearch,
+        pages: [
+          page("File:Bergen, gamle rådhus - no-nb digifoto.jpg", { width: 8000, height: 5000 }),
+          page("File:Gamle rådhus i Oslo 2015.jpg", { width: 3000, height: 2000 }),
+        ],
+      },
+    ]);
+    const result = await resolveHeroImage(
+      {
+        pinnedFile: null,
+        categories: [],
+        searchTerms: ['intitle:"Gamle rådhus"'],
+        titleMustIncludeAny: ["Oslo"],
+        titleMustExclude: ["Bergen"],
+      },
+      impl,
+    );
+    expect(result.chosen?.title).toBe("File:Gamle rådhus i Oslo 2015.jpg");
+    expect(result.via).toBe("search");
+  });
+
   it("gir null og advarsler, men kaster ikke, når alt feiler", async () => {
     const { impl } = mockFetch([
       { match: isCategory("Christiania torv"), status: 503 },
@@ -308,6 +356,23 @@ describe("resolveHeroImage", () => {
     expect(result.via).toBeNull();
     expect(result.considered).toBe(2);
     expect(result.warnings).toEqual(["category «Christiania torv»: Commons svarte 503"]);
+  });
+});
+
+describe("titleMatchesSource", () => {
+  const base = { pinnedFile: null, categories: [], searchTerms: [] };
+  it("godtar alt uten krav", () => {
+    expect(titleMatchesSource("File:Hva som helst.jpg", base)).toBe(true);
+  });
+  it("krever ett av ordene, uten hensyn til store og små bokstaver", () => {
+    const source = { ...base, titleMustIncludeAny: ["Oslo", "Christiania"] };
+    expect(titleMatchesSource("File:Gamle rådhus, OSLO.jpg", source)).toBe(true);
+    expect(titleMatchesSource("File:Christiania rådhus 1890.jpg", source)).toBe(true);
+    expect(titleMatchesSource("File:Gamle rådhus.jpg", source)).toBe(false);
+  });
+  it("forkaster ekskluderte ord også når et krav er oppfylt", () => {
+    const source = { ...base, titleMustIncludeAny: ["Opera"], titleMustExclude: ["bibliotek"] };
+    expect(titleMatchesSource("File:Opera og Bibliotek i Bjørvika.jpg", source)).toBe(false);
   });
 });
 

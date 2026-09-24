@@ -29,6 +29,46 @@ export function isWorkspaceCategory(v: unknown): v is WorkspaceCategory {
   return typeof v === 'string' && (WORKSPACE_CATEGORIES as string[]).includes(v);
 }
 
+/**
+ * Prosjekttypen beskriver selve produksjonen og skal derfor kunne overstyre
+ * kontoeierens profesjon. En CEO kan opprette en filmproduksjon, og en fotograf
+ * kan opprette en lydinnspilling, uten at prosjektet havner i feil romfamilie.
+ * Ukjente/ambivalente typer returnerer null og lar profesjonen være fallback.
+ */
+const PROJECT_TYPE_WORKSPACE_CATEGORY: Record<string, WorkspaceCategory> = {
+  film: 'visual',
+  filmvideo: 'visual',
+  video: 'visual',
+  videography: 'visual',
+  photo: 'visual',
+  photography: 'visual',
+  portrait: 'visual',
+  bryllup: 'visual',
+  bryllupsfotografi: 'visual',
+  bedriftsfotografering: 'visual',
+  wedding: 'visual',
+  commercial: 'visual',
+  cinema: 'visual',
+  documentary: 'visual',
+  storyarc: 'visual',
+  videostoryarc: 'visual',
+  music: 'music',
+  musikk: 'music',
+  audio: 'music',
+  lyd: 'music',
+  sound: 'music',
+  song: 'music',
+  album: 'music',
+  recording: 'music',
+  podcast: 'music',
+};
+
+export function workspaceCategoryForProjectType(raw: unknown): WorkspaceCategory | null {
+  if (typeof raw !== 'string') return null;
+  const key = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return PROJECT_TYPE_WORKSPACE_CATEGORY[key] ?? null;
+}
+
 export interface CanonicalProfession {
   /** Kanonisk id (lowercase, underscore) — verdien som skal stå i users.profession. */
   name: string;

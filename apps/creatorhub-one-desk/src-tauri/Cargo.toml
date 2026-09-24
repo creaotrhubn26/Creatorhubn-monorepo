@@ -1,6 +1,6 @@
 [package]
 name = "creatorhub-one-desk"
-version = "0.1.13"
+version = "0.1.15"
 description = "CreatorHub One Desk — desktop companion for Capture, media ingest and creative integrations"
 authors = ["CreatorHub"]
 edition = "2024"

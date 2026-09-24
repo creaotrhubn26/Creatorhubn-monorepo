@@ -151,7 +151,32 @@ describe('CreatorHub One Desk project picker', () => {
       }
       if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
         return {
-          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+            {
+              id: 'project-3',
+              title: 'CEO-film',
+              name: 'CEO-film',
+              project_profession: 'ceo',
+              project_type: 'film',
+              workspace_category: 'service',
+            },
+          ],
         };
       }
       return { rows: [], rowCount: 1 };
@@ -206,7 +231,32 @@ describe('CreatorHub One Desk project picker', () => {
       }
       if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
         return {
-          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+            {
+              id: 'project-3',
+              title: 'CEO-film',
+              name: 'CEO-film',
+              project_profession: 'ceo',
+              project_type: 'film',
+              workspace_category: 'service',
+            },
+          ],
         };
       }
       if (sql.includes('FROM role_room_google_connections')) {
@@ -225,10 +275,13 @@ describe('CreatorHub One Desk project picker', () => {
       success: true,
       token: expect.stringMatching(/^lrs_/),
       accountEmail: 'owner@example.test',
-      pluginVersion: '1.4.0.2',
+      pluginVersion: '1.4.0.3',
       driveAvailable: false,
-      projects: [{ id: 'project-1', title: 'Bryllup' }],
-      projectOptions: 'project-1=Bryllup',
+      projects: [
+        { id: 'project-1', title: 'Bryllup' },
+        { id: 'project-3', title: 'CEO-film' },
+      ],
+      projectOptions: 'project-1=Bryllup&project-3=CEO-film',
     }));
     expect(new Date(response.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
     vi.unstubAllEnvs();
