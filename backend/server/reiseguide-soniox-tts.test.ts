@@ -37,9 +37,10 @@ describe("sonioxLanguageCode", () => {
 });
 
 describe("sonioxTtsWsUrl", () => {
-  it("bruker EU som standard og følger Soniox' regionsdomener", () => {
-    expect(sonioxTtsWsUrl()).toBe("wss://tts-rt.eu.soniox.com/tts-websocket");
-    expect(SONIOX_TTS_WS_URL).toBe("wss://tts-rt.eu.soniox.com/tts-websocket");
+  it("bruker US som standard og følger Soniox' regionsdomener", () => {
+    expect(sonioxTtsWsUrl()).toBe("wss://tts-rt.soniox.com/tts-websocket");
+    expect(SONIOX_TTS_WS_URL).toBe("wss://tts-rt.soniox.com/tts-websocket");
+    expect(sonioxTtsWsUrl("eu")).toBe("wss://tts-rt.eu.soniox.com/tts-websocket");
     expect(sonioxTtsWsUrl(" JP ")).toBe("wss://tts-rt.jp.soniox.com/tts-websocket");
     expect(sonioxTtsWsUrl("us")).toBe("wss://tts-rt.soniox.com/tts-websocket");
   });
@@ -50,7 +51,7 @@ describe("sonioxTtsWsUrl", () => {
 });
 
 describe("createSonioxTts", () => {
-  it("kobler til EU-adressen som standard og regionen som er valgt", async () => {
+  it("kobler til US-adressen som standard og regionen som er valgt", async () => {
     const urls: string[] = [];
     const run = async (region?: string) => {
       const { socket } = fakeSocket((_sent, emit) => {
@@ -64,8 +65,8 @@ describe("createSonioxTts", () => {
       await tts.synthesize({ text: "A.", lang: "nb", voice: "Adrian" });
     };
     await run();
-    await run("us");
-    expect(urls).toEqual(["wss://tts-rt.eu.soniox.com/tts-websocket", "wss://tts-rt.soniox.com/tts-websocket"]);
+    await run("eu");
+    expect(urls).toEqual(["wss://tts-rt.soniox.com/tts-websocket", "wss://tts-rt.eu.soniox.com/tts-websocket"]);
   });
 
   it("sender konfig med nøkkel, modell og return_timestamps, så teksten med text_end", async () => {

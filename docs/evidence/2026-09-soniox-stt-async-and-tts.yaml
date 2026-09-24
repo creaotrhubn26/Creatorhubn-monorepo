@@ -70,12 +70,13 @@ decision: >
   SENSEAID_ELEVENLABS_API_KEY er fjernet. STT async holdes i reserve for
   eksternt produsert lyd. Stemme: standard «Adrian» (Soniox' eksempelstemme)
   til Daniel har lyttet på norsk og satt SENSEAID_SONIOX_VOICE.
-  Region (Daniel 24.09.2026, «den skal være i EU»): TTS går mot
-  wss://tts-rt.eu.soniox.com/tts-websocket som standard (sonioxTtsWsUrl i
-  reiseguide-soniox-tts.ts; domenene fra @soniox/node 2.3.0 SonioxRegion:
-  *.eu.soniox.com, *.jp.soniox.com, US uten underdomene). Et Soniox-prosjekt
-  ligger i én region, så nøkkelen må komme fra EU-prosjektet.
-  SENSEAID_SONIOX_REGION kan overstyre (eu|jp|us).
+  Region (Daniel 24.09.2026): standard er US (wss://tts-rt.soniox.com), der
+  nøkkelen i Render hører hjemme. Daniel vurderte EU, men valgte US fordi bare
+  manustekst om steder sendes til Soniox, ingen persondata. Sendes brukernes
+  stemme/opptak til Soniox senere, bør det byttes til EU. SENSEAID_SONIOX_REGION
+  (eu|jp|us) velger region; et Soniox-prosjekt ligger i én region, så nøkkelen
+  må komme fra prosjektet i samme region. Domenene fra @soniox/node 2.3.0
+  SonioxRegion (sonioxTtsWsUrl i reiseguide-soniox-tts.ts).
   Lagring (Daniel 18.09.2026, «bruk creatorhub S3 … riktig hierarki, mappestruktur og
   IAM … egen mappe for SenseAid Explore»): lydfilene ligger i CreatorHubs private S3-bøtte
   under products/senseaid-explore/areas/{area}/pois/{poi}/audio/…, med egen IAM-setning

@@ -69,14 +69,15 @@ export class SonioxTtsError extends Error {
 
 /**
  * Soniox-region. Et Soniox-prosjekt ligger i én region, og nøkkelen virker
- * bare mot den regionens adresser. SenseAid bruker EU (Daniel 24.09.2026);
- * SENSEAID_SONIOX_REGION kan overstyre («us» er Soniox' standard uten
- * underdomene). Adressene følger @soniox/node 2.3.0 (SonioxRegion:
+ * bare mot den regionens adresser. Standard er US, der nøkkelen i Render
+ * hører hjemme; bare manustekst om steder sendes, ingen persondata (Daniel
+ * 24.09.2026). SENSEAID_SONIOX_REGION=eu flytter lyden til EU med en nøkkel
+ * fra et EU-prosjekt. Adressene følger @soniox/node 2.3.0 (SonioxRegion:
  * `*.eu.soniox.com`, `*.jp.soniox.com`, US uten underdomene).
  */
-export const SONIOX_DEFAULT_REGION = "eu";
+export const SONIOX_DEFAULT_REGION = "us";
 
-/** TTS-WebSocket for regionen: wss://tts-rt.eu.soniox.com/tts-websocket osv. */
+/** TTS-WebSocket for regionen: wss://tts-rt.soniox.com/… (US), wss://tts-rt.eu.soniox.com/… osv. */
 export function sonioxTtsWsUrl(region: string = SONIOX_DEFAULT_REGION): string {
   const normalized = region.trim().toLowerCase();
   if (!normalized || normalized === "us") return "wss://tts-rt.soniox.com/tts-websocket";
@@ -110,7 +111,7 @@ export type TtsSocketFactory = (url: string) => TtsSocket;
 export interface SonioxTtsOptions {
   apiKey: string;
   model?: string;
-  /** Region (eu, jp, us); ignoreres når wsUrl er satt. Standard er EU. */
+  /** Region (eu, jp, us); ignoreres når wsUrl er satt. Standard er US. */
   region?: string;
   wsUrl?: string;
   bitrate?: number;
