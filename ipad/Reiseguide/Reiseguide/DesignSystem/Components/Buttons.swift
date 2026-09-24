@@ -112,10 +112,15 @@ struct ShareLinkButton<Label: View>: View {
     }
 }
 
-/// Trykket tilstand: 85 % lysstyrke (5.3).
+/// Trykket tilstand: 85 % lysstyrke (5.3). Deaktivert: dempet, så f.eks.
+/// variantvelgeren i avspilleren og «Gjenta» i veiviseren viser at de ikke
+/// kan trykkes, ikke bare stopper å reagere (8.3).
 struct PressableButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .brightness(configuration.isPressed ? -0.15 : 0)
+            .opacity(isEnabled ? 1 : 0.4)
     }
 }

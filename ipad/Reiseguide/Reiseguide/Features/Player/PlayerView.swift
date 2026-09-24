@@ -309,7 +309,10 @@ struct TransportControls: View {
                     .font(.footnote.weight(.semibold).monospacedDigit())
                     .foregroundStyle(AppColor.textPrimary)
                     .underline()
-                    .frame(width: 56, height: 44)
+                    // minWidth i stedet for fast bredde: teksten («1.25×») får
+                    // vokse med Dynamic Type i stedet for å bli klippet mot
+                    // knappene ved siden av (8.2).
+                    .frame(minWidth: 56, minHeight: AppSpacing.minTapTarget)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel(Text("player.rate"))
