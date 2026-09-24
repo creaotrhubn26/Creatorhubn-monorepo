@@ -18,7 +18,13 @@ import { sendTransactionalEmail } from "./transactional-email-service.js";
 import { evaluateTrial, type TrialStatus } from "./leadgrid-trial.js";
 import { PROVIDER } from "./leadgrid-org-agreements.js";
 
-const APP_URL = process.env.PUBLIC_APP_URL ?? "https://leadgrid.no";
+// Leadgrid-e-post skal peke på leadgrid.no, ikke på CreatorHub. Resten av
+// Leadgrid-koden leser LEADGRID_PUBLIC_URL, så den gjelder også her.
+const APP_URL = (
+  process.env.LEADGRID_PUBLIC_URL ??
+  process.env.PUBLIC_APP_URL ??
+  "https://leadgrid.no"
+).replace(/\/+$/, "");
 
 export interface TrialOrgRow {
   id: string;
