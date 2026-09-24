@@ -21,6 +21,10 @@ const triggerSecurityMigration = readFileSync(
   new URL("../migrations/0677_photo_review_trigger_security.sql", import.meta.url),
   "utf8",
 );
+const atomicStatusMigration = readFileSync(
+  new URL("../migrations/0678_photo_review_atomic_status.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Photo Room migration contract", () => {
   it("owns the review and comment schema with project and asset constraints", () => {
@@ -76,5 +80,15 @@ describe("Photo Room migration contract", () => {
     expect(triggerSecurityMigration).toContain("pg_trigger_depth() > 1");
     expect(triggerSecurityMigration).toContain("REVOKE ALL ON FUNCTION");
     expect(triggerSecurityMigration).toContain("TO creatorhub_runtime_login");
+  });
+
+  it("writes canonical status and Capture mirrors atomically without recursion", () => {
+    expect(atomicStatusMigration).toContain("creatorhub_set_project_photo_review_status");
+    expect(atomicStatusMigration).toContain("session.project_id = requested_project_id");
+    expect(atomicStatusMigration).toContain("creatorhub.photo_review_sync");
+    expect(atomicStatusMigration).toContain("DROP TRIGGER IF EXISTS project_photo_review_sync_capture");
+    expect(atomicStatusMigration).toContain("SECURITY DEFINER");
+    expect(workspaceRoutes).toContain("creatorhub_set_project_photo_review_status");
+    expect(workspaceRoutes).toContain("photo_review_asset_scope_mismatch");
   });
 });
