@@ -5,6 +5,8 @@
  * e-postbekreftelse og selvbetjening. Den er ment for møtet der du sitter hos
  * kunden, ikke som en vei inn utenfra.
  */
+import { timingSafeEqual } from "node:crypto";
+
 import type { Express, Request, Response } from "express";
 import type { Pool } from "pg";
 
@@ -23,6 +25,7 @@ import {
   type SignatureStyle,
 } from "./leadgrid-org-agreements.js";
 import { sendAgreementReceipt } from "./leadgrid-agreement-receipt.js";
+import { sendTrialReminders } from "./leadgrid-trial-reminders.js";
 import { customerOverview } from "./leadgrid-customer-overview.js";
 import {
   AGREEMENT_DOCUMENTS,
@@ -282,6 +285,30 @@ export function registerLeadgridRegistrationRoutes(deps: {
         Object.values(AGREEMENT_DOCUMENTS).map((d) => [d.type, { title: d.title, body: d.body, version: d.version }]),
       ),
     });
+  });
+
+  // Daglig cron: varsler to dager før, på siste dag, og når tiden er ute.
+  // Samme token-mønster som de øvrige Leadgrid-cron-ene.
+  app.post("/api/leadgrid/cron/provetid-varsler", async (req, res) => {
+    const forventet = (process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "").trim();
+    const gitt = String(req.headers["x-cron-trigger-token"] ?? "").trim();
+    if (!forventet) {
+      res.status(503).json({ error: "cron_token_not_configured" });
+      return;
+    }
+    if (
+      gitt.length !== forventet.length ||
+      !timingSafeEqual(Buffer.from(gitt), Buffer.from(forventet))
+    ) {
+      res.status(401).json({ error: "ugyldig_token" });
+      return;
+    }
+    try {
+      res.json(await sendTrialReminders(pool));
+    } catch (error) {
+      console.warn("[provetid] cron feilet:", (error as Error).message);
+      res.status(500).json({ error: "varsler_feilet" });
+    }
   });
 
   // Prøvetidsstatus for prosjektets organisasjon. Appen bruker den til å vise
