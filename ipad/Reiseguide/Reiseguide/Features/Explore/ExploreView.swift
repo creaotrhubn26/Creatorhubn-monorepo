@@ -69,7 +69,9 @@ struct ExploreView: View {
                                 showLanguageSheet = true
                             }
                         }
-                        .padding(.top, AppSpacing.s)
+                        // ScrollView-en ligger under statuslinjen, så knappene
+                        // må flyttes ned forbi den (som i stedsdetaljen).
+                        .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
 
                         Spacer(minLength: proxy.size.height * 0.30)
 
