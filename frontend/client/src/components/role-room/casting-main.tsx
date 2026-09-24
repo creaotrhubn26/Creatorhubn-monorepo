@@ -22,6 +22,7 @@ import LeadgridPartnerDashboardPage from '@/pages/leadgrid-partner-dashboard';
 import LeadgridMarketplacePage from '@/pages/leadgrid-marketplace';
 import LeadgridConnectorsPage from '@/pages/leadgrid-connectors';
 import LeadgridImportPage from '@/pages/leadgrid-import';
+import LeadgridAvtalerPage from '@/pages/leadgrid-avtaler';
 import LeadgridWorkflowsPage from '@/pages/leadgrid-workflows';
 import LeadgridWorkflowWebhooksPage from '@/pages/leadgrid-workflow-webhooks';
 import LeadgridDealsPage from '@/pages/leadgrid-deals';
@@ -418,6 +419,12 @@ function CastingStandaloneAppContent() {
   if (leadgridPath === '/leadgrid/connectors' ||
       leadgridPath === '/leadgrid/connectors/') {
     return <LeadgridConnectorsPage />;
+  }
+  // Avtaler: signering + «Mine avtaler» (krever innlogging; arkivet krever
+  // i tillegg at du er admin i bedriften — serveren avgjør).
+  if (leadgridPath === '/leadgrid/avtaler' ||
+      leadgridPath === '/leadgrid/avtaler/') {
+    return <LeadgridAvtalerPage />;
   }
   // CSV/Excel + URL-basert lead-import (mig 328, krever innlogging)
   if (leadgridPath === '/leadgrid/import' ||

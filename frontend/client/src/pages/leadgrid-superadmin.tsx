@@ -35,6 +35,7 @@ import PhoneIphoneIcon from "@mui/icons-material/PhoneIphone";
 import CodeIcon from "@mui/icons-material/Code";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import SuperadminTemplatesEditor from "@/components/leadgrid/SuperadminTemplatesEditor";
+import CustomerOverviewTab from "@/components/leadgrid/CustomerOverviewTab";
 import PartnersTab from "@/components/leadgrid/PartnersTab";
 import TestflightTestersTab from "@/components/leadgrid/TestflightTestersTab";
 import ApiAndWebhooksTab from "@/components/leadgrid/ApiAndWebhooksTab";
@@ -130,7 +131,7 @@ interface ActiveImpersonation {
 }
 
 export default function LeadgridSuperadminPage() {
-  const [tab, setTab] = useState<"orgs" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "alerts" | "notif" | "wa" | "email" | "inbox" | "audit">("inbox");
+  const [tab, setTab] = useState<"orgs" | "kunder" | "payments" | "tokens" | "partners" | "testflight" | "templates" | "api" | "alerts" | "notif" | "wa" | "email" | "inbox" | "audit">("inbox");
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [templates, setTemplates] = useState<SetupTemplate[]>([]);
@@ -249,6 +250,7 @@ export default function LeadgridSuperadminPage() {
             label={`Tokens${tokens ? ` ($${parseFloat(tokens.total.cost_usd).toFixed(2)})` : ""}`}
             value="tokens" icon={<BoltIcon />} iconPosition="start"
           />
+          <Tab label="Kunder" value="kunder" icon={<BusinessIcon />} iconPosition="start" />
           <Tab label="Partnere" value="partners" icon={<HandshakeIcon />} iconPosition="start" />
           <Tab label="TestFlight" value="testflight" icon={<PhoneIphoneIcon />} iconPosition="start" />
           <Tab label="Avtaler" value="templates" icon={<GavelIcon />} iconPosition="start" />
@@ -322,6 +324,8 @@ export default function LeadgridSuperadminPage() {
             period={tokenPeriod}
             onPeriodChange={setTokenPeriod}
           />
+        ) : tab === "kunder" ? (
+          <CustomerOverviewTab />
         ) : tab === "partners" ? (
           <PartnersTab />
         ) : tab === "testflight" ? (

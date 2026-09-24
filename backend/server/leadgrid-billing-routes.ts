@@ -24,6 +24,13 @@ import {
   setLeadgridStorageAddonQuantity,
 } from "./leadgrid-billing-service.js";
 import { getLeadgridOrganizationStorageStatus } from "./leadgrid-org-storage-service.js";
+import {
+  LEADGRID_PLANS,
+  normalizeInterval,
+  normalizePlanKey,
+  resolvePlanPrice,
+  verifyStripePrices,
+} from "./leadgrid-stripe-plans.js";
 
 type SessionData = { userId: string; role?: string; email?: string };
 
@@ -118,17 +125,35 @@ export function registerLeadgridBillingRoutes({
   // den durable webhook-workerens autoritative Stripe-oppslag bruker dette.
   // AI-tillegget (5 kr/kall-meteret) legges på når include_ai=true.
   // Priser kan overstyres via env (default = live-prisene per 2026-07-17).
-  const PLAN_PRICES: Record<string, Record<string, string>> = {
-    solo_pro: {
-      month: process.env.LEADGRID_PRICE_SOLO_MONTH ?? "price_1TjcdoApjenweKvPYAngQd59",
-      year: process.env.LEADGRID_PRICE_SOLO_YEAR ?? "price_1TjcdpApjenweKvPQa3SL4lq",
-    },
-    agency: {
-      month: process.env.LEADGRID_PRICE_AGENCY_MONTH ?? "price_1TjcdqApjenweKvPvLZZ220h",
-      year: process.env.LEADGRID_PRICE_AGENCY_YEAR ?? "price_1TjcdqApjenweKvPJeskBX00",
-    },
-  };
+  // Plankatalogen ligger i leadgrid-stripe-plans.ts. Den sier også om
+  // pris-IDen kom fra Render eller fra en innebygd verdi — se
+  // GET /api/leadgrid/billing/konfigurasjon.
   const AI_PRICE = LEADGRID_AI_STRUCTURE_PRICE;
+
+  // Hva er konfigurert, og stemmer det med Stripe? Dette er forskjellen på
+  // «variabelen er satt» og «vi fakturerer riktig beløp i riktig valuta».
+  app.get("/api/leadgrid/billing/konfigurasjon", async (req, res) => {
+    const session = await requireSuperAdmin(req, res, pool, activeSessions);
+    if (!session) return;
+    try {
+      return res.json(await verifyStripePrices(stripe));
+    } catch (error) {
+      console.error("[leadgrid-billing] konfigurasjonssjekk feilet", error);
+      return res.status(500).json({ error: "konfigurasjonssjekk_feilet" });
+    }
+  });
+
+  // Planene klienten kan velge mellom når intensjonsavtalen signeres.
+  app.get("/api/leadgrid/billing/planer", (_req, res) => {
+    res.json({
+      plans: Object.values(LEADGRID_PLANS).map((plan) => ({
+        key: plan.key,
+        label: plan.label,
+        public_key: plan.publicKey,
+        intervals: ["month", "year"],
+      })),
+    });
+  });
 
   app.post("/api/leadgrid/billing/provision", async (req, res) => {
     const session = await requireSuperAdmin(req, res, pool, activeSessions);
@@ -137,15 +162,17 @@ export function registerLeadgridBillingRoutes({
 
     const b = (req.body ?? {}) as Record<string, unknown>;
     const orgId = typeof b.organization_id === "string" ? b.organization_id : "";
-    const plan = typeof b.plan === "string" ? b.plan : "";
-    const interval = b.interval === "year" ? "year" : "month";
+    const plan = normalizePlanKey(b.plan);
+    const interval = normalizeInterval(b.interval);
     const includeAI = b.include_ai === true;
     const daysUntilDue = Number.isFinite(Number(b.days_until_due))
       ? Math.max(1, Math.min(90, Math.trunc(Number(b.days_until_due)))) : 14;
     const billingEmail = typeof b.billing_email === "string" ? b.billing_email.trim() : "";
     if (!orgId) return res.status(400).json({ error: "organization_id påkrevd" });
-    const planPrice = PLAN_PRICES[plan]?.[interval];
-    if (!planPrice) return res.status(400).json({ error: "ugyldig_plan", valid: Object.keys(PLAN_PRICES) });
+    if (!plan) {
+      return res.status(400).json({ error: "ugyldig_plan", valid: Object.keys(LEADGRID_PLANS) });
+    }
+    const pris = resolvePlanPrice(plan, interval);
 
     try {
       const provisioned = await provisionLeadgridInvoiceSubscription({
@@ -154,7 +181,10 @@ export function registerLeadgridBillingRoutes({
         organizationId: orgId,
         planKey: plan,
         interval,
-        planPriceId: planPrice,
+        planPriceId: pris.priceId,
+        // Superadmin kan fakturere før avtalene er signert når det er et
+        // bevisst valg — men da må det stå i forespørselen, ikke skje stille.
+        allowMissingAgreements: b.allow_missing_agreements === true,
         aiPriceId: AI_PRICE,
         includeAI,
         daysUntilDue,
@@ -167,7 +197,12 @@ export function registerLeadgridBillingRoutes({
         [
           session.userId,
           orgId,
-          JSON.stringify({ plan, interval, includeAI, daysUntilDue }),
+          JSON.stringify({
+            plan, interval, includeAI, daysUntilDue,
+            price_id: pris.priceId,
+            price_source: pris.source,
+            allow_missing_agreements: b.allow_missing_agreements === true,
+          }),
           req.ip ?? null,
           req.get("user-agent") ?? null,
         ],
@@ -178,6 +213,8 @@ export function registerLeadgridBillingRoutes({
         stripe_customer_id: provisioned.customerId,
         stripe_subscription_id: provisioned.subscriptionId,
         plan, interval,
+        price_id: pris.priceId,
+        price_source: pris.source,
         collection_method: "send_invoice",
         days_until_due: daysUntilDue,
         ai_addon: includeAI,
