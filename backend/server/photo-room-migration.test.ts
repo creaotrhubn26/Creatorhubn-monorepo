@@ -9,6 +9,10 @@ const workspaceRoutes = readFileSync(
   new URL("./project-workspace-routes.ts", import.meta.url),
   "utf8",
 );
+const captureRepairMigration = readFileSync(
+  new URL("../migrations/0675_capture_assets_updated_at_backfill.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Photo Room migration contract", () => {
   it("owns the review and comment schema with project and asset constraints", () => {
@@ -40,5 +44,11 @@ describe("Photo Room migration contract", () => {
     expect(migration).toContain("'creatorhub_s3'");
     expect(migration).toContain("generative_ai_jobs_legacy_billing_due_idx");
     expect(workspaceRoutes).toContain("Migration 0479 intentionally skips");
+  });
+
+  it("repairs the legacy Capture timestamp required by review mutations", () => {
+    expect(captureRepairMigration).toContain("ALTER TABLE capture_assets");
+    expect(captureRepairMigration).toContain("ADD COLUMN IF NOT EXISTS updated_at");
+    expect(captureRepairMigration).toContain("COALESCE(updated_at, created_at, now())");
   });
 });
