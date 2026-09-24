@@ -44,7 +44,10 @@ jobs:
     name: Lag Soniox-lyd for SenseAid Explore
     environment: Production
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Soniox lager lyd omtrent i sanntid (30–90 s per manus), og alle tre
+    # områdene har rundt 60 manus. Avbrudd er trygt: hvert manus lagres for
+    # seg, og en ny kjøring hopper over det som allerede har lyd.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
