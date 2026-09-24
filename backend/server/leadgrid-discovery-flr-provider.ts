@@ -1,8 +1,21 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import jwt from "jsonwebtoken";
+import type { Pool } from "pg";
 import { z } from "zod";
 
+import {
+  downloadOverHttp2,
+  Http2DownloadError,
+} from "./leadgrid-flr-download.js";
+import {
+  ageHours,
+  createFlrSnapshotStore,
+  freshness,
+  SNAPSHOT_TTL_MS,
+  type FlrEnvironmentName,
+  type FlrSnapshotStore,
+} from "./leadgrid-flr-snapshot.js";
 import {
   DiscoveryRegistryError,
   type DiscoveryRegistryCandidate,
@@ -14,29 +27,51 @@ const FLR_SCOPE = "nhn:flr/export";
 const FLR_CONTRACTS_PATH = "/v1/contracts";
 const MAX_RESPONSE_BYTES = 50 * 1_024 * 1_024;
 const DEFAULT_TIMEOUT_MS = 20_000;
-const MAX_RETRIES = 2;
+/**
+ * Fem forsøk, ikke tre.
+ *
+ * NHNs produksjonsendepunkt bruker 13–15 sekunder på å generere svaret på
+ * 23,5 MB, og har selv en gateway-timeout på 15. Det kappløper med seg selv:
+ * et kaldt kall gir 504 omtrent like ofte som 200 (målt 2026-09-24, tre
+ * forsøk på rad tapte, det fjerde vant på 12,7 s).
+ *
+ * Kappløpet er vinnbart, og gevinsten varer: første kall som kommer gjennom
+ * varmer en cache, og da svarer den på under ett sekund. Discovery-kjøringer
+ * er bakgrunnsjobber som allerede tar minutter, så inntil ~75 sekunder brukt
+ * på å komme gjennom er en god handel mot en kjøring som feiler.
+ */
+const MAX_RETRIES = 4;
 
 export const FLR_ENDPOINTS = {
   test: {
     apiBaseUrl: "https://api.offentlig.test.flr.nhn.no",
     tokenUrl: "https://test.maskinporten.no/token",
+    // `aud` i JWT-grant-en skal være UTSTEDEREN, ikke token-endepunktet.
+    // Maskinporten avviser assertion-en med invalid_grant hvis den peker på
+    // «…/token». Skråstreken på slutten er en del av verdien.
+    // Kilde: docs.digdir.no/docs/Maskinporten/maskinporten_protocol_jwtgrant
+    issuer: "https://test.maskinporten.no/",
   },
   production: {
     apiBaseUrl: "https://api.offentlig.flr.nhn.no",
     tokenUrl: "https://maskinporten.no/token",
+    issuer: "https://maskinporten.no/",
   },
 } as const;
 
 export const NHN_FLR_DATA_SOURCE = {
   id: "nhn_flr_public",
   provider: "Norsk helsenett – Fastlegeregisteret offentlig",
+  // Verifisert 2026-09-24: denne svarer 200. Den forrige hadde et ekstra
+  // «fastlegeregisteret-offentlig»-ledd og ga 404 — en kildehenvisning som
+  // ikke åpner seg er ingen kildehenvisning.
   providerUri:
-    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
+    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
   license: "Avtalebasert tilgang",
   licenseUri:
-    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
+    "https://utviklerportal.nhn.no/informasjonstjenester/fastlegeregisteret/fastlegeregisteret-offentlig-api/docs/flr-offentlig-apimd",
   notice:
-    "Kontor- og avtaledata er hentet fra Fastlegeregisterets offentlige API med godkjent Maskinporten-tilgang. Gjenbruksvilkår må være avklart før produksjonsaktivering.",
+    "Kontor- og avtaledata er hentet fra Fastlegeregisterets offentlige API. Creatorhub AS (org.nr 937518684) har godkjent Maskinporten-tilgang til nhn:flr/export i test og produksjon, innvilget av Helsedirektoratet 2026-09-24. Dataene er åpne og inneholder ingen pasientopplysninger.",
 } as const;
 
 const codeSchema = z
@@ -123,6 +158,13 @@ interface FlrEnvironment {
 }
 
 export interface DiscoveryFlrProviderDependencies {
+  /**
+   * Basen. Uten den henter hver kjøring registeret på nytt og stiller seg i
+   * kappløpet med NHNs gateway-timeout. Valgfri så enhetstestene slipper.
+   */
+  pool?: Pool;
+  /** Overstyrer lageret direkte. Kun for tester. */
+  snapshotStore?: FlrSnapshotStore;
   fetchImpl?: typeof fetch;
   env?: FlrEnvironment;
   now?: () => Date;
@@ -251,14 +293,39 @@ function contactReference(
     .digest("hex");
 }
 
+/**
+ * Adressetypene FLR oppgir, i den rekkefølgen en selger trenger dem.
+ *
+ * Målt mot testmiljøet 2026-09-24: 5 911 kontorer har både besøks- og
+ * postadresse, og for 1 901 av dem peker de ULIKE steder. Rekkefølgen i
+ * arrayet avgjorde hvilken vi tok, og den er ikke sortert — postadressen lå
+ * først for 2 738 kontorer. En postadresse kan være en postboks, og en
+ * postboks er ikke et sted du kan banke på.
+ *
+ * «Coordinates» er med i registeret, men radene er tomme skall
+ * (streetAddress "", postalCode 0, ingen lat/lon). De filtreres uansett bort
+ * av kravet om gateadresse — nevnt her så ingen leter etter gratis geokoding
+ * som ikke finnes.
+ */
+const ADDRESS_TYPE_PRIORITY = [
+  "RES_FLO", // Besøksadresse for Fastlegeordning — mest spesifikk
+  "RES", // Besøksadresse
+  "PST", // Postadresse — kan være postboks
+  "HP", // Folkeregisteradresse
+  "INV", // Faktureringsadresse
+] as const;
+
 function selectAddress(office: z.infer<typeof officeSchema>) {
-  return (
-    (office.addresses ?? []).find(
-      (address) => cleanText(address.streetAddress) !== null,
-    ) ??
-    (office.addresses ?? [])[0] ??
-    null
+  const brukbare = (office.addresses ?? []).filter(
+    (address) => cleanText(address.streetAddress) !== null,
   );
+  for (const type of ADDRESS_TYPE_PRIORITY) {
+    const treff = brukbare.find(
+      (address) => cleanText(address.addressType?.value) === type,
+    );
+    if (treff) return treff;
+  }
+  return brukbare[0] ?? (office.addresses ?? [])[0] ?? null;
 }
 
 function contractMunicipality(contract: FlrContract): {
@@ -269,8 +336,14 @@ function contractMunicipality(contract: FlrContract): {
     contract.office.municipality?.value ?? contract.municipality?.value,
     8,
   );
+  // FLR skriver Oslo som «301», ikke «0301». Resten av systemet — BRREG,
+  // territoriene, Kartverket — bruker firesifret med ledende null, så uten
+  // padding falt kommunenummeret bort her. Målt mot testmiljøet 2026-09-24:
+  // 985 av 6 564 avtaler, samtlige Oslo. Filtrering på kommunenummer ville
+  // stilltiende utelatt landets største marked.
+  const padded = value && /^\d{1,4}$/.test(value) ? value.padStart(4, "0") : null;
   return {
-    number: value && /^\d{4}$/.test(value) ? value : null,
+    number: padded,
     name: cleanText(
       contract.office.municipality?.name ?? contract.municipality?.name,
       120,
@@ -410,19 +483,92 @@ function normalizeContracts(
     });
 }
 
+/**
+ * Leser kroppen, og skiller et transportbrudd fra et ugyldig svar.
+ *
+ * Produksjonssvaret er 23,5 MB (målt 2026-09-24, test var 15,2 MB), og NHN
+ * har en gateway-timeout på 15 sekunder. Et kaldt kall bruker 13–15 s bare på
+ * å sende det, så strømmen rekker å bli drept midtveis selv om statuslinjen
+ * kom fint tilbake med 200.
+ *
+ * Forskjellen betyr noe: et brudd skal prøves på nytt, ugyldig JSON skal
+ * ikke. Uten skillet ville vi enten gitt opp på noe forbigående, eller
+ * hamret på et svar som aldri kommer til å bli gyldig.
+ */
 async function responseJson(response: Response): Promise<unknown> {
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
     throw new DiscoveryRegistryError("invalid_response");
   }
-  const bytes = await response.arrayBuffer();
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch {
+    // Strømmen døde mens kroppen ble lest. Forbigående — prøv igjen.
+    throw new DiscoveryRegistryError("network_error", { retryable: true });
+  }
   if (bytes.byteLength > MAX_RESPONSE_BYTES) {
     throw new DiscoveryRegistryError("invalid_response");
   }
+  const tekst = new TextDecoder().decode(bytes);
   try {
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return JSON.parse(tekst);
   } catch {
+    // Avkortet, eller ødelagt? Forskjellen avgjør om vi skal prøve igjen.
+    //
+    // NHN sender svaret uten content-length (chunked), så lengden kan ikke
+    // sammenlignes. Men et komplett JSON-dokument ender på «]» eller «}»,
+    // og et som ble kuttet midt i strømmen gjør det ikke. Målt 2026-09-24:
+    // gatewayen deres svarer 200, begynner å strømme 23,5 MB, og kutter
+    // forbindelsen når deres egen 15-sekundersgrense løper ut. Da returnerer
+    // arrayBuffer() de delvise bytene UTEN å kaste, og vi satt igjen med en
+    // «ugyldig respons» som egentlig var et transportbrudd.
+    //
+    // Strukturell sjekk, ikke en full parse: vi vet bare at det ikke er
+    // helt. Det er nok til å avgjøre om et nytt forsøk er meningsfullt.
+    const siste = tekst.trimEnd().slice(-1);
+    if (tekst.length > 0 && siste !== "]" && siste !== "}") {
+      throw new DiscoveryRegistryError("network_error", { retryable: true });
+    }
     throw new DiscoveryRegistryError("invalid_response");
+  }
+}
+
+/**
+ * Henter kontraktene over HTTP/2 og pakker svaret som en Response.
+ *
+ * Resten av provideren kjenner bare Response, og skal slippe å vite hvilken
+ * transport som ble brukt.
+ */
+async function lastNedKontrakter(
+  url: string,
+  token: string,
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  try {
+    const svar = await downloadOverHttp2(url, {
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      timeoutMs,
+      ...(signal ? { signal } : {}),
+    });
+    // Buffer → Uint8Array: Response godtar ikke Node sin Buffer-type direkte.
+    return new Response(new Uint8Array(svar.body), {
+      status: svar.status,
+      headers: svar.headers,
+    });
+  } catch (error) {
+    if (error instanceof Http2DownloadError) {
+      if (signal?.aborted) throw new DiscoveryRegistryError("cancelled");
+      throw new DiscoveryRegistryError(
+        error.message === "timeout" ? "timeout" : "network_error",
+        { retryable: true },
+      );
+    }
+    throw new DiscoveryRegistryError("network_error", { retryable: true });
   }
 }
 
@@ -480,7 +626,7 @@ export function createDiscoveryFlrProvider(
     try {
       assertion = jwt.sign(
         {
-          aud: config.endpoint.tokenUrl,
+          aud: config.endpoint.issuer,
           iss: config.clientId,
           scope: FLR_SCOPE,
           iat: issuedAt,
@@ -532,66 +678,169 @@ export function createDiscoveryFlrProvider(
       if (input.geo) {
         throw new DiscoveryRegistryError("invalid_input");
       }
+      // Miljønavnet avgjør både hvilket endepunkt vi treffer og hvilken rad
+      // i øyeblikksbildet som gjelder. Utledes ett sted, ikke to.
+      const miljø: FlrEnvironmentName =
+        env.LEADGRID_FLR_ENVIRONMENT === "production" ? "production" : "test";
       const configured = dependencies.accessTokenProvider
-        ? {
-            endpoint:
-              env.LEADGRID_FLR_ENVIRONMENT === "production"
-                ? FLR_ENDPOINTS.production
-                : FLR_ENDPOINTS.test,
-          }
+        ? { endpoint: FLR_ENDPOINTS[miljø] }
         : environmentConfig(env);
-      let token = await accessToken();
       const sourceUri = `${configured.endpoint.apiBaseUrl}${FLR_CONTRACTS_PATH}`;
-      let response: Response | null = null;
-      let refreshedRejectedToken = false;
-      for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
-        await (
-          dependencies.beforeContractsRequest ?? waitForSharedFlrRequestSlot
-        )();
-        response = await fetchWithTimeout(
-          fetchImpl,
-          sourceUri,
-          {
-            method: "GET",
-            headers: {
-              accept: "application/json",
-              authorization: `Bearer ${token}`,
-            },
-            signal: input.signal,
-          },
-          timeoutMs,
-        );
-        if (response.ok) break;
-        if (
-          response.status === 401 &&
-          !dependencies.accessTokenProvider &&
-          !refreshedRejectedToken
-        ) {
-          refreshedRejectedToken = true;
-          cachedToken = null;
-          token = await accessToken();
-          continue;
+
+      /** Henter registeret over nettet. Alt kappløpet mot NHN ligger her. */
+      const hentOverNett = async (): Promise<unknown> => {
+        let token = await accessToken();
+        let response: Response | null = null;
+        let payload: unknown;
+        let refreshedRejectedToken = false;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+          await (
+            dependencies.beforeContractsRequest ?? waitForSharedFlrRequestSlot
+          )();
+          // HTTP/2 med stort vindu, ikke fetch. Node sin fetch laster ned
+          // dette svaret i 2,5 MB/s, og NHN gir oss under halvannet sekund
+          // til å flytte 23,5 MB før gatewayen deres kutter. Se
+          // leadgrid-flr-download.ts for målingene. Tester som injiserer
+          // fetchImpl går fortsatt den veien.
+          response = dependencies.fetchImpl
+            ? await fetchWithTimeout(
+                fetchImpl,
+                sourceUri,
+                {
+                  method: "GET",
+                  headers: {
+                    accept: "application/json",
+                    authorization: `Bearer ${token}`,
+                  },
+                  signal: input.signal,
+                },
+                timeoutMs,
+              )
+            : await lastNedKontrakter(sourceUri, token, input.signal, timeoutMs);
+          if (response.ok) {
+            // Kroppen leses her inne, ikke etter løkka: på denne mengden data
+            // er nedlastingen der det ryker, og et brudd midt i den fortjener
+            // samme nye forsøk som en 503.
+            try {
+              payload = await responseJson(response);
+              break;
+            } catch (error) {
+              const brudd =
+                error instanceof DiscoveryRegistryError &&
+                error.code === "network_error";
+              if (!brudd || attempt === MAX_RETRIES) throw error;
+              await wait(250 * 2 ** attempt);
+              continue;
+            }
+          }
+          if (
+            response.status === 401 &&
+            !dependencies.accessTokenProvider &&
+            !refreshedRejectedToken
+          ) {
+            refreshedRejectedToken = true;
+            cachedToken = null;
+            token = await accessToken();
+            continue;
+          }
+          // 502/504 hører hjemme her sammen med 429/503. NHNs produksjons-
+          // endepunkt bruker 13–15 sekunder på å generere svaret og har selv
+          // en gateway-timeout på 15, så det kappløper med seg selv: et kaldt
+          // kall gir 504 med en 24 bytes kropp omtrent like ofte som 200.
+          const retryable =
+            response.status === 429 ||
+            response.status === 502 ||
+            response.status === 503 ||
+            response.status === 504;
+          if (!retryable || attempt === MAX_RETRIES) {
+            throw new DiscoveryRegistryError("upstream_unavailable", {
+              retryable,
+              httpStatus: response.status,
+            });
+          }
+          const retryAfterSeconds = Number(response.headers.get("retry-after"));
+          await wait(
+            Number.isFinite(retryAfterSeconds)
+              ? Math.min(2_000, Math.max(0, retryAfterSeconds * 1_000))
+              : 250 * 2 ** attempt,
+          );
         }
-        const retryable = response.status === 429 || response.status === 503;
-        if (!retryable || attempt === MAX_RETRIES) {
+        if (!response?.ok) {
           throw new DiscoveryRegistryError("upstream_unavailable", {
-            retryable,
-            httpStatus: response.status,
+            retryable: true,
           });
         }
-        const retryAfterSeconds = Number(response.headers.get("retry-after"));
-        await wait(
-          Number.isFinite(retryAfterSeconds)
-            ? Math.min(2_000, Math.max(0, retryAfterSeconds * 1_000))
-            : 250 * 2 ** attempt,
-        );
-      }
-      if (!response?.ok) {
-        throw new DiscoveryRegistryError("upstream_unavailable", {
-          retryable: true,
+        return payload;
+      };
+
+      /**
+       * Henter registeret, fra øyeblikksbildet når det går an.
+       *
+       * Rekkefølgen er valgt etter hva som gjør kjøringen mest sannsynlig
+       * vellykket, ikke etter hva som er ferskest:
+       *
+       *   1. Ferskt øyeblikksbilde  → bruk det, ikke rør nettverket
+       *   2. Ellers, hent på nytt   → lagre og bruk
+       *   3. Hentingen feilet, men vi har et gammelt → bruk det gamle
+       *
+       * Punkt 3 er forsikringen. En seks timer gammel legekontoradresse er
+       * fortsatt riktig adresse; en feilet kjøring er ingenting.
+       */
+      const hentRegister = async (): Promise<unknown> => {
+        const store =
+          dependencies.snapshotStore ??
+          (dependencies.pool ? createFlrSnapshotStore(dependencies.pool) : null);
+        if (!store) return hentOverNett();
+
+        const nå = now();
+        const eksisterende = await store.read(miljø).catch(() => null);
+        if (eksisterende && freshness(eksisterende, nå) === "fersk") {
+          return eksisterende.payload;
+        }
+
+        // Låsen er delt på tvers av prosesser: starter to kjøringer samtidig,
+        // henter én av dem, og den andre leser resultatet i stedet for å
+        // stille seg i det samme kappløpet.
+        return store.withFetchLock(miljø, async () => {
+          const etterLås = await store.read(miljø).catch(() => null);
+          if (etterLås && freshness(etterLås, now()) === "fersk") {
+            return etterLås.payload;
+          }
+          try {
+            const friskt = await hentOverNett();
+            const antall = Array.isArray(friskt) ? friskt.length : 0;
+            await store
+              .write(miljø, {
+                payload: friskt,
+                contractCount: antall,
+                sourceUri,
+                fetchedAt: now(),
+                expiresAt: new Date(now().valueOf() + SNAPSHOT_TTL_MS),
+              })
+              .catch((error: unknown) => {
+                // Lagring som feiler skal ikke velte en kjøring som lyktes.
+                console.warn(
+                  "[flr] fikk ikke lagret øyeblikksbilde:",
+                  (error as Error).message,
+                );
+              });
+            return friskt;
+          } catch (error) {
+            const reserve = etterLås ?? eksisterende;
+            if (reserve && freshness(reserve, now()) === "utløpt") {
+              console.warn(
+                `[flr] NHN svarte ikke (${(error as Error).message}) — ` +
+                  `serverer øyeblikksbilde som er ${ageHours(reserve, now())} timer gammelt.`,
+              );
+              return reserve.payload;
+            }
+            throw error;
+          }
         });
-      }
-      const parsed = contractsSchema.safeParse(await responseJson(response));
+      };
+
+      const payload = await hentRegister();
+      const parsed = contractsSchema.safeParse(payload);
       if (!parsed.success) throw new DiscoveryRegistryError("invalid_response");
       const normalized = normalizeContracts(
         parsed.data,

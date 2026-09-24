@@ -9,7 +9,12 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 120_000,
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5001',
+    // «localhost» med vilje: useAuth.ts autoseeder en local-admin-sesjon for
+    // nøyaktig det vertsnavnet, og resten av suitene — Story Arc, Visual
+    // Editor — bygger på at de er innlogget. Den som skal måle en ANONYM
+    // besøkende, må selv velge 127.0.0.1; se ANONYM_BASE i
+    // e2e/leadgrid-public-runtime.spec.ts.
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${process.env.PLAYWRIGHT_PORT || '5001'}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: true,
@@ -58,10 +63,16 @@ export default defineConfig({
   // webServer-port leses fra PLAYWRIGHT_PORT (default 5001) — gjør at
   // parallelle worktrees kan kjøre Playwright mot egne dev-servere uten
   // å kollidere. baseURL leses tilsvarende fra PLAYWRIGHT_BASE_URL.
+  // PLAYWRIGHT_PREVIEW=1 serverer den BYGDE bundelen i stedet for dev-serveren.
+  // Dev-serveren uten backend gir 500 på hvert /api-kall, og flere ruter
+  // rendrer da tomt — målt 2026-09-24. En gate som skal si noe om hva
+  // publikum ser, må måle det publikum får.
   webServer: {
-    command: `npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host`,
+    command: process.env.PLAYWRIGHT_PREVIEW
+      ? `npx vite preview --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host 127.0.0.1`
+      : `npx vite --port ${process.env.PLAYWRIGHT_PORT || '5001'} --host`,
     port: Number(process.env.PLAYWRIGHT_PORT || '5001'),
     reuseExistingServer: true,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });

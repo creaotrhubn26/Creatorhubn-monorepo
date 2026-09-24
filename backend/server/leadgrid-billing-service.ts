@@ -1,5 +1,12 @@
 import crypto from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+
+import {
+  AGREEMENT_LABELS,
+  PROVIDER,
+  REQUIRED_AGREEMENT_TYPES,
+} from "./leadgrid-org-agreements.js";
+import { AGREEMENT_DOCUMENTS } from "./leadgrid-agreement-documents.js";
 import type Stripe from "stripe";
 import { sendTransactionalEmail } from "./transactional-email-service.js";
 
@@ -40,6 +47,10 @@ type LockedBillingRow = {
   organization_id: string;
   name: string;
   contact_email: string | null;
+  org_number: string | null;
+  address_line: string | null;
+  postal_code: string | null;
+  city: string | null;
   org_customer_id: string | null;
   org_subscription_id: string | null;
   provider_customer_id: string | null;
@@ -74,6 +85,10 @@ async function withBillingLock<T>(
     const result = await client.query<LockedBillingRow>(
       `SELECT billing.organization_id::text, organization.name,
               organization.contact_email,
+              organization.org_number,
+              organization.address_line,
+              organization.postal_code,
+              organization.city,
               organization.stripe_customer_id AS org_customer_id,
               organization.stripe_subscription_id AS org_subscription_id,
               billing.provider_customer_id,
@@ -119,17 +134,45 @@ async function ensureOrganizationCustomer(
   if (existing) return existing;
   const email = billingEmail?.trim() || row.contact_email?.trim() || "";
   if (!email) throw new LeadgridBillingError(400, "mangler_billing_email");
+  // Organisasjonsnummeret hører hjemme på kunden, ikke bare i vår base. En
+  // norsk B2B-faktura uten org.nr er ikke en gyldig faktura, og uten adresse
+  // kan ikke Stripe beregne mva riktig. `tax_ids` gjør at nummeret havner på
+  // selve fakturaen — metadata alene gjør det ikke.
   const customer = await stripe.customers.create(
     {
       name: row.name,
       email,
+      ...(row.address_line || row.postal_code || row.city
+        ? {
+            address: {
+              line1: row.address_line ?? undefined,
+              postal_code: row.postal_code ?? undefined,
+              city: row.city ?? undefined,
+              country: "NO",
+            },
+          }
+        : {}),
       metadata: {
         organization_id: row.organization_id,
         product_family: "leadgrid",
+        org_number: row.org_number ?? "",
       },
     },
     { idempotencyKey: `leadgrid-customer-${row.organization_id}` },
   );
+  if (row.org_number) {
+    // Egen kall: Stripe godtar ikke tax_ids i customers.create. Feiler den,
+    // står kunden fortsatt riktig — nummeret ligger i metadata — så dette
+    // skal ikke velte provisjoneringen.
+    await stripe.customers
+      .createTaxId(customer.id, { type: "no_vat", value: `${row.org_number}MVA` })
+      .catch((error: unknown) => {
+        console.warn(
+          "[leadgrid-billing] fikk ikke satt org.nr som tax_id:",
+          (error as Error).message,
+        );
+      });
+  }
   await client.query(
     `WITH billing_update AS (
        UPDATE leadgrid_org_billing
@@ -246,6 +289,36 @@ export async function createLeadgridCheckoutSession(input: {
   });
 }
 
+/**
+ * Hvilke avtaler som mangler før vi kan fakturere.
+ *
+ * En faktura er den kommersielle enden av en avtale. Finnes ikke avtalen,
+ * finnes ikke grunnlaget — og databehandleravtalen er dessuten lovpålagt før
+ * vi i det hele tatt behandler kundens data. At det gikk an å opprette et
+ * abonnement uten en eneste signatur var hullet, ikke en fleksibilitet.
+ *
+ * Versjonen teller med: har vi endret teksten siden de signerte, er det en
+ * annen avtale, og den må signeres på nytt.
+ */
+async function manglendeAvtaler(
+  client: PoolClient,
+  organizationId: string,
+): Promise<string[]> {
+  const rader = await client.query<{ agreement_type: string; document_version: string }>(
+    `SELECT DISTINCT ON (agreement_type) agreement_type, document_version
+       FROM leadgrid_org_agreements
+      WHERE organization_id = $1::uuid
+      ORDER BY agreement_type, signed_at DESC`,
+    [organizationId],
+  );
+  const signert = new Map(rader.rows.map((r) => [r.agreement_type, r.document_version]));
+  return REQUIRED_AGREEMENT_TYPES.filter((type) => {
+    const versjon = signert.get(type);
+    if (!versjon) return true;
+    return versjon !== AGREEMENT_DOCUMENTS[type]?.version;
+  }).map((type) => AGREEMENT_LABELS[type] ?? type);
+}
+
 export async function provisionLeadgridInvoiceSubscription(input: {
   pool: Pool;
   stripe: Stripe;
@@ -257,8 +330,19 @@ export async function provisionLeadgridInvoiceSubscription(input: {
   includeAI: boolean;
   daysUntilDue: number;
   billingEmail?: string;
+  /** Sett når kunden bevisst faktureres før avtalene er på plass. */
+  allowMissingAgreements?: boolean;
 }): Promise<{ customerId: string; subscriptionId: string }> {
   return withBillingLock(input.pool, input.organizationId, async (client, row) => {
+    if (!input.allowMissingAgreements) {
+      const mangler = await manglendeAvtaler(client, input.organizationId);
+      if (mangler.length > 0) {
+        throw new LeadgridBillingError(409, "avtaler_mangler", {
+          missing: mangler,
+          message: `Kan ikke fakturere før disse er signert: ${mangler.join(", ")}.`,
+        });
+      }
+    }
     if (hasExistingSubscription(row)) {
       throw new LeadgridBillingError(409, "org_har_abonnement", {
         stripe_subscription_id: row.provider_subscription_id ?? row.org_subscription_id,
@@ -289,6 +373,13 @@ export async function provisionLeadgridInvoiceSubscription(input: {
           product_family: "leadgrid",
           plan_key: input.planKey,
           billing: input.interval,
+          org_number: row.org_number ?? "",
+          // Hvem avtalen er med, og hvilken avtaletekst abonnementet hviler
+          // på. Uten dette må man over i vår base for å svare på spørsmålet
+          // «hva har denne kunden egentlig signert?».
+          provider_legal_name: PROVIDER.legalName,
+          provider_org_number: PROVIDER.orgNumber,
+          ...(await avtaleBevis(client, row.organization_id)),
         },
       },
       {
@@ -1021,4 +1112,34 @@ export function startLeadgridBillingWorker(input: {
 
 export function newLeadgridUsageIdempotencyKey(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`;
+}
+
+/** Signaturbeviset som følger abonnementet inn i Stripe. */
+async function avtaleBevis(
+  client: PoolClient,
+  organizationId: string,
+): Promise<Record<string, string>> {
+  const rader = await client.query<{
+    agreement_type: string;
+    document_version: string;
+    document_sha256: string;
+    signed_at: Date;
+    signer_name: string;
+  }>(
+    `SELECT DISTINCT ON (agreement_type)
+            agreement_type, document_version, document_sha256, signed_at, signer_name
+       FROM leadgrid_org_agreements
+      WHERE organization_id = $1::uuid
+      ORDER BY agreement_type, signed_at DESC`,
+    [organizationId],
+  );
+  const bevis: Record<string, string> = {};
+  for (const rad of rader.rows) {
+    // Stripe-metadata tåler 500 tegn per verdi og 50 nøkler. Én linje per
+    // avtale holder seg godt innenfor, og er lesbar i Stripe-dashbordet.
+    bevis[`agreement_${rad.agreement_type}`] =
+      `v${rad.document_version} · ${rad.signer_name} · ` +
+      `${rad.signed_at.toISOString().slice(0, 10)} · ${rad.document_sha256.slice(0, 16)}`;
+  }
+  return bevis;
 }
