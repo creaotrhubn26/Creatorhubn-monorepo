@@ -1122,6 +1122,10 @@ export interface DemoHeroImageSource {
   pinnedFile: string | null;
   categories: string[];
   searchTerms: string[];
+  /** Filnavnet må inneholde minst ett av ordene (ellers forkastes kandidaten). */
+  titleMustIncludeAny?: string[];
+  /** Filnavn med ett av ordene forkastes (nabobygg, samme navn i en annen by). */
+  titleMustExclude?: string[];
 }
 
 export const DEMO_HERO_IMAGES: Record<string, DemoHeroImageSource> = {
@@ -1137,8 +1141,11 @@ export const DEMO_HERO_IMAGES: Record<string, DemoHeroImageSource> = {
   },
   poi_gamle_radhus: {
     pinnedFile: null,
-    categories: ["Gamle rådhus (Oslo)", "Old Town Hall (Oslo)"],
-    searchTerms: ['intitle:"Gamle rådhus" Oslo'],
+    categories: ["Gamle rådhus (Oslo)", "Old Town Hall (Oslo)", "Rådhusgata 1 (Oslo)"],
+    searchTerms: ['intitle:"Gamle rådhus" intitle:Oslo', 'intitle:"Old Town Hall" intitle:Oslo', 'intitle:"Rådhusgata 1" intitle:Oslo'],
+    // Første dry run (24.09.2026) valgte Gamle rådhus i Bergen fra søket.
+    titleMustIncludeAny: ["Oslo", "Christiania"],
+    titleMustExclude: ["Bergen", "Trondheim", "Stavanger", "Kristiansand"],
   },
   poi_oslo_bors: {
     pinnedFile: null,
@@ -1153,6 +1160,9 @@ export const DEMO_HERO_IMAGES: Record<string, DemoHeroImageSource> = {
   poi_operaen: {
     pinnedFile: null,
     categories: ["Oslo Opera House"],
-    searchTerms: ['intitle:"Oslo Opera House"', 'intitle:Operahuset Oslo'],
+    searchTerms: ['intitle:"Oslo Opera House"', 'intitle:Operahuset intitle:Oslo'],
+    // Første dry run (24.09.2026) valgte Deichman Bjørvika fra kategorien.
+    titleMustIncludeAny: ["Opera", "Operahuset", "Operaen"],
+    titleMustExclude: ["Deichman", "bibliotek", "library", "Munch", "Barcode", "interior", "interiør", "foyer"],
   },
 };
