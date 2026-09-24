@@ -1,9 +1,14 @@
 // AreaStore.swift
 //
-// Holder demo-området i minnet, henter det fra backend for valgt språk og
+// Holder valgt område i minnet, henter det fra backend for valgt språk og
 // cacher siste svar som JSON i Caches-katalogen (Lead Map-mønsteret i
 // Core/OfflineCache.swift, uten GRDB: hele området er ett lite snapshot).
 // Uten nett vises cachet innhold; mangler både nett og cache vises feil.
+//
+// Flere områder (Lørenskog, Nesoddtangen): `select(slug:lang:)` bytter slug
+// og viser cachet innhold for det nye området med én gang; ReiseguideApp
+// laster så på nytt via `.task(id:)` på slug + språk. `loadAreas()` henter
+// områdelisten til velgeren og cacher den, så velgeren virker uten nett.
 
 import Foundation
 import Observation
@@ -21,16 +26,32 @@ final class AreaStore {
         case failed(String)
     }
 
+    /// Områdelisten (GET /api/guide/areas) til velgeren.
+    enum AreasState: Equatable {
+        case idle
+        case loading
+        case loaded
+        /// Listen kunne ikke hentes; `areas` er da lagret liste eller tom.
+        case failed
+    }
+
+    /// Hvor lenge velgeren venter på områdelisten før den viser lagret liste.
+    nonisolated static let areasTimeout: Duration = .seconds(8)
+
     private(set) var state: State = .idle
     private(set) var loadedLang: String?
+    /// Området som vises (eller lastes) nå.
+    private(set) var slug: String
+    private(set) var areas: [GuideArea] = []
+    private(set) var areasState: AreasState = .idle
 
     @ObservationIgnored private let api: GuideAPIClient
     @ObservationIgnored private let cacheDirectory: URL
-    @ObservationIgnored private let areaSlug: String
+    @ObservationIgnored private var loadedSlug: String?
 
     init(api: GuideAPIClient = GuideAPIClient(), areaSlug: String = AreaStore.demoAreaSlug, cacheDirectory: URL? = nil) {
         self.api = api
-        self.areaSlug = areaSlug
+        self.slug = areaSlug
         self.cacheDirectory = cacheDirectory
             ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
@@ -47,46 +68,113 @@ final class AreaStore {
 
     func poi(id: String) -> GuidePOI? { pois.first { $0.id == id } }
 
-    /// Henter området på nytt hvis språket har endret seg eller vi ikke har noe.
+    /// Henter området på nytt hvis språket eller området har endret seg, eller vi ikke har noe.
     func loadIfNeeded(lang: String) async {
-        if loadedLang == lang, response != nil { return }
+        if loadedLang == lang, loadedSlug == slug, response != nil { return }
         await load(lang: lang)
     }
 
     func load(lang: String) async {
+        let requested = slug
         if response == nil { state = .loading }
         do {
-            let fresh = try await api.area(idOrSlug: areaSlug, lang: lang)
+            let fresh = try await api.area(idOrSlug: requested, lang: lang)
+            // Brukeren byttet område mens vi ventet: ikke overskriv det nye.
+            guard requested == slug else { return }
             state = .loaded(fresh, fromCache: false)
             loadedLang = lang
-            writeCache(fresh, lang: lang)
+            loadedSlug = requested
+            writeCache(fresh, slug: requested, lang: lang)
         } catch {
-            if let cached = readCache(lang: lang) {
+            guard requested == slug else { return }
+            if let cached = readCache(slug: requested, lang: lang) {
                 state = .loaded(cached, fromCache: true)
                 loadedLang = lang
+                loadedSlug = requested
             } else {
                 state = .failed(error.localizedDescription)
             }
         }
     }
 
-    // MARK: - Cache
-
-    private func cacheURL(lang: String) -> URL {
-        cacheDirectory.appendingPathComponent("reiseguide-area-\(areaSlug)-\(lang).json")
+    /// Bytter område. Viser cachet innhold for det nye området med én gang
+    /// hvis vi har det (ellers «laster»); ferskt innhold hentes av kalleren
+    /// med `loadIfNeeded(lang:)` (ReiseguideApp gjør det via `.task(id:)`).
+    func select(slug newSlug: String, lang: String) {
+        guard newSlug != slug else { return }
+        slug = newSlug
+        loadedLang = nil
+        loadedSlug = nil
+        if let cached = readCache(slug: newSlug, lang: lang) {
+            state = .loaded(cached, fromCache: true)
+        } else {
+            state = .loading
+        }
     }
 
-    private func writeCache(_ response: AreaResponse, lang: String) {
+    /// Henter områdelisten. Viser lagret liste med én gang; uten nett (eller
+    /// når backend ikke svarer innen `areasTimeout`) beholdes den og
+    /// `areasState` blir `.failed`, så velgeren kan si fra.
+    func loadAreas() async {
+        if areas.isEmpty { areas = readAreasCache() ?? [] }
+        areasState = .loading
+        let api = self.api
+        let timeout = Self.areasTimeout
+        do {
+            let fresh = try await withThrowingTaskGroup(of: [GuideArea].self, returning: [GuideArea].self) { group in
+                group.addTask { try await api.areas() }
+                group.addTask {
+                    try await Task.sleep(for: timeout)
+                    throw URLError(.timedOut)
+                }
+                defer { group.cancelAll() }
+                guard let first = try await group.next() else { throw URLError(.unknown) }
+                return first
+            }
+            areas = fresh
+            areasState = .loaded
+            writeAreasCache(fresh)
+        } catch {
+            areasState = .failed
+        }
+    }
+
+    // MARK: - Cache
+
+    /// Samme filnavn som før flere områder fantes, så eksisterende cache for Oslo gjenbrukes.
+    nonisolated static func cacheFileName(slug: String, lang: String) -> String {
+        "reiseguide-area-\(slug)-\(lang).json"
+    }
+
+    private func cacheURL(slug: String, lang: String) -> URL {
+        cacheDirectory.appendingPathComponent(Self.cacheFileName(slug: slug, lang: lang))
+    }
+
+    private var areasCacheURL: URL {
+        cacheDirectory.appendingPathComponent("reiseguide-areas.json")
+    }
+
+    private func writeCache(_ response: AreaResponse, slug: String, lang: String) {
         do {
             let data = try JSONEncoder().encode(response)
-            try data.write(to: cacheURL(lang: lang), options: .atomic)
+            try data.write(to: cacheURL(slug: slug, lang: lang), options: .atomic)
         } catch {
             // Cache er en bonus; appen er brukbar uten.
         }
     }
 
-    private func readCache(lang: String) -> AreaResponse? {
-        guard let data = try? Data(contentsOf: cacheURL(lang: lang)) else { return nil }
+    private func readCache(slug: String, lang: String) -> AreaResponse? {
+        guard let data = try? Data(contentsOf: cacheURL(slug: slug, lang: lang)) else { return nil }
         return try? JSONDecoder().decode(AreaResponse.self, from: data)
+    }
+
+    private func writeAreasCache(_ areas: [GuideArea]) {
+        guard let data = try? JSONEncoder().encode(AreasResponse(areas: areas)) else { return }
+        try? data.write(to: areasCacheURL, options: .atomic)
+    }
+
+    private func readAreasCache() -> [GuideArea]? {
+        guard let data = try? Data(contentsOf: areasCacheURL) else { return nil }
+        return try? JSONDecoder().decode(AreasResponse.self, from: data).areas
     }
 }
