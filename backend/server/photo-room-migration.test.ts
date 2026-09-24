@@ -17,6 +17,10 @@ const runtimeWriteMigration = readFileSync(
   new URL("../migrations/0676_photo_room_runtime_write_access.sql", import.meta.url),
   "utf8",
 );
+const triggerSecurityMigration = readFileSync(
+  new URL("../migrations/0677_photo_review_trigger_security.sql", import.meta.url),
+  "utf8",
+);
 
 describe("Photo Room migration contract", () => {
   it("owns the review and comment schema with project and asset constraints", () => {
@@ -62,5 +66,15 @@ describe("Photo Room migration contract", () => {
     expect(runtimeWriteMigration).toContain("GRANT SELECT, INSERT, UPDATE, DELETE");
     expect(runtimeWriteMigration).toContain("TO creatorhub_runtime_login");
     expect(runtimeWriteMigration).toContain("ON TABLE capture_assets");
+  });
+
+  it("runs the two-way review mirror under a locked owner context", () => {
+    expect(triggerSecurityMigration).toContain("SECURITY DEFINER");
+    expect(triggerSecurityMigration).toContain("SET search_path = public, pg_temp");
+    expect(triggerSecurityMigration).toContain("public.capture_assets");
+    expect(triggerSecurityMigration).toContain("public.project_photo_review");
+    expect(triggerSecurityMigration).toContain("pg_trigger_depth() > 1");
+    expect(triggerSecurityMigration).toContain("REVOKE ALL ON FUNCTION");
+    expect(triggerSecurityMigration).toContain("TO creatorhub_runtime_login");
   });
 });
