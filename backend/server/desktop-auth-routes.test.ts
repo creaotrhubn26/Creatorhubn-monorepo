@@ -151,7 +151,24 @@ describe('CreatorHub One Desk project picker', () => {
       }
       if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
         return {
-          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+          ],
         };
       }
       return { rows: [], rowCount: 1 };
@@ -206,7 +223,24 @@ describe('CreatorHub One Desk project picker', () => {
       }
       if (sql.includes('SELECT DISTINCT p.id, p.title, p.name')) {
         return {
-          rows: [{ id: 'project-1', title: 'Bryllup', name: 'Bryllup' }],
+          rows: [
+            {
+              id: 'project-1',
+              title: 'Bryllup',
+              name: 'Bryllup',
+              project_profession: 'photographer',
+              project_type: 'photography',
+              workspace_category: 'visual',
+            },
+            {
+              id: 'project-2',
+              title: 'Sound Room',
+              name: 'Sound Room',
+              project_profession: 'photographer',
+              project_type: 'recording',
+              workspace_category: 'music',
+            },
+          ],
         };
       }
       if (sql.includes('FROM role_room_google_connections')) {

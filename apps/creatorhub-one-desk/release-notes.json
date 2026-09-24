@@ -1,6 +1,24 @@
 {
   "releases": [
     {
+      "version": "0.1.14",
+      "publishedAt": "2026-09-24T13:00:00Z",
+      "title": "Photo Room åpner riktig etter innlogging",
+      "summary": "CreatorHub Plugins bevarer Photo Room-dyplenken gjennom nettinnlogging og velger bare prosjekter som faktisk har Photo Room.",
+      "critical": false,
+      "sections": [
+        {
+          "kind": "fixed",
+          "title": "Rettet",
+          "items": [
+            "Åpne Photo Room sender deg til samme Photo Room etter innlogging i stedet for prosjektoversikten.",
+            "Sound Room- og andre ikke-visuelle prosjekter brukes ikke lenger som mål for Lightroom eller Photo Room.",
+            "Desk forklarer tydelig når kontoen mangler et foto-/videoprosjekt med skrivetilgang."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.1.13",
       "publishedAt": "2026-09-24T12:00:00Z",
       "title": "Lightroom som en trygg CreatorHub-arbeidsflyt",

@@ -357,7 +357,13 @@ export default function LightroomIntegrationCard({ compact = false }: Props) {
                   variant="outlined"
                   onClick={async () => {
                     const result = connection ?? await testConnection();
-                    if (result?.photo_room_url) await openUrl(result.photo_room_url);
+                    if (result?.photo_room_url) {
+                      await openUrl(result.photo_room_url);
+                      return;
+                    }
+                    setError(
+                      "Fant ingen Photo Room-kompatible prosjekter. Opprett eller få skrivetilgang til et foto-/videoprosjekt i workspace først.",
+                    );
                   }}
                   disabled={checking || action !== null || !status.broker_running}
                 >
