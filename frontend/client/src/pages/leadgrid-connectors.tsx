@@ -107,11 +107,16 @@ const CONNECTORS: Connector[] = [
     id: "hubspot",
     name: "HubSpot",
     description:
-      "Planlagt ferdigpakket connector. Ingen offisiell toveis HubSpot-sync er publisert ennå.",
+      "Engangs-migrering med Service Key: bedrifter, kontakter, avtaler, produkter og ordrelinjer. Du ser hva som kommer inn — og hva som ikke gjør det — før noe skrives. Toveis sync finnes ikke.",
     Icon: Database,
-    status: "planned",
+    status: "live",
     category: "crm",
-    features: ["Lead-mapping", "Pipeline-mapping", "Prosjektavgrensning"],
+    features: [
+      "Migrering med forhåndsvisning",
+      "Pipeline-mapping",
+      "Produkter og ordrelinjer",
+      "Prosjektavgrensning",
+    ],
   },
   {
     id: "pipedrive",
