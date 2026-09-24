@@ -18,7 +18,6 @@
 
 import { WebSocket } from "ws";
 
-export const SONIOX_TTS_WS_URL = "wss://tts-rt.soniox.com/tts-websocket";
 export const SONIOX_TTS_MODEL = "tts-rt-v2";
 /**
  * Eksempelstemmen i Soniox' egen dokumentasjon. Alle Soniox-stemmer snakker
@@ -69,6 +68,27 @@ export class SonioxTtsError extends Error {
 }
 
 /**
+ * Soniox-region. Et Soniox-prosjekt ligger i én region, og nøkkelen virker
+ * bare mot den regionens adresser. SenseAid bruker EU (Daniel 24.09.2026);
+ * SENSEAID_SONIOX_REGION kan overstyre («us» er Soniox' standard uten
+ * underdomene). Adressene følger @soniox/node 2.3.0 (SonioxRegion:
+ * `*.eu.soniox.com`, `*.jp.soniox.com`, US uten underdomene).
+ */
+export const SONIOX_DEFAULT_REGION = "eu";
+
+/** TTS-WebSocket for regionen: wss://tts-rt.eu.soniox.com/tts-websocket osv. */
+export function sonioxTtsWsUrl(region: string = SONIOX_DEFAULT_REGION): string {
+  const normalized = region.trim().toLowerCase();
+  if (!normalized || normalized === "us") return "wss://tts-rt.soniox.com/tts-websocket";
+  if (!/^[a-z]{2}$/.test(normalized)) {
+    throw new SonioxTtsError(`Ukjent Soniox-region «${region}». Bruk eu, jp eller us.`);
+  }
+  return `wss://tts-rt.${normalized}.soniox.com/tts-websocket`;
+}
+
+export const SONIOX_TTS_WS_URL = sonioxTtsWsUrl();
+
+/**
  * Soniox bruker ISO 639-1; norsk er «no» (bokmål og nynorsk i samme modell).
  * Regionsuffiks (nb-NO, en-GB) strippes.
  */
@@ -90,6 +110,8 @@ export type TtsSocketFactory = (url: string) => TtsSocket;
 export interface SonioxTtsOptions {
   apiKey: string;
   model?: string;
+  /** Region (eu, jp, us); ignoreres når wsUrl er satt. Standard er EU. */
+  region?: string;
   wsUrl?: string;
   bitrate?: number;
   timeoutMs?: number;
@@ -123,7 +145,7 @@ export function createSonioxTts(options: SonioxTtsOptions): SpeechSynthesizer {
   const apiKey = options.apiKey.trim();
   if (!apiKey) throw new SonioxTtsError("Soniox-nøkkel mangler.");
   const model = options.model ?? SONIOX_TTS_MODEL;
-  const wsUrl = options.wsUrl ?? SONIOX_TTS_WS_URL;
+  const wsUrl = options.wsUrl ?? sonioxTtsWsUrl(options.region);
   const bitrate = options.bitrate ?? SONIOX_TTS_BITRATE;
   const timeoutMs = options.timeoutMs ?? 180_000;
   const connect = options.connect ?? defaultConnect;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SONIOX_TTS_MODEL, SonioxTtsError, createSonioxTts, sonioxLanguageCode, type TtsSocket } from "./reiseguide-soniox-tts.js";
+import { SONIOX_TTS_MODEL, SONIOX_TTS_WS_URL, SonioxTtsError, createSonioxTts, sonioxLanguageCode, sonioxTtsWsUrl, type TtsSocket } from "./reiseguide-soniox-tts.js";
 
 type Listener = (...args: unknown[]) => void;
 
@@ -36,7 +36,38 @@ describe("sonioxLanguageCode", () => {
   });
 });
 
+describe("sonioxTtsWsUrl", () => {
+  it("bruker EU som standard og følger Soniox' regionsdomener", () => {
+    expect(sonioxTtsWsUrl()).toBe("wss://tts-rt.eu.soniox.com/tts-websocket");
+    expect(SONIOX_TTS_WS_URL).toBe("wss://tts-rt.eu.soniox.com/tts-websocket");
+    expect(sonioxTtsWsUrl(" JP ")).toBe("wss://tts-rt.jp.soniox.com/tts-websocket");
+    expect(sonioxTtsWsUrl("us")).toBe("wss://tts-rt.soniox.com/tts-websocket");
+  });
+
+  it("avviser ugyldige regioner i stedet for å bygge en tilfeldig adresse", () => {
+    expect(() => sonioxTtsWsUrl("evil.example.com/")).toThrow(SonioxTtsError);
+  });
+});
+
 describe("createSonioxTts", () => {
+  it("kobler til EU-adressen som standard og regionen som er valgt", async () => {
+    const urls: string[] = [];
+    const run = async (region?: string) => {
+      const { socket } = fakeSocket((_sent, emit) => {
+        emit("message", JSON.stringify({
+          audio: Buffer.from("a").toString("base64"),
+          timestamps: { characters: ["A"], character_start_times_seconds: [0], character_end_times_seconds: [0.1] },
+        }));
+        emit("message", JSON.stringify({ terminated: true }));
+      });
+      const tts = createSonioxTts({ apiKey: "k", region, connect: (url) => { urls.push(url); return socket; } });
+      await tts.synthesize({ text: "A.", lang: "nb", voice: "Adrian" });
+    };
+    await run();
+    await run("us");
+    expect(urls).toEqual(["wss://tts-rt.eu.soniox.com/tts-websocket", "wss://tts-rt.soniox.com/tts-websocket"]);
+  });
+
   it("sender konfig med nøkkel, modell og return_timestamps, så teksten med text_end", async () => {
     const { socket, sent } = fakeSocket((_sent, emit) => {
       emit("message", Buffer.from(JSON.stringify({

@@ -114,7 +114,10 @@ async function runArea(pool: pg.Pool, filter: JobFilter, values: CliValues, voic
     return 0;
   }
 
-  const tts = createSonioxTts({ apiKey: requireSenseAidEnv(SENSEAID_ENV.sonioxApiKey) });
+  const tts = createSonioxTts({
+    apiKey: requireSenseAidEnv(SENSEAID_ENV.sonioxApiKey),
+    region: process.env[SENSEAID_ENV.sonioxRegion]?.trim() || undefined,
+  });
 
   if (values.out) {
     const dir = path.resolve(values.out);
