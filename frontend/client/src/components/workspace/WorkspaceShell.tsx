@@ -73,6 +73,9 @@ const SHELL_T = {
   teamMembers: { no: 'Team & medlemmer', en: 'Team & members' },
   openClientView: { no: 'Åpne kundevisning', en: 'Open client view' },
   agreementsSettings: { no: 'Avtaler & innstillinger', en: 'Agreements & settings' },
+  userMenu: { no: 'Åpne brukermeny', en: 'Open user menu' },
+  userSettings: { no: 'Åpne brukerinnstillinger', en: 'Open user settings' },
+  projectMenu: { no: 'Åpne prosjektmeny', en: 'Open project menu' },
 };
 
 const ICONS: Record<string, React.ElementType> = {
@@ -129,16 +132,21 @@ function NavItem({ item, active, onClick }: any) {
   const Icon = ICONS[item.icon] || Dashboard;
   return (
     <Box
+      component="button"
+      type="button"
       onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       title={item.lockReason || undefined}
       sx={{
         display: 'flex', alignItems: 'center', gap: 1.25, px: 1.5, py: 1, mx: 1,
+        width: 'calc(100% - 16px)', font: 'inherit', textAlign: 'left',
         borderRadius: `${ws.radiusSm}px`, cursor: 'pointer', userSelect: 'none',
         color: active ? ws.text : ws.textDim,
         bgcolor: active ? ws.accentSoft : 'transparent',
         border: active ? `1px solid ${ws.accentBorder}` : '1px solid transparent',
         transition: 'background .12s, color .12s',
         '&:hover': { bgcolor: active ? ws.accentSoft : 'rgba(255,255,255,0.05)', color: ws.text },
+        '&:focus-visible': { outline: `2px solid ${ws.accent}`, outlineOffset: 1 },
       }}
     >
       <Icon sx={{ fontSize: 20, color: active ? ws.accent : 'inherit' }} />
@@ -261,7 +269,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           {/* Prosjekt-kort */}
           <Box sx={{ mx: 1.5, mb: 1, p: 1, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${ws.borderSoft}` }}>
             <Stack direction="row" spacing={1.25} alignItems="center">
-              <Avatar variant="rounded" src={project.coverUrl || '/creatorhub-icon.png'} sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }} />
+              <Avatar variant="rounded" src={project.coverUrl || '/creatorhub-icon.png'} alt={project.name} sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.04)' }} />
               <Box sx={{ minWidth: 0 }}>
                 <Typography noWrap sx={{ fontSize: 13.5, fontWeight: 700 }}>{project.name}</Typography>
                 <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{project.type}</Typography>
@@ -277,7 +285,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
               if (items.length === 0) return null; // skjul tom gruppe-overskrift
               return (
                 <Box key={g} sx={{ mb: 1 }}>
-                  <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textFaint }}>
+                  <Typography sx={{ px: 2.5, py: 0.75, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: ws.textDim }}>
                     {t(GROUP_KEY[g])}
                   </Typography>
                   {items.map((item) => {
@@ -299,13 +307,13 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           {/* Bruker-footer */}
           <Box sx={{ borderTop: `1px solid ${ws.border}`, px: 1.5, py: 1.25 }}>
             <Stack direction="row" alignItems="center" spacing={1.25}>
-              <Avatar src={user.avatarUrl || undefined} sx={{ width: 34, height: 34 }}>{user.name?.[0]}</Avatar>
+              <Avatar src={user.avatarUrl || undefined} alt={user.name} sx={{ width: 34, height: 34 }}>{user.name?.[0]}</Avatar>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography noWrap sx={{ fontSize: 13, fontWeight: 700 }}>{user.name}</Typography>
                 <Typography noWrap sx={{ fontSize: 11.5, color: ws.textDim }}>{user.role}</Typography>
               </Box>
-              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><KeyboardArrowDown fontSize="small" /></IconButton>
-              <IconButton size="small" onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><Settings fontSize="small" /></IconButton>
+              <IconButton size="small" aria-label={t('userMenu')} onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><KeyboardArrowDown fontSize="small" /></IconButton>
+              <IconButton size="small" aria-label={t('userSettings')} onClick={(e) => setUserMenu(e.currentTarget)} sx={{ color: ws.textDim }}><Settings fontSize="small" /></IconButton>
             </Stack>
 
             <Menu
@@ -383,7 +391,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
             )}
             <AvatarGroup max={5} sx={{ '& .MuiAvatar-root': { width: 30, height: 30, fontSize: 12, border: `2px solid ${ws.bg}` } }}>
               {(project.members || []).map((m) => (
-                <Avatar key={m.id} src={m.avatarUrl || undefined}>{m.name?.[0]}</Avatar>
+                <Avatar key={m.id} src={m.avatarUrl || undefined} alt={m.name || ''}>{m.name?.[0]}</Avatar>
               ))}
             </AvatarGroup>
 
@@ -400,7 +408,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                       {t('inviteMember')}
                     </Button>
                   )}
-                  <IconButton size="small" onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
+                  <IconButton size="small" aria-label={t('projectMenu')} onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
                   <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
                     PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
                     <MenuItem onClick={() => { setProjMenu(null); onTab('team'); }}><ListItemIcon><PersonAdd fontSize="small" sx={{ color: ws.textDim }} /></ListItemIcon>{t('teamMembers')}</MenuItem>
