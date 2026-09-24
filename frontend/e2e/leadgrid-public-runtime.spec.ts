@@ -15,6 +15,27 @@ async function mockPublicApis(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Går til en offentlig Leadgrid-side og venter til appen faktisk har montert.
+ *
+ * Gaten kjører mot vite-dev-serveren, som kompilerer appen ved FØRSTE
+ * forespørsel. Målt 2026-09-24 lokalt på varm server: 105 ms til
+ * domcontentloaded, 3,5 s til første DOM-node. Playwrights standardgrense er
+ * 5 s, så marginen var halvannet sekund på en rask maskin — og negativ på en
+ * CI-runner. Skjermbildet fra den røde kjøringen var helt hvitt: ingen
+ * produktfeil, bare byggetid vi målte som om det var produktet.
+ *
+ * Ventingen ligger her og ikke som en global timeout: selve påstandene skal
+ * fortsatt ryke raskt når noe er ekte galt.
+ */
+async function gotoPublic(page: Page, path: string): Promise<void> {
+  await page.goto(path, { waitUntil: 'domcontentloaded' });
+  // Første DOM-node under #root, ikke første tekst: /leadgrid/login legger
+  // innholdet sitt i en dialog utenfor #root, og en tekst-sjekk ville stått
+  // og ventet på noe som aldri kommer dit.
+  await page.locator('#root > *').first().waitFor({ state: 'attached', timeout: 60_000 });
+}
+
 test('Leadgrid renders a complete static experience with reduced motion', async ({ page }) => {
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
@@ -25,7 +46,7 @@ test('Leadgrid renders a complete static experience with reduced motion', async 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockPublicApis(page);
 
-  await page.goto('/leadgrid', { waitUntil: 'domcontentloaded' });
+  await gotoPublic(page, '/leadgrid');
 
   await expect(page.locator('[data-leadgrid-experience="static"]')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Gjør kartet om til kunder.', level: 1 })).toBeVisible();
@@ -39,7 +60,7 @@ test('@mobile Leadgrid avoids the motion runtime on narrow screens', async ({ pa
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await mockPublicApis(page);
 
-  await page.goto('/leadgrid');
+  await gotoPublic(page, '/leadgrid');
 
   await expect(page.locator('[data-leadgrid-experience="static"]')).toBeVisible();
   await expect(page.getByText('Oops! Something went wrong')).toHaveCount(0);
@@ -51,7 +72,7 @@ test('@tablet Leadgrid keeps the full experience on iPad-sized screens', async (
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await mockPublicApis(page);
 
-  await page.goto('/leadgrid');
+  await gotoPublic(page, '/leadgrid');
 
   await expect(page.locator('[data-leadgrid-experience="static"]')).toHaveCount(0);
   await expect(page.getByText('Oops! Something went wrong')).toHaveCount(0);
@@ -65,7 +86,7 @@ test('anonymous import is gated before protected project requests', async ({ pag
     await route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthorized"}' });
   });
 
-  await page.goto('/leadgrid/import');
+  await gotoPublic(page, '/leadgrid/import');
 
   await expect(page.getByRole('heading', { name: 'Logg inn for å importere leads' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Logg inn' })).toHaveAttribute('href', '/login');
@@ -90,7 +111,7 @@ test('Leadgrid legal page uses the public shell without private runtime calls', 
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 
-  await page.goto('/leadgrid/terms-and-conditions');
+  await gotoPublic(page, '/leadgrid/terms-and-conditions');
 
   await expect(page.getByText(/Vilkår og betingelser/).first()).toBeVisible();
   await page.waitForTimeout(250);
@@ -103,7 +124,7 @@ test('Leadgrid legal page uses the public shell without private runtime calls', 
 test('Leadgrid login route opens the real login UI', async ({ page }) => {
   await mockPublicApis(page);
 
-  await page.goto('/leadgrid/login');
+  await gotoPublic(page, '/leadgrid/login');
 
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByText(/Logg inn/).first()).toBeVisible();
@@ -120,7 +141,7 @@ test('Leadgrid password link keeps the reset token', async ({ page }) => {
     });
   });
 
-  await page.goto('/leadgrid/reset-passord/test-token');
+  await gotoPublic(page, '/leadgrid/reset-passord/test-token');
 
   await expect(page.getByText(/Lenken er ikke gyldig/)).toBeVisible();
   // React StrictMode replays mount effects in development, so the request can
@@ -132,7 +153,7 @@ test('Leadgrid password link keeps the reset token', async ({ page }) => {
 test('public landing exposes real login and card-free Solo Free copy', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await mockPublicApis(page);
-  await page.goto('/leadgrid');
+  await gotoPublic(page, '/leadgrid');
 
   await expect(page.getByRole('link', { name: 'Logg inn' }).first()).toHaveAttribute('href', '/login');
   const necessaryCookies = page.getByRole('button', { name: 'Kun nødvendige' });
