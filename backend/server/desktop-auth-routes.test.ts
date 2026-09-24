@@ -275,7 +275,7 @@ describe('CreatorHub One Desk project picker', () => {
       success: true,
       token: expect.stringMatching(/^lrs_/),
       accountEmail: 'owner@example.test',
-      pluginVersion: '1.4.0.2',
+      pluginVersion: '1.4.0.3',
       driveAvailable: false,
       projects: [
         { id: 'project-1', title: 'Bryllup' },
