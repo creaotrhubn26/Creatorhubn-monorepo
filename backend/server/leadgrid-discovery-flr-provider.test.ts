@@ -509,13 +509,13 @@ describe("når NHN taper kappløpet med sin egen timeout", () => {
     expect(candidates).toHaveLength(1);
   });
 
-  it("prøver IKKE på nytt når svaret er ugyldig JSON", async () => {
-    // Et ødelagt svar blir ikke gyldig av å hentes igjen. Skillet mellom
-    // transportbrudd og ugyldig innhold er hele poenget.
+  it("prøver IKKE på nytt når svaret er ugyldig, men komplett", async () => {
+    // Et ødelagt svar blir ikke gyldig av å hentes igjen. Dokumentet under
+    // ender på «}» — det er helt, bare feil. Da er nytt forsøk bortkastet.
     let kall = 0;
     const fetchImpl = vi.fn(async () => {
       kall += 1;
-      return new Response("{ ikke json", {
+      return new Response("{ ikke json }", {
         status: 200,
         headers: { "content-type": "application/json" },
       });
@@ -531,5 +531,37 @@ describe("når NHN taper kappløpet med sin egen timeout", () => {
       code: "invalid_response",
     });
     expect(kall).toBe(1);
+  });
+});
+
+describe("avkortet kropp", () => {
+  it("prøver på nytt når JSON-en stopper midt i", async () => {
+    // Det farligste utfallet vi målte: gatewayen svarer 200, begynner å
+    // strømme 23,5 MB, og kutter når dens egen 15-sekundersgrense løper ut.
+    // arrayBuffer() kaster IKKE — den returnerer de delvise bytene. Uten
+    // denne sjekken meldte vi «ugyldig respons» om et transportbrudd, og ga
+    // opp på noe som ville lyktes ved neste forsøk.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall === 1) {
+        return new Response('[{"id":1,"office":{"organizationNu', {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(2);
+    expect(candidates).toHaveLength(1);
   });
 });

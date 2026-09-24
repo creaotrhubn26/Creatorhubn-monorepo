@@ -4701,7 +4701,7 @@ export async function executeDiscoveryRun(
   const searchRegistry =
     overrides.searchRegistry ??
     (brief.registry_source === "nhn_flr_public"
-      ? createDiscoveryFlrProvider().search
+      ? createDiscoveryFlrProvider({ pool }).search
       : createDiscoveryRegistryProvider().search);
 
   if (["queued", "searching"].includes(run.status)) {
