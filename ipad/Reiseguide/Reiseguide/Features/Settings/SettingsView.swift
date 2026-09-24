@@ -1,6 +1,6 @@
 // SettingsView.swift
 //
-// Innstillinger: språk, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
+// Innstillinger: område (AreaPickerView), språk, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
 // serveren: samtykke, status og «slett mine data»), mock-kjøp (nullstill) og
 // informasjon om demo-modus og API.
 
@@ -14,6 +14,13 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var settings = env.settings
         List {
+            Section {
+                NavigationLink {
+                    AreaPickerView()
+                } label: {
+                    LabeledContent("settings.area", value: areaName)
+                }
+            }
             Section("settings.language") {
                 Picker("language.label", selection: $settings.guideLanguage) {
                     ForEach(languages, id: \.self) { code in
@@ -44,7 +51,6 @@ struct SettingsView: View {
             privacySection
             Section("settings.demo") {
                 if let area = env.store.area {
-                    LabeledContent("settings.area", value: area.name)
                     LabeledContent("settings.unlocked", value: L10n.string(settings.isUnlocked(areaId: area.id) ? "state.yes" : "state.no", lang: settings.uiLanguage))
                     if settings.isUnlocked(areaId: area.id) {
                         Button("settings.resetPurchase", role: .destructive) {
@@ -124,6 +130,13 @@ struct SettingsView: View {
             }
             return L10n.string("privacy.status.on", lang: uiLang)
         }
+    }
+
+    /// Området som vises, også mens det lastes; ellers «Velg område».
+    private var areaName: String {
+        env.store.area?.name
+            ?? env.store.areas.first { $0.slug == env.store.slug }?.name
+            ?? L10n.string("area.pickerTitle", lang: env.settings.uiLanguage)
     }
 
     private var languages: [String] {

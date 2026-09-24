@@ -68,6 +68,14 @@ final class ArrivalCoordinator {
         }
     }
 
+    /// Nytt område: stedene er byttet ut, så sonen og kortet fra det gamle
+    /// området gjelder ikke lenger.
+    func resetForNewArea() {
+        monitor = ProximityMonitor()
+        card = nil
+        pendingAnnouncement = nil
+    }
+
     /// «Ikke nå»: kortet lukkes, men stedet er fortsatt «nådd» denne økten (varsles ikke igjen).
     func dismissCard() {
         card = nil
