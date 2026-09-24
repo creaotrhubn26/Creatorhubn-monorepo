@@ -16,6 +16,29 @@ async function mockPublicApis(page: Page): Promise<void> {
 }
 
 /**
+ * Adressen denne suiten måler mot.
+ *
+ * 127.0.0.1, ikke localhost: useAuth.ts autoseeder en local-admin-sesjon når
+ * hostname er NØYAKTIG «localhost», også i produksjonsbundelen — betingelsen
+ * er `import.meta.env.DEV || hostname === 'localhost'`, og andre halvdel
+ * evalueres i nettleseren. Gaten skrev altså en admin-token inn i
+ * localStorage før første assert, og målte så hva en INNLOGGET bruker ser.
+ * Derfor feilet «anonymous import is gated»: /leadgrid/import viste
+ * «Importer leads» i stedet for «Logg inn for å importere leads». Testen
+ * hadde rett; miljøet var feil.
+ *
+ * Valget ligger her og ikke i playwright.config: de andre suitene BYGGER på
+ * at de er innlogget, og en global endring slo dem ut (Story Arc,
+ * 2026-09-24). Bare denne suiten skal være anonym.
+ *
+ * IKKE ET SIKKERHETSHULL: backend avviser tokenet når NODE_ENV=production,
+ * og leadgrid.no er ikke localhost.
+ */
+const ANONYM_BASE =
+  process.env.PLAYWRIGHT_BASE_URL ||
+  `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT || '5001'}`;
+
+/**
  * Går til en offentlig Leadgrid-side og venter til appen faktisk har montert.
  *
  * Gaten kjører mot vite-dev-serveren, som kompilerer appen ved FØRSTE
@@ -29,7 +52,7 @@ async function mockPublicApis(page: Page): Promise<void> {
  * fortsatt ryke raskt når noe er ekte galt.
  */
 async function gotoPublic(page: Page, path: string): Promise<void> {
-  await page.goto(path, { waitUntil: 'domcontentloaded' });
+  await page.goto(new URL(path, ANONYM_BASE).toString(), { waitUntil: 'domcontentloaded' });
   // Første DOM-node under #root, ikke første tekst: /leadgrid/login legger
   // innholdet sitt i en dialog utenfor #root, og en tekst-sjekk ville stått
   // og ventet på noe som aldri kommer dit.

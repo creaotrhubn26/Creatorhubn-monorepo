@@ -9,15 +9,12 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 120_000,
   use: {
-    // 127.0.0.1, ikke localhost: useAuth.ts autoseeder en local-admin-sesjon
-    // når hostname er nøyaktig «localhost», også i produksjonsbundelen.
-    // Backend avviser tokenet i produksjon, så det er ikke et hull — men en
-    // gate som skal måle hva en ANONYM besøkende ser, må ikke selv bli logget
-    // inn. Målt 2026-09-24: på localhost viste /leadgrid/import den innloggede
-    // flaten uten at noen hadde logget inn.
-    baseURL:
-      process.env.PLAYWRIGHT_BASE_URL ||
-      `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT || '5001'}`,
+    // «localhost» med vilje: useAuth.ts autoseeder en local-admin-sesjon for
+    // nøyaktig det vertsnavnet, og resten av suitene — Story Arc, Visual
+    // Editor — bygger på at de er innlogget. Den som skal måle en ANONYM
+    // besøkende, må selv velge 127.0.0.1; se ANONYM_BASE i
+    // e2e/leadgrid-public-runtime.spec.ts.
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${process.env.PLAYWRIGHT_PORT || '5001'}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     headless: true,
