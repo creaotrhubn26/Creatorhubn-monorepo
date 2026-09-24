@@ -11,6 +11,7 @@ import {
   fetchClientGalleryByAccessToken,
   listClientGalleryImages,
 } from "./client-gallery-render.js";
+import { getCreatorHubMediaAccess } from "./creatorhub-media-access.js";
 
 const _require = createRequire(import.meta.url);
 const archiverFactory = _require("archiver") as (
@@ -177,6 +178,18 @@ export function setupClientGalleryRoutes(
     "nice-to-have",
     "suggestion",
   ]);
+
+  const requireOwnerDownloadAccess = async (photographerId: string, res: express.Response) => {
+    const mediaAccess = await getCreatorHubMediaAccess(pool, photographerId);
+    if (mediaAccess.canDownload) return mediaAccess;
+    res.status(403).json({
+      error: 'download_window_expired',
+      downloadOnlyUntil: mediaAccess.downloadOnlyUntil,
+      automaticDeletion: false,
+      message: '30-dagers nedlastingsvindu er utløpt. Mediene er beholdt og åpnes igjen når CreatorHub-abonnementet reaktiveres.',
+    });
+    return null;
+  };
 
   // Tolker gallery_settings → konkrete policy-flagger. Sentralisert her
   // fordi flere kall-steder må ta samme avgjørelser. Det fins to formater
@@ -408,8 +421,10 @@ export function setupClientGalleryRoutes(
           ...(access.requiresPassword ? { requiresPassword: true } : {}),
         });
       }
+      const mediaAccess = await getCreatorHubMediaAccess(pool, access.gallery.photographerId);
       const images = await listClientGalleryImages(db, access.gallery.id, {
         accessToken,
+        allowFullSize: mediaAccess.canDownload,
       });
       const gallery = await fetchClientGalleryByAccessToken(db, accessToken);
       const captureAssetIds = images
@@ -432,6 +447,7 @@ export function setupClientGalleryRoutes(
       });
       return res.json({
         galleryId: access.gallery.id,
+        mediaAccess,
         images: sharedImages,
         // Client can display a banner when any image came back with
         // signingFailed: true (e.g. the captureAssets row was deleted).
@@ -469,6 +485,7 @@ export function setupClientGalleryRoutes(
             ...(access.requiresPassword ? { requiresPassword: true } : {}),
           });
         }
+        if (!await requireOwnerDownloadAccess(access.gallery.photographerId, res)) return;
 
         // Slå opp galleri-bildet for å finne chunkedUploadId
         const imgRes = await pool.query(
@@ -1683,6 +1700,7 @@ export function setupClientGalleryRoutes(
         });
       }
       const gallery = access.gallery;
+      if (!await requireOwnerDownloadAccess(gallery.photographerId, res)) return;
       const effectiveEmail = clientEmail || gallery.clientEmail;
       if (!effectiveEmail) return res.status(400).json({ error: "client_email_required" });
 
@@ -2336,6 +2354,7 @@ export function setupClientGalleryRoutes(
       const gallery = access.gallery;
       const settings = access.settings;
       const policy = resolveGalleryPolicy(settings ?? {});
+      if (!await requireOwnerDownloadAccess(gallery.photographerId, res)) return;
       if (!policy.canDownload) {
         return res.status(403).json({
           error: 'download_disabled',

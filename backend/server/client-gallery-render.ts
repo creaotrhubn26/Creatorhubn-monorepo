@@ -133,6 +133,8 @@ export async function listClientGalleryImages(
   options: {
     signKey?: (key: string | null) => Promise<string | null>;
     accessToken?: string;
+    /** When false, only preview-sized media is exposed. */
+    allowFullSize?: boolean;
   } = {},
 ): Promise<ClientGalleryImageRendered[]> {
   const signer = options.signKey ?? signAssetReadUrl;
@@ -209,14 +211,16 @@ export async function listClientGalleryImages(
       const fullKey = keys?.fullKey ?? previewKey;
       const [previewSigned, fullSigned] = await Promise.all([
         signer(previewKey),
-        signer(fullKey),
+        options.allowFullSize === false ? Promise.resolve(null) : signer(fullKey),
       ]);
       if (previewSigned) {
         thumbnailUrl = previewSigned;
       } else {
         signingFailed = true;
       }
-      if (fullSigned) {
+      if (options.allowFullSize === false && previewSigned) {
+        fullSizeUrl = previewSigned;
+      } else if (fullSigned) {
         fullSizeUrl = fullSigned;
       } else if (previewSigned) {
         // Fall back to the (now-fresh) preview rather than the stale
@@ -233,7 +237,7 @@ export async function listClientGalleryImages(
       // key elsewhere should silently degrade to "no cleaned variant"
       // rather than serve a 404 download). Sign-failure leaves the URL
       // null so the viewer falls back to the original cleanly.
-      if (md.useAutoCleaned === true && keys?.autoCleanedKey) {
+      if (options.allowFullSize !== false && md.useAutoCleaned === true && keys?.autoCleanedKey) {
         const cleanedSigned = await signer(keys.autoCleanedKey);
         if (cleanedSigned) {
           autoCleanedUrl = cleanedSigned;
@@ -245,6 +249,13 @@ export async function listClientGalleryImages(
       md.useAutoCleaned === true && typeof md.autoCleanedDetectionCount === 'number'
         ? (md.autoCleanedDetectionCount as number)
         : null;
+
+    // Stored legacy URLs are not signed here. Never expose their full-size
+    // location after the owner's download window has closed.
+    if (options.allowFullSize === false) {
+      fullSizeUrl = thumbnailUrl;
+      autoCleanedUrl = null;
+    }
 
     rendered.push({
       id: row.id,

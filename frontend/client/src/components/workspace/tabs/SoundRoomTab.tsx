@@ -19,6 +19,7 @@ import ContentCopy from '@mui/icons-material/ContentCopy';
 import Check from '@mui/icons-material/Check';
 import Download from '@mui/icons-material/Download';
 import Close from '@mui/icons-material/Close';
+import Keyboard from '@mui/icons-material/Keyboard';
 import { apiRequest } from '@/lib/queryClient';
 import { EASEVERSE_APP_URL, easeVerseWorkspaceUrl } from '@/lib/easeverse';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
@@ -27,6 +28,8 @@ import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, wsAlert, wsConfirm } from '../ui';
 import { useWorkspaceUpdate } from '../WorkspaceContext';
 import { detectDesktopPlatform, detectDesktopPlatformSync, isRecommendedDesktopDownload } from '@/lib/desktopPlatform';
+import MediaRoomCommandCenter from '../media-room/MediaRoomCommandCenter';
+import { useMediaRoomShortcuts } from '../media-room/useMediaRoomShortcuts';
 
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(Number(s) || 0)); const m = Math.floor(n / 60); const sec = n % 60; return `${m}:${String(sec).padStart(2, '0')}`; };
 const fmtMB = (b: number) => b ? `${(b / 1048576).toFixed(1)} MB` : '';
@@ -59,6 +62,8 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const [validation, setValidation] = useState<any | null>(null); // pre-flight-sjekkliste
   const [relBusy, setRelBusy] = useState(false);
   const [ptNow, setPtNow] = useState(() => Date.now());
+  const roomSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const [commandCenter, setCommandCenter] = useState<'commands' | 'help' | null>(null);
 
   useEffect(() => {
     if (!ptCode) return;
@@ -304,16 +309,32 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
     }
   };
 
+  const toggleRoomFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else if (roomSurfaceRef.current?.requestFullscreen) void roomSurfaceRef.current.requestFullscreen();
+  };
+  const soundCommands = [
+    { id: 'review', label: 'Åpne lydrommet', shortcut: 'E / Enter', disabled: !roomId, run: openRoom },
+    { id: 'refresh', label: 'Oppdater Sound Room-status', run: () => { loadPt(); if (roomId) void loadShowcaseRelease(roomId); } },
+    { id: 'protools', label: 'Åpne Pro Tools-oppsett', run: openPtDialog },
+  ];
+  useMediaRoomShortcuts({
+    review: openRoom, fullscreen: toggleRoomFullscreen,
+    commands: () => setCommandCenter('commands'), help: () => setCommandCenter('help'),
+    clear: () => setCommandCenter(null),
+  });
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}><CircularProgress sx={{ color: ws.accent }} /></Box>;
 
   return (
-    <Box sx={{ maxWidth: 920, mx: 'auto' }}>
+    <Box ref={roomSurfaceRef} sx={{ maxWidth: 920, mx: 'auto' }}>
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-end' }} spacing={1.5} sx={{ mb: 2 }}>
         <Box>
           <Typography sx={{ fontSize: 20, fontWeight: 800 }}>Sound Room</Typography>
           <Typography sx={{ fontSize: 12.5, color: ws.textDim }}>Lyd-review for prosjektet — versjoner, tidsstemplede tilbakemeldinger, A/B-compare og leveranse. Samme «Universal Showcase»-rom klienten/bandet får.</Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button startIcon={<Keyboard />} onClick={() => setCommandCenter('help')} sx={{ color: ws.text, textTransform: 'none' }}>Hurtigtaster</Button>
           <Button component="a" href={easeVerseHref} onClick={openEaseVerse} aria-busy={openingEaseVerse}
             variant="outlined" startIcon={openingEaseVerse ? <CircularProgress size={15} color="inherit" /> : <OpenInNew sx={{ fontSize: 16 }} />}
             sx={{ color: ws.accent, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>
@@ -324,6 +345,8 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
       </Stack>
 
       {err && <WsCard sx={{ mb: 2, borderColor: ws.redSoft }}><Typography sx={{ fontSize: 13, color: ws.red }}>{err}</Typography></WsCard>}
+
+      <MediaRoomCommandCenter open={commandCenter !== null} mode={commandCenter || 'commands'} locale="no" commands={soundCommands} shortcutIds={['review', 'fullscreen', 'commands', 'help', 'clear']} onClose={() => setCommandCenter(null)} />
 
       {/* Branded landings-kort */}
       <WsCard sx={{ mb: 2, cursor: roomId ? 'pointer' : 'default', '&:hover': roomId ? { borderColor: ws.accentBorder } : undefined }} onClick={openRoom}>
