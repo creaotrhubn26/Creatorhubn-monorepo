@@ -86,6 +86,9 @@ struct NexusNotatKort: View {
     let kategori: CanvasKategori?
     /// Det andre notatets tegning, hvis den er lastet.
     let forhaandsvisning: PKDrawing?
+    /// Notatet finnes ikke i denne flata: enten ikke lastet ned, eller
+    /// slettet. Kortet skal si det, ikke late som det fortsatt laster.
+    var utilgjengelig: Bool = false
     let skala: Double
     /// Kortet er valgt på flata. Først da vises åpne-knappen.
     var valgt: Bool = false
@@ -120,6 +123,18 @@ struct NexusNotatKort: View {
                         .resizable()
                         .scaledToFit()
                         .padding(6)
+                } else if utilgjengelig {
+                    VStack(spacing: 6) {
+                        Image(systemName: "questionmark.square.dashed")
+                            .font(.system(size: 22))
+                            .foregroundStyle(CvBrand.textTertiary)
+                        Text("Finner ikke notatet")
+                            .font(.appScaled(size: 12, weight: .semibold))
+                            .foregroundStyle(CvBrand.textSecondary)
+                        Text("Slettet, eller tilhører noen andre.")
+                            .font(.appScaled(size: 10))
+                            .foregroundStyle(CvBrand.textTertiary)
+                    }
                 } else if forhaandsvisning == nil {
                     // Skjelett, ikke en spinner: kortet har allerede en form,
                     // og den formen skal ikke bli borte mens blekket hentes.
@@ -144,9 +159,14 @@ struct NexusNotatKort: View {
 
             if valgt {
                 Rectangle().fill(CvBrand.stroke).frame(height: 1)
-                AapneKnapp(tekst: "Åpne notatet", ikon: "arrow.up.forward.square",
-                           farge: kategori?.farge ?? CvBrand.purpleLight,
-                           handling: apne)
+                // Peker kortet på ingenting, er det ingen vits i å tilby å
+                // åpne det. Da er det eneste fornuftige å bli kvitt det.
+                AapneKnapp(
+                    tekst: utilgjengelig ? "Fjern kortet" : "Åpne notatet",
+                    ikon: utilgjengelig ? "trash" : "arrow.up.forward.square",
+                    farge: utilgjengelig
+                        ? CvBrand.red : (kategori?.farge ?? CvBrand.purpleLight),
+                    handling: apne)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -259,16 +279,19 @@ final class NexusLydOpptaker: NSObject {
         return true
     }
 
-    /// Stopper og gir tilbake bytes + lengde + når opptaket begynte.
-    func stopp() -> (data: Data, varighet: Double, startet: Date)? {
+    /// Stopper og gir tilbake bytes, lengde, starttidspunkt og filen.
+    ///
+    /// Filen slettes IKKE her. Den er den eneste kopien til opplastingen har
+    /// gått gjennom, og mister man dekning idet man stopper, er et helt møte
+    /// borte. Kalleren sletter den når bytene er trygt lagret.
+    func stopp() -> (data: Data, varighet: Double, startet: Date, fil: URL)? {
         ticker?.invalidate(); ticker = nil
         guard let r = opptaker, let url = filUrl, let start = startet else { return nil }
         let varighet = r.currentTime
         r.stop()
         opptaker = nil; tarOpp = false; nivaa = 0
-        defer { try? FileManager.default.removeItem(at: url) }
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return (data, varighet, start)
+        return (data, varighet, start, url)
     }
 }
 
@@ -311,6 +334,8 @@ struct NexusLydKort: View {
     let skala: Double
     let spiller: NexusLydSpiller
     let harBlekkSynk: Bool
+    /// Opptaket ligger fortsatt bare på iPaden.
+    var venterPaaOpplasting: Bool = false
     /// Kortet er valgt på flata.
     var valgt: Bool = false
     let startEllerPause: () -> Void
@@ -348,7 +373,15 @@ struct NexusLydKort: View {
             // Hintet er en TILSTAND, ikke en permanent etikett: det er sant
             // mens lyden går, og da forklarer det det man ser skje i blekket.
             // Alltid synlig ville det vært en reklameplakat på eget kort.
-            if harBlekkSynk, spiller.spiller {
+            if venterPaaOpplasting {
+                // Sier det rett ut: opptaket finnes bare her. Et møte som
+                // ligger på én enhet er et møte man kan miste.
+                Label(valgt ? "Trykk for å laste opp på nytt"
+                            : "Ligger bare på iPaden",
+                      systemImage: "exclamationmark.icloud")
+                    .font(.appScaled(size: 10, weight: .semibold))
+                    .foregroundStyle(CvBrand.yellow)
+            } else if harBlekkSynk, spiller.spiller {
                 Label("Blekket lyser der du skrev", systemImage: "scribble.variable")
                     .font(.appScaled(size: 10))
                     .foregroundStyle(CvBrand.green)
@@ -357,8 +390,72 @@ struct NexusLydKort: View {
         }
         .padding(11)
         .frame(width: 260 * skala)
-        .flateKort(aktiv: valgt || spiller.spiller, aktivFarge: CvBrand.green)
+        .flateKort(aktiv: valgt || spiller.spiller || venterPaaOpplasting,
+                   aktivFarge: venterPaaOpplasting ? CvBrand.yellow : CvBrand.green)
         .animation(.easeOut(duration: 0.18), value: spiller.spiller)
+    }
+}
+
+// MARK: - Opptak pågår
+
+/// Vedvarende indikator mens lyd tas opp.
+///
+/// Før dette var eneste spor et ikon inne i en sammenklappet meny. Man kunne
+/// starte opptak, lukke menyen, gjennomføre møtet og gå ut på gata mens det
+/// fortsatt gikk. Det er ikke en pyntesak: den du sitter overfor har krav på
+/// å vite at han blir tatt opp, og du kan ikke fortelle ham det hvis du ikke
+/// vet det selv.
+///
+/// Derfor er den rød, alltid synlig, og har stoppknappen i seg.
+struct NexusOpptakBanner: View {
+    let startet: Date
+    let nivaa: Double
+    let stopp: () -> Void
+
+    @State private var naa = Date()
+    private let klokkeslag = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    private var gaatt: String {
+        let s = max(0, Int(naa.timeIntervalSince(startet)))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    var body: some View {
+        HStack(spacing: 11) {
+            // Prikken pulser med lydnivået, ikke med en timer: den viser at
+            // mikrofonen faktisk hører noe, ikke bare at appen tror den gjør det.
+            Circle()
+                .fill(Color.white)
+                .frame(width: 10, height: 10)
+                .scaleEffect(1 + nivaa * 0.7)
+                .animation(.easeOut(duration: 0.12), value: nivaa)
+
+            Text("Tar opp")
+                .font(.appScaled(size: 13, weight: .bold))
+            Text(gaatt)
+                .font(.appScaled(size: 13, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.85))
+
+            Button(action: stopp) {
+                Text("Stopp")
+                    .font(.appScaled(size: 13, weight: .bold))
+                    .foregroundStyle(CvBrand.red)
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(.white)
+        .padding(.leading, 16)
+        .padding(.trailing, 5)
+        .padding(.vertical, 5)
+        .background(CvBrand.red, in: Capsule())
+        .shadow(color: CvBrand.red.opacity(0.5), radius: 10)
+        .onReceive(klokkeslag) { naa = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Tar opp lyd, \(gaatt)")
+        .accessibilityHint("Aktiver Stopp for å avslutte opptaket")
     }
 }
 
@@ -500,6 +597,23 @@ struct NexusVideoKort: View {
 enum NexusVideo {
     /// Første brukbare bilde fra klippet. Ett sekund inn, ikke null — mange
     /// klipp starter på en svart frame.
+    /// Miniatyren lagres på objektet som JPEG-base64.
+    ///
+    /// Den lå tidligere kun i minnet, så den forsvant hver gang notatet ble
+    /// lukket — og kortet falt tilbake til et filmikon for alltid. 480 px ved
+    /// 0,5 kvalitet er rundt 30 kB, som notatet tåler.
+    static func miniatyrBase64(for data: Data) async -> String? {
+        guard let bilde = await miniatyr(for: data) else { return nil }
+        let maalBredde: CGFloat = 480
+        let skala = min(1, maalBredde / max(bilde.size.width, 1))
+        let stoerrelse = CGSize(width: bilde.size.width * skala,
+                                height: bilde.size.height * skala)
+        let mindre = UIGraphicsImageRenderer(size: stoerrelse).image { _ in
+            bilde.draw(in: CGRect(origin: .zero, size: stoerrelse))
+        }
+        return mindre.jpegData(compressionQuality: 0.5)?.base64EncodedString()
+    }
+
     static func miniatyr(for data: Data) async -> UIImage? {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("nexus-mini-\(UUID().uuidString).mov")

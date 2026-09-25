@@ -88,13 +88,18 @@ struct CanvasView: View {
     @State private var aktivtLydObjekt: String?
     @State private var videoVelgerAapen = false
     @State private var videoValg: PhotosPickerItem?
-    @State private var videoMiniatyrer: [String: UIImage] = [:]
     @State private var videoSomSpilles: URL?
     @State private var nettsideDialogAapen = false
     @State private var nettsideUtkast = ""
     @State private var nettsideSomVises: URL?
     /// Strøkene som ble skrevet der lyden står nå — blekk-synkingen.
     @State private var opplystStrok: Set<Int> = []
+    /// Notat-ID-er kortene peker på som ikke finnes her: ikke lastet ned,
+    /// eller slettet. Uten dette står kortet evig i «laster».
+    @State private var notatUtilgjengelig: Set<String> = []
+    /// Medier som ligger lokalt fordi opplastingen ikke gikk gjennom.
+    /// Nøkkel er dokId. Filene slettes først når de er trygt lagret.
+    @State private var ventendeOpplasting: [String: URL] = [:]
     @Environment(\.accessibilityReduceMotion) private var reduserBevegelse
     /// Faner: flere notater åpne samtidig (session — bytt uten å miste noe;
     /// velg() auto-lagrer forrige notat stille).
@@ -361,6 +366,18 @@ struct CanvasView: View {
             innhold
         }
         .background(CvBrand.bg)
+        // Opptaksindikatoren ligger over ALT. Den skal ikke kunne skjules
+        // bak en meny, en sheet eller en scroll.
+        .overlay(alignment: .top) {
+            if lydOpptaker.tarOpp, let startet = lydOpptaker.startet {
+                NexusOpptakBanner(
+                    startet: startet, nivaa: lydOpptaker.nivaa,
+                    stopp: { Task { await vekslLydopptak() } })
+                    .padding(.top, 10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: lydOpptaker.tarOpp)
         .task(id: canvasDraftScope) { await lastInn() }
         .onChange(of: appState.activeOrganizationId) { _, _ in
             snapshotGjeldendeNotatForForrigeScope()
@@ -369,7 +386,15 @@ struct CanvasView: View {
             snapshotGjeldendeNotatForForrigeScope()
         }
         .onChange(of: scenePhase) { _, fase in
-            if fase != .active { _ = leggGjeldendeLagringIKo(stille: true) }
+            if fase != .active {
+                _ = leggGjeldendeLagringIKo(stille: true)
+                // Avspilling skal ikke fortsette i bakgrunnen: lyden kommer
+                // fra et kundemøte, og den skal ikke plutselig spille videre
+                // når iPaden ligger i vesken.
+                lydSpiller.stopp()
+                aktivtLydObjekt = nil
+                opplystStrok = []
+            }
         }
         .onDisappear {
             _ = leggGjeldendeLagringIKo(stille: true)
@@ -3729,7 +3754,14 @@ struct CanvasView: View {
     /// vise ekte tegning, ikke et ikon.
     private func hentNotatForhaandsvisning(_ id: String) async {
         guard notatForhaandsvisninger[id] == nil else { return }
-        guard let notat = notater.first(where: { $0.id == id }) else { return }
+        guard let notat = notater.first(where: { $0.id == id }) else {
+            // Notatet er ikke her: slettet, eller en kollegas. Si det.
+            // Før dette returnerte funksjonen stille, og kortet ble stående
+            // i skjelett-tilstanden for alltid — det lot som det lastet.
+            notatUtilgjengelig.insert(id)
+            return
+        }
+        notatUtilgjengelig.remove(id)
         notatKategorier[id] = notat.kategori
         if let tegning = try? PKDrawing(data: notat.drawingData) {
             notatForhaandsvisninger[id] = tegning
@@ -3753,6 +3785,9 @@ struct CanvasView: View {
                 varighet: resultat.varighet,
                 opptakStartet: resultat.startet))
             objektModus = true
+            // Filen beholdes til opplastingen har gått gjennom. Den er den
+            // eneste kopien av møtet.
+            ventendeOpplasting[dokId] = resultat.fil
             await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data)
         } else {
             let ok = await lydOpptaker.start()
@@ -3771,19 +3806,45 @@ struct CanvasView: View {
             try await api.lastOppCanvasDokument(
                 notatId: notatId, dokId: dokId, projectId: prosjekt,
                 navn: navn, base64: data.base64EncodedString())
+            // Først nå er den lokale kopien overflødig.
+            if let fil = ventendeOpplasting.removeValue(forKey: dokId) {
+                try? FileManager.default.removeItem(at: fil)
+            }
         } catch {
-            feilVedImport = "Fikk ikke lagret \(navn). Den ligger bare på iPaden nå."
+            feilVedImport = "\(navn) ligger foreløpig bare på iPaden. "
+                + "Velg kortet og trykk «Last opp på nytt» når du har dekning."
         }
+    }
+
+    /// Nytt forsøk på et medie som ble liggende igjen lokalt.
+    private func lastOppPaaNytt(_ objekt: CanvasObjekt) async {
+        guard let dokId = objekt.dokId,
+              let fil = ventendeOpplasting[dokId],
+              let data = try? Data(contentsOf: fil) else { return }
+        await lastOppMedie(dokId: dokId,
+                           navn: objekt.tittel ?? "Opptak", data: data)
     }
 
     /// Hva som skjer når man åpner et objekt.
     private func apneObjekt(_ objekt: CanvasObjekt) {
         switch CanvasObjektType(rawValue: objekt.type) {
         case .notat:
-            if let id = objekt.refId,
-               let n = notater.first(where: { $0.id == id }) { velg(n) }
+            guard let id = objekt.refId else { return }
+            if let n = notater.first(where: { $0.id == id }) {
+                velg(n)
+            } else {
+                // Kortet peker på ingenting. Å «åpne» det er meningsløst;
+                // det eneste nyttige er å bli kvitt det.
+                slettObjekt(objekt.id)
+            }
         case .lyd:
-            Task { await vekslLyd(objekt) }
+            // Ligger opptaket fortsatt lokalt, er et nytt forsøk viktigere
+            // enn å spille det av.
+            if let dokId = objekt.dokId, ventendeOpplasting[dokId] != nil {
+                Task { await lastOppPaaNytt(objekt) }
+            } else {
+                Task { await vekslLyd(objekt) }
+            }
         case .video:
             Task { await spillVideo(objekt) }
         case .nettside:
@@ -3864,17 +3925,19 @@ struct CanvasView: View {
         let dokId = UUID().uuidString
         let varighet = await NexusVideo.varighet(for: data)
         let objektId = UUID().uuidString
+        // Miniatyren lagres PÅ objektet, ikke bare i minnet. Lå den kun i
+        // minnet, falt kortet tilbake til et filmikon hver gang notatet ble
+        // åpnet på nytt.
+        let miniatyr = await NexusVideo.miniatyrBase64(for: data)
         objekter.append(CanvasObjekt(
             id: objektId,
             type: CanvasObjektType.video.rawValue,
             x: 430, y: 300,
+            bildeBase64: miniatyr,
             tittel: "Video",
             dokId: dokId,
             varighet: varighet))
         objektModus = true
-        if let mini = await NexusVideo.miniatyr(for: data) {
-            videoMiniatyrer[objektId] = mini
-        }
         await lastOppMedie(dokId: dokId, navn: "Video", data: data)
     }
 
@@ -4815,7 +4878,10 @@ struct CanvasView: View {
                 notatForhaandsvisning: objekt.refId.flatMap { notatForhaandsvisninger[$0] },
                 notatKategori: objekt.refId.flatMap { notatKategorier[$0] },
                 lydSpiller: aktivtLydObjekt == objekt.id ? lydSpiller : nil,
-                videoMiniatyr: videoMiniatyrer[objekt.id],
+                notatUtilgjengelig: objekt.refId.map {
+                    notatUtilgjengelig.contains($0) } ?? false,
+                venterPaaOpplasting: objekt.dokId.map {
+                    ventendeOpplasting[$0] != nil } ?? false,
                 onApne: { apneObjekt(objekt) })
         }
     }

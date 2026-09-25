@@ -727,8 +727,10 @@ struct ObjektView: View {
     var notatKategori: CanvasKategori? = nil
     /// Delt avspiller — bare ett opptak spiller om gangen på en flate.
     var lydSpiller: NexusLydSpiller? = nil
-    /// Miniatyr for video, hentet ut av klippet.
-    var videoMiniatyr: UIImage? = nil
+    /// Notatet kortet peker på finnes ikke her.
+    var notatUtilgjengelig: Bool = false
+    /// Mediet ligger fortsatt lokalt — opplastingen gikk ikke gjennom.
+    var venterPaaOpplasting: Bool = false
     /// Åpne det som ligger i objektet: notatet, videoen, nettsiden.
     var onApne: (() -> Void)? = nil
 
@@ -814,6 +816,7 @@ struct ObjektView: View {
                 tittel: objekt.tittel ?? "",
                 kategori: notatKategori,
                 forhaandsvisning: notatForhaandsvisning,
+                utilgjengelig: notatUtilgjengelig,
                 skala: objekt.skala,
                 valgt: erValgt,
                 apne: { onApne?() })
@@ -824,6 +827,7 @@ struct ObjektView: View {
                 skala: objekt.skala,
                 spiller: lydSpiller ?? NexusLydSpiller(),
                 harBlekkSynk: objekt.opptakStartet != nil,
+                venterPaaOpplasting: venterPaaOpplasting,
                 valgt: erValgt,
                 startEllerPause: { onApne?() },
                 sokTil: { lydSpiller?.sokTil($0) })
@@ -831,7 +835,9 @@ struct ObjektView: View {
             NexusVideoKort(
                 tittel: objekt.tittel ?? "",
                 varighet: objekt.varighet ?? 0,
-                miniatyr: videoMiniatyr,
+                miniatyr: objekt.bildeBase64
+                    .flatMap { Data(base64Encoded: $0) }
+                    .flatMap(UIImage.init(data:)),
                 skala: objekt.skala,
                 valgt: erValgt,
                 spillAv: { onApne?() })

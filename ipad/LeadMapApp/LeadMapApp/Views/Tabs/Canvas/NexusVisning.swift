@@ -45,19 +45,83 @@ struct NexusVisning: View {
         ProcessInfo.processInfo.environment["QA_NEXUS_VISNING"] == "2"
     }
 
+    /// Notatene som er sluppet på prøveflata.
+    @State private var slupne: [NexusNotatReferanse] = []
+    /// Storen må overleve rendringer. Bygget i body ble den ny for hvert
+    /// tastetrykk, og panelet mistet innholdet sitt.
+    @State private var store = NexusVisning.demoStore()
+
     var body: some View {
         if barePanel {
-            NavigationStack {
-                NexusKoblingerPanel(
-                    store: Self.demoStore(),
-                    leggPaaFlata: { _ in }, apne: { _ in })
-                    .navigationTitle("Henger sammen")
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .preferredColorScheme(.dark)
+            dragFlate
         } else {
             hovedflate
         }
+    }
+
+    /// Panel til venstre, flate til høyre — samme dra-type og samme
+    /// dropDestination som i den ekte flata. Det som virker her, virker der.
+    private var dragFlate: some View {
+        NavigationStack {
+            HStack(spacing: 0) {
+                NexusKoblingerPanel(
+                    store: store,
+                    leggPaaFlata: { k in
+                        slupne.append(.init(notatId: k.id, tittel: k.tittel))
+                    },
+                    apne: { _ in })
+                    .frame(width: 380)
+
+                Rectangle().fill(CvBrand.stroke).frame(width: 1)
+
+                ZStack {
+                    CvBrand.bg
+                    // Teller antall slupne som ren tekst: XCUITest kan lese
+                    // den uten at vi må gjette på beholder-semantikk.
+                    Text("slupne: \(slupne.count)")
+                        .font(.appScaled(size: 11))
+                        .foregroundStyle(CvBrand.textTertiary)
+                        .accessibilityIdentifier("nexus.antall")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: .bottomTrailing)
+                        .padding(10)
+                    if slupne.isEmpty {
+                        VStack(spacing: 7) {
+                            Image(systemName: "hand.draw")
+                                .font(.system(size: 30))
+                                .foregroundStyle(CvBrand.textTertiary)
+                            Text("Dra et notat hit")
+                                .font(.appScaled(size: 14, weight: .semibold))
+                                .foregroundStyle(CvBrand.textSecondary)
+                            Text("Kortet lander der du slipper.")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(CvBrand.textTertiary)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(slupne, id: \.notatId) { r in
+                                NexusNotatKort(
+                                    tittel: r.tittel, kategori: .mote,
+                                    forhaandsvisning: Self.prøveblekk(strøk: 3),
+                                    skala: 0.85, valgt: false, apne: {})
+                            }
+                        }
+                        .accessibilityIdentifier("nexus.slupne")
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("nexus.flate")
+                .dropDestination(for: NexusNotatReferanse.self) { ref, _ in
+                    guard let r = ref.first else { return false }
+                    slupne.append(r)
+                    return true
+                }
+            }
+            .navigationTitle("Dra et notat ut på flata")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .preferredColorScheme(.dark)
     }
 
     private var hovedflate: some View {
@@ -97,6 +161,37 @@ struct NexusVisning: View {
                         }
                     }
 
+                    seksjon("Når noe er galt",
+                            "De tre tilstandene som tidligere løy: kortet som "
+                            + "sto evig i «laster», opptaket som bare lå på "
+                            + "iPaden, og opptaket ingen kunne se gikk.") {
+                        VStack(alignment: .leading, spacing: 18) {
+                            NexusOpptakBanner(
+                                startet: Date().addingTimeInterval(-143),
+                                nivaa: 0.6, stopp: {})
+                            HStack(alignment: .top, spacing: 18) {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    NexusNotatKort(
+                                        tittel: "Slettet av en kollega",
+                                        kategori: nil,
+                                        forhaandsvisning: nil,
+                                        utilgjengelig: true,
+                                        skala: 1.0, valgt: true, apne: {})
+                                    merkelapp("Peker på ingenting")
+                                }
+                                VStack(alignment: .leading, spacing: 7) {
+                                    NexusLydKort(
+                                        tittel: "Møte 25. sep",
+                                        varighet: 212, skala: 1.0,
+                                        spiller: spiller, harBlekkSynk: true,
+                                        venterPaaOpplasting: true, valgt: true,
+                                        startEllerPause: {}, sokTil: { _ in })
+                                    merkelapp("Ikke lagret ennå")
+                                }
+                            }
+                        }
+                    }
+
                     seksjon("Lyd som henger i blekket",
                             "PencilKit tidsstempler hvert strøk. Dra i sporet, "
                             + "så lyser blekket du skrev akkurat da.") {
@@ -132,7 +227,7 @@ struct NexusVisning: View {
                             "Lista er ikke et søk. Den er allerede riktig når "
                             + "du åpner den — utledet fra kunde, sted og møte.") {
                         NexusKoblingerPanel(
-                            store: Self.demoStore(),
+                            store: store,
                             leggPaaFlata: { _ in }, apne: { _ in })
                             .frame(height: 430)
                             .clipShape(RoundedRectangle(cornerRadius: 16))
