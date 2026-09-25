@@ -74,6 +74,15 @@ targets:
         NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
         # Mikrofon: dikter visit-notater (#183).
         NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater, og til å ta opp lyd i Nexus-notater slik at blekket du skriver kan knyttes til det som ble sagt.
+        UTExportedTypeDeclarations:
+          # Egen dra-type for Nexus-notater. Uten den ville flata tatt imot
+          # et hvilket som helst tekstdrag — fra Safari, fra Mail — og laget
+          # et notatkort som peker på ingenting.
+          - UTTypeIdentifier: no.leadgrid.nexus-notat
+            UTTypeDescription: Nexus-notat
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification: {}
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
         NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
         # Bevegelse & Trening: nav-modus kjenner igjen om du går/sykler/kjører

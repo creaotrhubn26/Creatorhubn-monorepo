@@ -15,6 +15,27 @@
 // NexusNotatKort. Lenken blir da eksplisitt, og synlig fra begge sider.
 
 import SwiftUI
+import UniformTypeIdentifiers
+
+extension UTType {
+    /// Egen dra-type for notater. Deklarert i Info.plist
+    /// (UTExportedTypeDeclarations).
+    static let nexusNotat = UTType(exportedAs: "no.leadgrid.nexus-notat")
+}
+
+/// Det som faktisk dras fra koblingspanelet og ut på flata.
+///
+/// En egen type, ikke en rå streng: med `String` ville flata tatt imot et
+/// hvilket som helst tekstdrag — fra Safari, fra Mail — og laget et
+/// notatkort som peker på ingenting.
+struct NexusNotatReferanse: Codable, Transferable {
+    let notatId: String
+    let tittel: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .nexusNotat)
+    }
+}
 
 @MainActor
 @Observable
@@ -199,8 +220,15 @@ struct NexusKoblingerPanel: View {
                         // Dra rett ut på flata. Knappen gjør det samme for
                         // den som ikke oppdager draget — to veier til samme
                         // sted, ingen av dem skjult.
-                        .draggable(k.id) {
+                        .draggable(
+                            NexusNotatReferanse(notatId: k.id, tittel: k.tittel)
+                        ) {
+                            // Dra-bildet: det brukeren ser henge i fingeren.
                             Label(k.tittel, systemImage: "doc.text.fill")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .padding(.horizontal, 12).padding(.vertical, 9)
+                                .background(CvBrand.cardHi,
+                                            in: RoundedRectangle(cornerRadius: 10))
                         }
                         .listRowBackground(CvBrand.card)
                     }

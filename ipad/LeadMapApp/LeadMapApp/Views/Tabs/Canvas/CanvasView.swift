@@ -501,6 +501,10 @@ struct CanvasView: View {
                     }
             }
             .presentationDetents([.medium, .large])
+            // Flata skal være levende bak panelet. Uten dette kan man ikke
+            // slippe notatet der man vil — arket er dekket av en sheet som
+            // spiser berøringen.
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .background { canvasTastatursnarveier }
     }
@@ -1357,6 +1361,10 @@ struct CanvasView: View {
                 }
             }
             .presentationDetents([.medium, .large])
+            // Flata skal være levende bak panelet. Uten dette kan man ikke
+            // slippe notatet der man vil — arket er dekket av en sheet som
+            // spiser berøringen.
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .task {
                 guard let id = valgtId,
                       let prosjekt = appState.activeLeadgridProjectId else { return }
@@ -3690,11 +3698,15 @@ struct CanvasView: View {
 
     /// Legger et annet notat på flata som et levende kort, og gjør lenken
     /// eksplisitt så den er synlig fra begge sider.
-    private func leggNotatPaaFlata(_ kobling: NexusKoblingDTO) {
+    private func leggNotatPaaFlata(_ kobling: NexusKoblingDTO,
+                                   ved punkt: CGPoint? = nil) {
+        // Et notat kan ikke inneholde seg selv. Uten denne sjekken ville
+        // kortet vist sin egen tegning, som er en uendelig speiling.
         guard kobling.type == "notat", kobling.id != valgtId else { return }
         objekter.append(CanvasObjekt(
             type: CanvasObjektType.notat.rawValue,
-            x: 430, y: 300,
+            x: punkt.map { Double($0.x) } ?? 430,
+            y: punkt.map { Double($0.y) } ?? 300,
             tittel: kobling.tittel,
             refId: kobling.id))
         objektModus = true
@@ -4657,6 +4669,11 @@ struct CanvasView: View {
                                 * effektivDokumentZoom,
                             alignment: .topLeading)
                         .dropDestination(for: Data.self, action: handterBildeDrop)
+                        // Notat sluppet fra koblingspanelet: kortet havner
+                        // DER fingeren slapp, ikke i en fast posisjon. Man
+                        // har allerede bestemt seg for hvor det skal ligge.
+                        .dropDestination(for: NexusNotatReferanse.self,
+                                         action: handterNotatDrop)
                 }
                 .scrollDisabled(verktoyModus != .panorer)
                 .simultaneousGesture(dokumentZoomGesture)
@@ -4708,6 +4725,18 @@ struct CanvasView: View {
             canvasNodeLag
             canvasTekstLag
         }
+    }
+
+    private func handterNotatDrop(_ referanser: [NexusNotatReferanse],
+                                  _ plassering: CGPoint) -> Bool {
+        guard kanRedigereValgtNotat, let ref = referanser.first else { return false }
+        leggNotatPaaFlata(
+            NexusKoblingDTO(type: "notat", id: ref.notatId, tittel: ref.tittel,
+                            kilde: "manuell", begrunnelse: "Lagt til av deg",
+                            tidspunkt: nil, styrke: 120),
+            ved: CGPoint(x: plassering.x / effektivDokumentZoom,
+                         y: plassering.y / effektivDokumentZoom))
+        return true
     }
 
     private func handterBildeDrop(_ biter: [Data], _ plassering: CGPoint) -> Bool {
