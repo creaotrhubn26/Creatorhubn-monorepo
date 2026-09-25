@@ -1,0 +1,28 @@
+[package]
+name = "creatorhub-notes-indexer"
+version = "0.1.0"
+edition = "2021"
+description = "Semantisk indeks over CreatorHub-monorepoet for prosjektminne-appen"
+
+[lib]
+name = "creatorhub_notes_indexer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notes-index"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+sqlite-vec = "0.1.9"
+zerocopy = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+regex = "1"
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,359 @@
+LOEPENR	LEMMA_ID	OPPSLAG	TAG
+1	2121	and	subst fem appell ent ub normert
+2	2121	and	subst mask appell ent ub normert
+3	2121	anda	subst fem appell ent be normert
+4	2121	anden	subst mask appell ent be normert
+5	2121	endene	subst fem appell fl be normert
+6	2121	endene	subst mask appell fl be normert
+7	2121	ender	subst fem appell fl ub normert
+8	2121	ender	subst mask appell fl ub normert
+9	2137	and	verb imp <intrans1> normert
+10	2137	and	verb imp <intrans1> normert
+11	2137	and	verb imp <intrans1> normert
+12	2137	anda	adj <perf-part> be ent <intrans1> normert
+13	2137	anda	adj <perf-part> fl <intrans1> normert
+14	2137	anda	adj <perf-part> m/f ub ent <intrans1> normert
+15	2137	anda	adj <perf-part> nøyt ub ent <intrans1> normert
+16	2137	anda	verb perf-part <intrans1> normert
+17	2137	anda	verb pret <intrans1> normert
+18	2137	ande	verb inf <intrans1> normert
+19	2137	ande	verb inf <intrans1> normert
+20	2137	ande	verb inf <intrans1> normert
+21	2137	andede	adj <perf-part> be ent <intrans1> normert
+22	2137	andede	adj <perf-part> fl <intrans1> normert
+23	2137	andende	adj <pres-part> <intrans1> normert
+24	2137	andende	adj <pres-part> <intrans1> normert
+25	2137	andende	adj <pres-part> <intrans1> normert
+26	2137	ander	verb pres <intrans1> normert
+27	2137	ander	verb pres <intrans1> normert
+28	2137	ander	verb pres <intrans1> normert
+29	2137	andes	verb inf pres pass <intrans1> normert
+30	2137	andes	verb inf pres pass <intrans1> normert
+31	2137	andes	verb inf pres pass <intrans1> normert
+32	2137	andet	adj <perf-part> m/f ub ent <intrans1> normert
+33	2137	andet	adj <perf-part> m/f ub ent <intrans1> normert
+34	2137	andet	adj <perf-part> nøyt ub ent <intrans1> normert
+35	2137	andet	adj <perf-part> nøyt ub ent <intrans1> normert
+36	2137	andet	verb perf-part <intrans1> normert
+37	2137	andet	verb perf-part <intrans1> normert
+38	2137	andet	verb pret <intrans1> normert
+39	2137	andet	verb pret <intrans1> normert
+40	2137	andete	adj <perf-part> be ent <intrans1> normert
+41	2137	andete	adj <perf-part> fl <intrans1> normert
+42	6473	beslutning	subst fem appell ent ub normert
+43	6473	beslutning	subst mask appell ent ub normert
+44	6473	beslutninga	subst fem appell ent be normert
+45	6473	beslutningen	subst mask appell ent be normert
+46	6473	beslutningene	subst fem appell fl be normert
+47	6473	beslutningene	subst mask appell fl be normert
+48	6473	beslutninger	subst fem appell fl ub normert
+49	6473	beslutninger	subst mask appell fl ub normert
+50	15833	faktura	subst mask appell ent ub normert
+51	15833	fakturaen	subst mask appell ent be normert
+52	15833	fakturaene	subst mask appell fl be normert
+53	15833	fakturaer	subst mask appell fl ub normert
+54	34073	kart	subst mask appell ent ub normert
+55	34073	kart	subst mask appell ent ub normert
+56	34073	kart	subst mask appell fl ub normert
+57	34073	karten	subst mask appell ent be normert
+58	34073	karten	subst mask appell ent be normert
+59	34073	kartene	subst mask appell fl be normert
+60	34073	kartene	subst mask appell fl be normert
+61	34073	karter	subst mask appell fl ub normert
+62	34074	kart	subst nøyt appell ent ub normert
+63	34074	kart	subst nøyt appell ent ub normert
+64	34074	kart	subst nøyt appell ent ub normert
+65	34074	kart	subst nøyt appell ent ub normert
+66	34074	kart	subst nøyt appell fl ub normert
+67	34074	kart	subst nøyt appell fl ub normert
+68	34074	karta	subst nøyt appell fl be normert
+69	34074	karta	subst nøyt appell fl be normert
+70	34074	kartene	subst nøyt appell fl be normert
+71	34074	kartene	subst nøyt appell fl be normert
+72	34074	karter	subst nøyt appell fl ub normert
+73	34074	karter	subst nøyt appell fl ub normert
+74	34074	kartet	subst nøyt appell ent be normert
+75	34074	kartet	subst nøyt appell ent be normert
+76	34074	kartet	subst nøyt appell ent be normert
+77	34074	kartet	subst nøyt appell ent be normert
+78	34076	kart	verb imp <refl5> normert
+79	34076	kart	verb imp <refl5> normert
+80	34076	kart	verb imp <refl5> normert
+81	34076	karta	adj <perf-part> be ent <refl5> normert
+82	34076	karta	adj <perf-part> fl <refl5> normert
+83	34076	karta	adj <perf-part> m/f ub ent <refl5> normert
+84	34076	karta	adj <perf-part> nøyt ub ent <refl5> normert
+85	34076	karta	verb perf-part <refl5> normert
+86	34076	karta	verb pret <refl5> normert
+87	34076	karte	verb inf <refl5> normert
+88	34076	karte	verb inf <refl5> normert
+89	34076	karte	verb inf <refl5> normert
+90	34076	kartede	adj <perf-part> be ent <refl5> normert
+91	34076	kartede	adj <perf-part> fl <refl5> normert
+92	34076	kartende	adj <pres-part> <refl5> normert
+93	34076	kartende	adj <pres-part> <refl5> normert
+94	34076	kartende	adj <pres-part> <refl5> normert
+95	34076	karter	verb pres <refl5> normert
+96	34076	karter	verb pres <refl5> normert
+97	34076	karter	verb pres <refl5> normert
+98	34076	kartes	verb inf pres pass <refl5> normert
+99	34076	kartes	verb inf pres pass <refl5> normert
+100	34076	kartes	verb inf pres pass <refl5> normert
+101	34076	kartet	adj <perf-part> m/f ub ent <refl5> normert
+102	34076	kartet	adj <perf-part> m/f ub ent <refl5> normert
+103	34076	kartet	adj <perf-part> nøyt ub ent <refl5> normert
+104	34076	kartet	adj <perf-part> nøyt ub ent <refl5> normert
+105	34076	kartet	verb perf-part <refl5> normert
+106	34076	kartet	verb perf-part <refl5> normert
+107	34076	kartet	verb pret <refl5> normert
+108	34076	kartet	verb pret <refl5> normert
+109	34076	kartete	adj <perf-part> be ent <refl5> normert
+110	34076	kartete	adj <perf-part> fl <refl5> normert
+111	34096	kartverk	subst nøyt appell ent ub normert
+112	34096	kartverk	subst nøyt appell ent ub normert
+113	34096	kartverk	subst nøyt appell ent ub normert
+114	34096	kartverk	subst nøyt appell ent ub normert
+115	34096	kartverk	subst nøyt appell fl ub normert
+116	34096	kartverk	subst nøyt appell fl ub normert
+117	34096	kartverka	subst nøyt appell fl be normert
+118	34096	kartverka	subst nøyt appell fl be normert
+119	34096	kartverkene	subst nøyt appell fl be normert
+120	34096	kartverkene	subst nøyt appell fl be normert
+121	34096	kartverker	subst nøyt appell fl ub normert
+122	34096	kartverker	subst nøyt appell fl ub normert
+123	34096	kartverket	subst nøyt appell ent be normert
+124	34096	kartverket	subst nøyt appell ent be normert
+125	34096	kartverket	subst nøyt appell ent be normert
+126	34096	kartverket	subst nøyt appell ent be normert
+127	38417	kunde	subst mask appell ent ub normert
+128	38417	kunden	subst mask appell ent be normert
+129	38417	kundene	subst mask appell fl be normert
+130	38417	kunder	subst mask appell fl ub normert
+131	39214	kø	subst mask appell ent ub normert
+132	39214	køen	subst mask appell ent be normert
+133	39214	køene	subst mask appell fl be normert
+134	39214	køer	subst mask appell fl ub normert
+135	39222	kø	verb imp <intrans1> normert
+136	39222	kø	verb imp <intrans1> normert
+137	39222	kø	verb imp <intrans1> normert
+138	39222	køa	adj <perf-part> be ent <intrans1> normert
+139	39222	køa	adj <perf-part> fl <intrans1> normert
+140	39222	køa	adj <perf-part> m/f ub ent <intrans1> normert
+141	39222	køa	adj <perf-part> nøyt ub ent <intrans1> normert
+142	39222	køa	verb perf-part <intrans1> normert
+143	39222	køa	verb pret <intrans1> normert
+144	39222	køe	verb inf <intrans1> normert
+145	39222	køe	verb inf <intrans1> normert
+146	39222	køe	verb inf <intrans1> normert
+147	39222	køede	adj <perf-part> be ent <intrans1> normert
+148	39222	køede	adj <perf-part> fl <intrans1> normert
+149	39222	køende	adj <pres-part> <intrans1> normert
+150	39222	køende	adj <pres-part> <intrans1> normert
+151	39222	køende	adj <pres-part> <intrans1> normert
+152	39222	køer	verb pres <intrans1> normert
+153	39222	køer	verb pres <intrans1> normert
+154	39222	køer	verb pres <intrans1> normert
+155	39222	køes	verb inf pres pass <intrans1> normert
+156	39222	køes	verb inf pres pass <intrans1> normert
+157	39222	køes	verb inf pres pass <intrans1> normert
+158	39222	køet	adj <perf-part> m/f ub ent <intrans1> normert
+159	39222	køet	adj <perf-part> m/f ub ent <intrans1> normert
+160	39222	køet	adj <perf-part> nøyt ub ent <intrans1> normert
+161	39222	køet	adj <perf-part> nøyt ub ent <intrans1> normert
+162	39222	køet	verb perf-part <intrans1> normert
+163	39222	køet	verb perf-part <intrans1> normert
+164	39222	køet	verb pret <intrans1> normert
+165	39222	køet	verb pret <intrans1> normert
+166	39222	køete	adj <perf-part> be ent <intrans1> normert
+167	39222	køete	adj <perf-part> fl <intrans1> normert
+168	40760	leverandør	subst mask appell ent ub normert
+169	40760	leverandøren	subst mask appell ent be normert
+170	40760	leverandørene	subst mask appell fl be normert
+171	40760	leverandører	subst mask appell fl ub normert
+172	43127	maling	subst fem appell ent ub normert
+173	43127	maling	subst mask appell ent ub normert
+174	43127	malinga	subst fem appell ent be normert
+175	43127	malingen	subst mask appell ent be normert
+176	43127	malingene	subst fem appell fl be normert
+177	43127	malingene	subst mask appell fl be normert
+178	43127	malinger	subst fem appell fl ub normert
+179	43127	malinger	subst mask appell fl ub normert
+180	46648	måling	subst fem appell ent ub normert
+181	46648	måling	subst mask appell ent ub normert
+182	46648	målinga	subst fem appell ent be normert
+183	46648	målingen	subst mask appell ent be normert
+184	46648	målingene	subst fem appell fl be normert
+185	46648	målingene	subst mask appell fl be normert
+186	46648	målinger	subst fem appell fl ub normert
+187	46648	målinger	subst mask appell fl ub normert
+188	46892	møt	verb imp <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+189	46892	møte	verb inf <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+190	46892	møtende	adj <pres-part> <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+191	46892	møter	verb pres <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+192	46892	møtes	verb inf pres pass <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+193	46892	møtt	adj <perf-part> m/f ub ent <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+194	46892	møtt	adj <perf-part> nøyt ub ent <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+195	46892	møtt	verb perf-part <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+196	46892	møtte	adj <perf-part> be ent <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+197	46892	møtte	adj <perf-part> fl <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+198	46892	møtte	verb pret <trans1> <part5/fram> <part5/frem> <part5/opp> <trans11/opp+på> <trans11/opp+til> normert
+199	46893	møta	subst nøyt appell fl be normert
+200	46893	møte	subst nøyt appell ent ub normert
+201	46893	møte	subst nøyt appell ent ub normert
+202	46893	møtene	subst nøyt appell fl be normert
+203	46893	møter	subst nøyt appell fl ub normert
+204	46893	møter	subst nøyt appell fl ub normert
+205	46893	møtet	subst nøyt appell ent be normert
+206	46893	møtet	subst nøyt appell ent be normert
+207	61746	skrev	subst nøyt appell ent ub normert
+208	61746	skrev	subst nøyt appell ent ub normert
+209	61746	skrev	subst nøyt appell fl ub normert
+210	61746	skrev	subst nøyt appell fl ub normert
+211	61746	skreva	subst nøyt appell fl be normert
+212	61746	skrevene	subst nøyt appell fl be normert
+213	61746	skrevet	subst nøyt appell ent be normert
+214	61746	skrevet	subst nøyt appell ent be normert
+215	61747	skrev	verb imp <intrans1> <trans11/over> normert
+216	61747	skrev	verb imp <intrans1> <trans11/over> normert
+217	61747	skrev	verb imp <intrans1> <trans11/over> normert
+218	61747	skrev	verb imp <intrans1> <trans11/over> normert
+219	61747	skreva	adj <perf-part> be ent <intrans1> <trans11/over> normert
+220	61747	skreva	adj <perf-part> fl <intrans1> <trans11/over> normert
+221	61747	skreva	adj <perf-part> m/f ub ent <intrans1> <trans11/over> normert
+222	61747	skreva	adj <perf-part> nøyt ub ent <intrans1> <trans11/over> normert
+223	61747	skreva	verb perf-part <intrans1> <trans11/over> normert
+224	61747	skreva	verb pret <intrans1> <trans11/over> normert
+225	61747	skrevd	adj <perf-part> m/f ub ent <intrans1> <trans11/over> normert
+226	61747	skrevd	adj <perf-part> nøyt ub ent <intrans1> <trans11/over> normert
+227	61747	skrevd	verb perf-part <intrans1> <trans11/over> normert
+228	61747	skrevde	adj <perf-part> be ent <intrans1> <trans11/over> normert
+229	61747	skrevde	adj <perf-part> fl <intrans1> <trans11/over> normert
+230	61747	skrevde	verb pret <intrans1> <trans11/over> normert
+231	61747	skreve	verb inf <intrans1> <trans11/over> normert
+232	61747	skreve	verb inf <intrans1> <trans11/over> normert
+233	61747	skreve	verb inf <intrans1> <trans11/over> normert
+234	61747	skreve	verb inf <intrans1> <trans11/over> normert
+235	61747	skrevede	adj <perf-part> be ent <intrans1> <trans11/over> normert
+236	61747	skrevede	adj <perf-part> fl <intrans1> <trans11/over> normert
+237	61747	skrevende	adj <pres-part> <intrans1> <trans11/over> normert
+238	61747	skrevende	adj <pres-part> <intrans1> <trans11/over> normert
+239	61747	skrevende	adj <pres-part> <intrans1> <trans11/over> normert
+240	61747	skrevende	adj <pres-part> <intrans1> <trans11/over> normert
+241	61747	skrever	verb pres <intrans1> <trans11/over> normert
+242	61747	skrever	verb pres <intrans1> <trans11/over> normert
+243	61747	skrever	verb pres <intrans1> <trans11/over> normert
+244	61747	skrever	verb pres <intrans1> <trans11/over> normert
+245	61747	skreves	verb inf pres pass <intrans1> <trans11/over> normert
+246	61747	skreves	verb inf pres pass <intrans1> <trans11/over> normert
+247	61747	skreves	verb inf pres pass <intrans1> <trans11/over> normert
+248	61747	skreves	verb inf pres pass <intrans1> <trans11/over> normert
+249	61747	skrevet	adj <perf-part> m/f ub ent <intrans1> <trans11/over> normert
+250	61747	skrevet	adj <perf-part> m/f ub ent <intrans1> <trans11/over> normert
+251	61747	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans11/over> normert
+252	61747	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans11/over> normert
+253	61747	skrevet	verb perf-part <intrans1> <trans11/over> normert
+254	61747	skrevet	verb perf-part <intrans1> <trans11/over> normert
+255	61747	skrevet	verb pret <intrans1> <trans11/over> normert
+256	61747	skrevet	verb pret <intrans1> <trans11/over> normert
+257	61747	skrevete	adj <perf-part> be ent <intrans1> <trans11/over> normert
+258	61747	skrevete	adj <perf-part> fl <intrans1> <trans11/over> normert
+259	61803	skreiv	verb pret <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+260	61803	skreiv	verb pret <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+261	61803	skrev	verb pret <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+262	61803	skrev	verb pret <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+263	61803	skreven	adj <perf-part> m/f ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+264	61803	skreven	adj <perf-part> m/f ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+265	61803	skrevet	adj <perf-part> m/f ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+266	61803	skrevet	adj <perf-part> m/f ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+267	61803	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+268	61803	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+269	61803	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+270	61803	skrevet	adj <perf-part> nøyt ub ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+271	61803	skrevet	verb perf-part <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+272	61803	skrevet	verb perf-part <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+273	61803	skrevet	verb perf-part <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+274	61803	skrevet	verb perf-part <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+275	61803	skrevne	adj <perf-part> be ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+276	61803	skrevne	adj <perf-part> be ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+277	61803	skrevne	adj <perf-part> be ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+278	61803	skrevne	adj <perf-part> be ent <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+279	61803	skrevne	adj <perf-part> fl <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+280	61803	skrevne	adj <perf-part> fl <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+281	61803	skrevne	adj <perf-part> fl <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+282	61803	skrevne	adj <perf-part> fl <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+283	61803	skriv	verb imp <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+284	61803	skriv	verb imp <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+285	61803	skriv	verb imp <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+286	61803	skriv	verb imp <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+287	61803	skrive	verb inf <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+288	61803	skrive	verb inf <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+289	61803	skrive	verb inf <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+290	61803	skrive	verb inf <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+291	61803	skrivende	adj <pres-part> <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+292	61803	skrivende	adj <pres-part> <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+293	61803	skrivende	adj <pres-part> <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+294	61803	skrivende	adj <pres-part> <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+295	61803	skriver	verb pres <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+296	61803	skriver	verb pres <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+297	61803	skriver	verb pres <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+298	61803	skriver	verb pres <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+299	61803	skrives	verb inf pres pass <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+300	61803	skrives	verb inf pres pass <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+301	61803	skrives	verb inf pres pass <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+302	61803	skrives	verb inf pres pass <intrans1> <trans1> <ditrans1> <part1/inn> <part1/ned> <part1/opp> <trans11/av> <trans11/med> <trans11/på> <trans11/under> <part3/fra> <part5/under> normert
+303	72379	typ	verb imp <trans1> normert
+304	72379	typ	verb imp <trans1> normert
+305	72379	typ	verb imp <trans1> normert
+306	72379	typa	adj <perf-part> be ent <trans1> normert
+307	72379	typa	adj <perf-part> fl <trans1> normert
+308	72379	typa	adj <perf-part> m/f ub ent <trans1> normert
+309	72379	typa	adj <perf-part> nøyt ub ent <trans1> normert
+310	72379	typa	verb perf-part <trans1> normert
+311	72379	typa	verb pret <trans1> normert
+312	72379	type	verb inf <trans1> normert
+313	72379	type	verb inf <trans1> normert
+314	72379	type	verb inf <trans1> normert
+315	72379	typede	adj <perf-part> be ent <trans1> normert
+316	72379	typede	adj <perf-part> fl <trans1> normert
+317	72379	typende	adj <pres-part> <trans1> normert
+318	72379	typende	adj <pres-part> <trans1> normert
+319	72379	typende	adj <pres-part> <trans1> normert
+320	72379	typer	verb pres <trans1> normert
+321	72379	typer	verb pres <trans1> normert
+322	72379	typer	verb pres <trans1> normert
+323	72379	types	verb inf pres pass <trans1> normert
+324	72379	types	verb inf pres pass <trans1> normert
+325	72379	types	verb inf pres pass <trans1> normert
+326	72379	typet	adj <perf-part> m/f ub ent <trans1> normert
+327	72379	typet	adj <perf-part> m/f ub ent <trans1> normert
+328	72379	typet	adj <perf-part> nøyt ub ent <trans1> normert
+329	72379	typet	adj <perf-part> nøyt ub ent <trans1> normert
+330	72379	typet	verb perf-part <trans1> normert
+331	72379	typet	verb perf-part <trans1> normert
+332	72379	typet	verb pret <trans1> normert
+333	72379	typet	verb pret <trans1> normert
+334	72379	typete	adj <perf-part> be ent <trans1> normert
+335	72379	typete	adj <perf-part> fl <trans1> normert
+336	72380	type	subst mask appell ent ub normert
+337	72380	typen	subst mask appell ent be normert
+338	72380	typene	subst mask appell fl be normert
+339	72380	typer	subst mask appell fl ub normert
+340	75579	utstyr	subst nøyt appell ent ub normert
+341	75579	utstyr	subst nøyt appell ent ub normert
+342	75579	utstyr	subst nøyt appell fl ub normert
+343	75579	utstyr	subst nøyt appell fl ub normert
+344	75579	utstyra	subst nøyt appell fl be normert
+345	75579	utstyrene	subst nøyt appell fl be normert
+346	75579	utstyret	subst nøyt appell ent be normert
+347	75579	utstyret	subst nøyt appell ent be normert
+348	75580	utstyr	verb imp <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+349	75580	utstyre	verb inf <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+350	75580	utstyrende	adj <pres-part> <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+351	75580	utstyrer	verb pres <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+352	75580	utstyres	verb inf pres pass <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+353	75580	utstyrt	adj <perf-part> m/f ub ent <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+354	75580	utstyrt	adj <perf-part> nøyt ub ent <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+355	75580	utstyrt	verb perf-part <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+356	75580	utstyrte	adj <perf-part> be ent <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+357	75580	utstyrte	adj <perf-part> fl <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert
+358	75580	utstyrte	verb pret <trans1> <ditrans5/med> <ditrans5/til> <refl9/med> <refl9/til> normert

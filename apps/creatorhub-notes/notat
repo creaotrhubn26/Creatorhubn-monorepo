@@ -1,0 +1,80 @@
+#!/bin/bash
+# notat — skriv, indekser og søk i notatene dine.
+#
+#   notat "tittel på nytt notat"    lager fila og åpner den
+#   notat sync                      committer og indekserer
+#   notat søk "hva du lurer på"     fulltekstsøk
+#   notat status                    hvor mange notater, når sist indeksert
+#
+# Fulltekstsøk krever verken nettverk eller API-nøkkel. Sett VOYAGE_API_KEY
+# og bruk `notat sync --embed` for å legge semantisk søk oppå de samme radene.
+set -eu
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CRATE="$HERE/indexer"
+BIN="$CRATE/target/release/notes-index"
+NOTES="${CREATORHUB_NOTATER:-$HOME/CreatorHub-notater}"
+DB="${CREATORHUB_NOTAT_DB:-$HOME/Library/Application Support/creatorhub-notes/notater.db}"
+
+if [ ! -x "$BIN" ]; then
+  echo "bygger notes-index (én gang)…" >&2
+  (cd "$CRATE" && cargo build --release --quiet)
+fi
+
+if [ ! -d "$NOTES/.git" ]; then
+  mkdir -p "$NOTES"
+  git -C "$NOTES" init -q
+  echo "opprettet notatrepo i $NOTES" >&2
+fi
+
+commit_all() {
+  git -C "$NOTES" add -A
+  git -C "$NOTES" diff --cached --quiet && return 0
+  git -C "$NOTES" commit -q -m "notater $(date '+%Y-%m-%d %H:%M')"
+}
+
+case "${1:-}" in
+  sync)
+    commit_all
+    if [ "${2:-}" = "--embed" ]; then
+      : "${VOYAGE_API_KEY:?VOYAGE_API_KEY må være satt for --embed}"
+      "$BIN" --db "$DB" index "$NOTES"
+    else
+      "$BIN" --db "$DB" index --no-embed "$NOTES"
+    fi
+    ;;
+
+  søk | sok | search)
+    shift
+    [ $# -gt 0 ] || { echo "bruk: notat søk \"spørring\"" >&2; exit 1; }
+    "$BIN" --db "$DB" search --text "$*" --limit "${LIMIT:-8}"
+    ;;
+
+  status)
+    echo "notater:  $(find "$NOTES" -name '*.md' -not -path '*/.git/*' | wc -l | tr -d ' ') filer i $NOTES"
+    if [ -f "$DB" ]; then
+      echo "indeks:   $DB ($(du -h "$DB" | cut -f1 | tr -d ' '))"
+      echo "sist:     $(date -r "$DB" '+%Y-%m-%d %H:%M')"
+    else
+      echo "indeks:   ikke bygget ennå — kjør 'notat sync'"
+    fi
+    ;;
+
+  "" | -h | --help)
+    sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    ;;
+
+  *)
+    slug=$(printf '%s' "$*" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-zæøå0-9-')
+    f="$NOTES/$(date +%F)-${slug:-notat}.md"
+    if [ ! -e "$f" ]; then
+      {
+        printf -- '---\n'
+        printf 'id: %s\n' "$(basename "$f" .md)"
+        printf 'type: \n'
+        printf -- '---\n\n# %s\n\n' "$*"
+      } > "$f"
+    fi
+    ${EDITOR:-open} "$f"
+    ;;
+esac

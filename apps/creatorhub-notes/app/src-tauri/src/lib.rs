@@ -1,0 +1,1757 @@
+//! Notater — skriveflate over `creatorhub_notes_indexer`.
+//!
+//! Appen deler notatmappe og database med kommandolinjeverktøyet `notat`, og
+//! kaller indekseren som bibliotek. Skriving, lesing, søk og indeksering er
+//! disk, git og SQLite, og forlater aldri maskinen.
+//!
+//! **Ett unntak: «Hva vi har forstått».** Slår brukeren den på, sendes
+//! avsnittene i notatet ordrett til `claude`-kommandolinja, som sender dem
+//! videre til Anthropic og skriver samtalen til
+//! `~/.claude/projects/<mappe>/*.jsonl`. Filene blir liggende. Derfor er
+//! lesningen av som standard, og et notat med `privat: ja` i toppfeltet sendes
+//! aldri — se [`understand`] og [`lesning_på`].
+
+mod migrering;
+mod minne;
+mod overvaking;
+mod rettelser;
+mod samtale;
+mod understand;
+
+use creatorhub_notes_indexer::{db, index, ordbank, search, sti};
+use overvaking::Selvskrift;
+use serde::Serialize;
+use tauri::{Emitter, Manager};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+
+/// Én indeksering av gangen. Tauri kjører kommandoer på en trådpool, og to
+/// samtidige kjøringer ville kjempe om den samme skrivetransaksjonen.
+static REINDEX: Mutex<()> = Mutex::new(());
+
+/// Løpenummer for lesninger. En ny lesning — eller [`avbryt_lesning`] — gjør
+/// de eldre uinteressante: de stanser ved neste pakkeslutt, i stedet for å
+/// bruke minutter på et notat brukeren har gått bort fra.
+static LESNING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    /// Sti relativt til notatmappen — samme form som `git ls-files` gir, slik
+    /// at søketreff og listeoppføringer kan sammenlignes direkte.
+    path: String,
+    title: String,
+    /// Sekunder siden epoke. Formateres på norsk i frontend.
+    modified: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHit {
+    path: String,
+    title: String,
+    /// `snippet()`-utdrag fra FTS5 med treffordene rammet inn av
+    /// [`search::MERKE_START`] og [`search::MERKE_SLUTT`]. Styretegn, ikke
+    /// `**`: brukerens egen fete skrift skal ikke kunne forskyve markeringen.
+    snippet: String,
+    start_line: usize,
+    end_line: usize,
+    /// Sekunder siden epoke. Uten den mister hun all tidsinformasjon i det
+    /// øyeblikket hun søker — den grupperte lista har dag og klokkeslett.
+    modified: u64,
+}
+
+/// Svaret på et søk: treffene, og om lista er kappet.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Søkesvar {
+    treff: Vec<SearchHit>,
+    /// Det finnes flere notater som treffer enn de som står her. Uten dette
+    /// sto det «40 treff» om det så var fem hundre, og hun trodde det var alt.
+    avkortet: bool,
+}
+
+/// Hvor mange biter søket henter, og hvor mange notater det viser. Biterammen
+/// er større enn notatrammen fordi ett notat kan fylle flere biter.
+const BITER: usize = 80;
+const NOTATER: usize = 40;
+
+/// Feilteksten brukeren får se når søket ikke går.
+///
+/// Rust- og io-feil er vårt vokabular, ikke hennes: «Os { code: 2, kind:
+/// NotFound }» i et varsel hjelper ingen. Den rå feilen skrives til stderr,
+/// der den hører hjemme, og brukeren får en setning hun kan handle på.
+const SØKEFEIL: &str =
+    "Søket virker ikke akkurat nå. Notatene dine er trygge, og du kan skrive videre.";
+
+/// Notatbasen — avsnitt, forståelse, rettelser — lot seg ikke åpne. Skriving,
+/// lagring og søk går som før; det er panelet som blir stående tomt.
+const BASEFEIL: &str =
+    "Fikk ikke åpnet det appen har lest fra før. Skriving, lagring og søk virker som vanlig.";
+
+/// Sier fra med ord brukeren kan handle på, og legger den rå feilen i
+/// konsollen. Rust- og io-språk hører hjemme i stderr, ikke i et varsel:
+/// «Error: Os { code: 2, kind: NotFound }» hjelper ingen som skal skrive et
+/// notat, og det er nøyaktig det åtte `String(e)` viste henne.
+fn si(melding: &str, rå: impl std::fmt::Display) -> String {
+    eprintln!("{melding} ({rå})");
+    melding.to_string()
+}
+
+/// Hvorfor notatet ikke kunne åpnes, sagt slik at det går an å gjøre noe med.
+fn lesefeil(path: &str, e: &std::io::Error) -> String {
+    eprintln!("kunne ikke lese {path}: {e}");
+    match e.kind() {
+        std::io::ErrorKind::NotFound => format!(
+            "Notatet «{path}» finnes ikke lenger. Det er slettet eller gitt et nytt \
+             navn utenfor appen. Lista oppdaterer seg selv."
+        ),
+        std::io::ErrorKind::PermissionDenied => {
+            format!("Appen får ikke lov til å åpne «{path}».")
+        }
+        _ => format!("Kunne ikke åpne «{path}». Fila ligger der, men lot seg ikke lese."),
+    }
+}
+
+/// Og hvorfor det ikke lot seg lagre. Teksten står i appen uansett — det er
+/// bufferet som eier den til skrivet har gått gjennom.
+fn skrivefeil(path: &str, e: &std::io::Error) -> String {
+    eprintln!("kunne ikke lagre {path}: {e}");
+    match e.kind() {
+        std::io::ErrorKind::PermissionDenied => {
+            format!("Appen får ikke lov til å skrive til «{path}».")
+        }
+        std::io::ErrorKind::StorageFull => "Disken er full.".to_string(),
+        _ => format!("Kunne ikke lagre «{path}» akkurat nå."),
+    }
+}
+
+/// Notatmappen, opprettet og git-initiert om den mangler — som `notat` gjør.
+///
+/// Kanonisert før den returneres: `write_note` og `create_note` merker seg i
+/// [`Selvskrift`] med den samme kanoniske stien vokteren i [`overvaking`]
+/// sammenligner mot, og de to må stemme overens for at et eget skriv skal
+/// bli gjenkjent som eget.
+fn notes_dir() -> Result<PathBuf, String> {
+    let dir = match std::env::var("CREATORHUB_NOTATER") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => home()?.join("CreatorHub-notater"),
+    };
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| si("Klarte ikke å lage notatmappen.", e))?;
+    }
+    if !dir.join(".git").exists() {
+        git(&dir, &["init", "-q"])?;
+    }
+    dir.canonicalize()
+        .map_err(|e| si("Finner ikke notatmappen.", e))
+}
+
+fn home() -> Result<PathBuf, String> {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|_| "HOME er ikke satt".to_string())
+}
+
+/// Samme fil som `notat` bruker, slik at skallverktøyet og appen deler lager.
+/// Stien utledes ett sted, i indekserens `sti`-modul.
+fn db_path() -> PathBuf {
+    sti::standard_db(sti::Lager::Notater)
+}
+
+/// Brukerens svar på om notatene får leses. Ligger ved siden av basen, ikke i
+/// notatmappen: det er en innstilling for maskinen, og har ingenting i
+/// notatene å gjøre.
+fn samtykkefil() -> PathBuf {
+    db_path().with_file_name("lesning.txt")
+}
+
+/// Får appen sende notatteksten til `claude`?
+///
+/// **Av som standard.** Lesningen sender avsnittene ordrett ut av maskinen og
+/// legger igjen en kopi i `~/.claude/projects`. Det er ikke noe å anta
+/// samtykke til, og «Skjul forståelse» er en visningsbryter — den sier
+/// ingenting om hva som sendes. Brukeren blir spurt i panelet, med hva som
+/// skjer, og svarer selv.
+fn lesning_på() -> bool {
+    std::fs::read_to_string(samtykkefil()).map(|s| s.trim() == "på").unwrap_or(false)
+}
+
+#[tauri::command]
+fn sett_lesning(på: bool) -> Result<(), String> {
+    let fil = samtykkefil();
+    if let Some(mappe) = fil.parent() {
+        std::fs::create_dir_all(mappe).map_err(|e| si("Klarte ikke å lagre valget.", e))?;
+    }
+    std::fs::write(&fil, if på { "på" } else { "av" })
+        .map_err(|e| si("Klarte ikke å lagre valget.", e))
+}
+
+/// Skal dette ene notatet aldri sendes noe sted? `privat: ja` i toppfeltet.
+/// Notatets eget svar vinner over den globale bryteren, aldri motsatt.
+fn er_privat(innhold: &str) -> bool {
+    matches!(samtale::felt(innhold, "privat").as_deref(), Some("ja"))
+}
+
+/// Får dette notatet leses? `Some(...)` er svaret panelet skal få i stedet for
+/// en lesning, og betyr at ingenting sendes noe sted.
+///
+/// Notatets eget svar først: et notat merket privat sendes aldri, uansett hva
+/// den globale bryteren står på. `lesning` er skilt ut fra [`lesning_på`] så
+/// porten kan testes uten å røre filsystemet.
+fn samtykke_med(innhold: &str, lesning: bool) -> Option<understand::Understanding> {
+    if er_privat(innhold) {
+        return Some(understand::Understanding::av(understand::PRIVAT));
+    }
+    if !lesning {
+        return Some(understand::Understanding::av(understand::AVSLÅTT));
+    }
+    None
+}
+
+fn samtykke(innhold: &str) -> Option<understand::Understanding> {
+    samtykke_med(innhold, lesning_på())
+}
+
+/// Setter `privat` i toppfeltet, og svarer med hele notatet slik det skal stå
+/// på disk — samme form som [`sett_samtale`], så valget står i fila.
+#[tauri::command]
+fn sett_privat(innhold: String, privat: bool) -> String {
+    samtale::sett_felt(&innhold, "privat", if privat { "ja" } else { "nei" })
+}
+
+fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| si("Klarte ikke å snakke med git. Notatene ligger trygt på disken.", e))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {args:?} feilet: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Tittelen et notat vises med: første markdown-overskrift, ellers filnavnet
+/// uten datoprefiks. Frontmatter ligger før overskriften og hoppes over av
+/// seg selv, siden bare linjer som starter med `#` teller.
+fn derive_title(rel: &str, content: &str) -> String {
+    for line in content.lines().take(40) {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix('#') {
+            let heading = rest.trim_start_matches('#').trim();
+            if !heading.is_empty() {
+                return heading.to_string();
+            }
+        }
+    }
+    let stem = Path::new(rel)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| rel.to_string());
+    strip_date_prefix(&stem).to_string()
+}
+
+/// Sekunder siden epoke for `YYYY-MM-DD` i starten av `s`, om det står der.
+/// Midnatt UTC — datoen er alt kilden vet, og et klokkeslett vi fant på ville
+/// bare vært presisjon uten dekning.
+fn dato_til_sekunder(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let tall = |fra: usize, til: usize| s.get(fra..til)?.parse::<i64>().ok();
+    let (år, måned, dag) = (tall(0, 4)?, tall(5, 7)?, tall(8, 10)?);
+    if !(1..=12).contains(&måned) || !(1..=31).contains(&dag) {
+        return None;
+    }
+    // Days-from-civil: kalenderen uten en dato-crate for én funksjon.
+    let å = år - i64::from(måned <= 2);
+    let æra = if å >= 0 { å } else { å - 399 } / 400;
+    let år_i_æra = å - æra * 400;
+    let dag_i_år = (153 * (måned + if måned > 2 { -3 } else { 9 }) + 2) / 5 + dag - 1;
+    let dag_i_æra = år_i_æra * 365 + år_i_æra / 4 - år_i_æra / 100 + dag_i_år;
+    Some((æra * 146_097 + dag_i_æra - 719_468) * 86_400)
+}
+
+/// Når tanken ble skrevet, så godt kilden vet det.
+///
+/// Rekkefølgen er hvor mye kilden faktisk vet: `dato` i toppfeltet er skrevet
+/// av den som vet, `id` bærer datoen notatet ble laget, og filas
+/// endringstidspunkt er det siste vi har. Finnes ingen av dem, er svaret
+/// `None` — og da viser panelet linja uten dato, i stedet for med en gal.
+///
+/// Et importert innlegg i en samtale bærer bare klokkeslett, aldri dato, så
+/// det er kildens dato som gjelder for hele tråden.
+fn skrevet(dir: &Path, rel: &str, innhold: &str) -> Option<i64> {
+    for felt in ["dato", "id"] {
+        if let Some(t) = samtale::felt(innhold, felt).as_deref().and_then(dato_til_sekunder) {
+            return Some(t);
+        }
+    }
+    std::fs::metadata(dir.join(rel))
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
+}
+
+/// `2026-09-10-utstyrs-tab` → `utstyrs-tab`.
+fn strip_date_prefix(stem: &str) -> &str {
+    let b = stem.as_bytes();
+    if b.len() > 11
+        && b[..10]
+            .iter()
+            .enumerate()
+            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() })
+        && b[10] == b'-'
+    {
+        &stem[11..]
+    } else {
+        stem
+    }
+}
+
+/// Gjør en sti fra frontend om til en absolutt sti *inne i* notatmappen, eller
+/// avviser den. Tillitsgrensen: alt annet her stoler på at stien er trygg.
+///
+/// Kanoniseringen skjer i to trinn. Mappen først, fordi fila kan være i ferd
+/// med å bli opprettet og da ikke kan kanoniseres — det fanger en symlenket
+/// undermappe. Så fila selv, når den finnes: en symlenket `.md`-fil ble
+/// tidligere lest, indeksert, og trunkert av [`write_note`].
+fn resolve_in(dir: &Path, rel: &str) -> Result<PathBuf, String> {
+    if rel.is_empty() {
+        return Err("Notatet har ingen sti.".into());
+    }
+    let base = dir
+        .canonicalize()
+        .map_err(|e| si("Finner ikke notatmappen.", e))?;
+    let joined = base.join(rel);
+    let name = joined
+        .file_name()
+        .ok_or_else(|| "Notatet har ikke noe filnavn.".to_string())?
+        .to_owned();
+    let parent = joined
+        .parent()
+        .ok_or_else(|| "Notatstien går ikke an å lese.".to_string())?
+        .canonicalize()
+        .map_err(|_| format!("Finner ikke mappen «{rel}» ligger i."))?;
+    let full = parent.join(name);
+    if !full.starts_with(&base) {
+        return Err(format!("«{rel}» ligger utenfor notatmappen."));
+    }
+    // Fila si egen symlenke. Kanoniseringen over tar bare *forelderen*, og
+    // fanget derfor bare en symlenket mappe. En `.md`-fil som peker ut av
+    // notatmappen — `notater/x.md -> ~/.ssh/config` — ble lest av
+    // `read_note`, indeksert inn i søkebasen, og verst av alt: trunkert av
+    // `write_note` neste gang autolagringen gikk.
+    //
+    // `canonicalize` feiler på en fil som ikke finnes ennå; det er
+    // `create_note` sitt tilfelle, og da er det ingen lenke å følge.
+    if let Ok(ekte) = full.canonicalize() {
+        if !ekte.starts_with(&base) {
+            return Err(format!("«{rel}» peker ut av notatmappen."));
+        }
+    }
+    if full.extension().and_then(|e| e.to_str()) != Some("md") {
+        return Err(format!("«{rel}» er ikke et notat. Appen åpner bare .md-filer."));
+    }
+    Ok(full)
+}
+
+fn slug(title: &str) -> String {
+    let s: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c == ' ' { '-' } else { c })
+        .filter(|c| c.is_ascii_alphanumeric() || "-æøå".contains(*c))
+        .collect();
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() {
+        "notat".to_string()
+    } else {
+        s
+    }
+}
+
+/// Lager `<dato>-<slug>.md` med frontmatter og overskrift.
+///
+/// Med tittel: finnes fila allerede, returneres den urørt — som i `notat`, der
+/// samme tittel to ganger samme dag åpner det samme notatet. Uten tittel er
+/// det motsatte riktig: to trykk på «nytt notat» skal gi to notater, så navnet
+/// får et løpenummer til det er ledig.
+///
+/// `selv` merkes rett før fila skrives, ikke etterpå — se [`write_note`] for
+/// hvorfor rekkefølgen er det som gjør skrivet trygt. `None` i tester, som
+/// ikke har noen voktertråd å forveksle skrivet med.
+fn create_note_in(dir: &Path, title: &str, date: &str, selv: Option<&Selvskrift>) -> Result<String, String> {
+    let title = title.trim();
+    let (base, heading) = if title.is_empty() {
+        (format!("{date}-uten-tittel"), "Uten tittel")
+    } else {
+        (format!("{date}-{}", slug(title)), title)
+    };
+
+    let mut name = format!("{base}.md");
+    if title.is_empty() {
+        let mut n = 2;
+        while dir.join(&name).exists() {
+            name = format!("{base}-{n}.md");
+            n += 1;
+        }
+    }
+
+    let full = dir.join(&name);
+    if !full.exists() {
+        let id = name.trim_end_matches(".md");
+        let body = format!("---\nid: {id}\ntype: \n---\n\n# {heading}\n\n");
+        if let Some(selv) = selv {
+            selv.merk(&full);
+        }
+        skriv_atomisk(&full, &body).map_err(|e| skrivefeil(&name, &e))?;
+    }
+    Ok(name)
+}
+
+/// Dagens dato lokalt. `date` er riktig verktøy for jobben: lokal tidssone
+/// uten å dra inn en dato-crate for én linje.
+fn today() -> String {
+    Command::new("date")
+        .arg("+%F")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| s.len() == 10)
+        .unwrap_or_else(|| "0000-00-00".to_string())
+}
+
+fn collect_notes(dir: &Path, base: &Path, out: &mut Vec<Note>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with('.') {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        if meta.is_dir() {
+            collect_notes(&path, base, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let rel = path
+                .strip_prefix(base)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            out.push(Note {
+                title: derive_title(&rel, &content),
+                path: rel,
+                modified,
+            });
+        }
+    }
+}
+
+/// Stager og indekserer. `git add -A` er ikke pynt: indekseren lister filer med
+/// `git ls-files -s` og hopper over filer med uendret blob-hash, så et notat
+/// som aldri er lagt til git er usynlig for søk, og en endring som ikke er
+/// staget har fortsatt den gamle hashen. Staging (ikke commit) gir fersk hash
+/// uten å lage en commit per tastetrykk; `notat sync` committer når brukeren
+/// vil ha et punktum i historikken.
+fn reindex_in(notes: &Path, db_file: &Path) -> Result<String, String> {
+    let _guard = REINDEX.lock().unwrap_or_else(|e| e.into_inner());
+    git(notes, &["add", "-A"])?;
+    let conn = db::open(db_file)
+        .map_err(|e| si("Notatet er lagret, men søket er ikke oppdatert ennå.", e))?;
+    let report =
+        index::run_no_embed(&conn, notes)
+        .map_err(|e| si("Notatet er lagret, men søket er ikke oppdatert ennå.", e))?;
+
+    // Notater som ikke finnes lenger. `minne::synk` rydder bare i den kilden
+    // den kalles med, og den kalles bare når notatet leses — så et slettet
+    // eller omdøpt notat ble stående, og «Tidligere om dette» siterte det.
+    // Rettelsene hennes blir liggende og finner tilbake om teksten kommer
+    // igjen; det er bare det utledede som ryddes.
+    let mut stier = Vec::new();
+    collect_notes(notes, notes, &mut stier);
+    let _ = minne::rydd(&conn, &stier.iter().map(|n| n.path.clone()).collect::<Vec<_>>());
+    Ok(format!(
+        "{} filer, {} biter",
+        report.files, report.chunks
+    ))
+}
+
+#[tauri::command]
+fn list_notes() -> Result<Vec<Note>, String> {
+    let dir = notes_dir()?;
+    let mut out = Vec::new();
+    collect_notes(&dir, &dir, &mut out);
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    Ok(out)
+}
+
+#[tauri::command]
+fn read_note(path: String) -> Result<String, String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    std::fs::read_to_string(&full).map_err(|e| lesefeil(&path, &e))
+}
+
+/// Skriver notatet uten at det kan bli halvveis skrevet: innholdet går til en
+/// midlertidig fil i samme mappe, tvinges til disk, og får så navnet til
+/// notatet. `rename` innenfor ett filsystem er atomisk, så en strømstans eller
+/// et krasj midt i skrivet gir enten den gamle fila eller den nye — aldri en
+/// avkortet. `std::fs::write` avkorter fila først og fyller den etterpå, og
+/// det vinduet er nøyaktig der et notat kan bli borte.
+///
+/// Den midlertidige fila heter `.<navn>.<pid>.tmp`. Den er ikke en `.md`-fil,
+/// så verken vokteren i [`overvaking`] eller notatlista ser den.
+fn skriv_atomisk(full: &Path, innhold: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mappe = full.parent().unwrap_or_else(|| Path::new("."));
+    let navn = full.file_name().and_then(|n| n.to_str()).unwrap_or("notat");
+    let temp = mappe.join(format!(".{navn}.{}.tmp", std::process::id()));
+
+    let skriv = || -> std::io::Result<()> {
+        let mut f = std::fs::File::create(&temp)?;
+        f.write_all(innhold.as_bytes())?;
+        // Navnebyttet er atomisk, men det lover ingenting om data som
+        // fortsatt bare står i sidebufferet.
+        f.sync_all()?;
+        Ok(())
+    };
+    if let Err(e) = skriv().and_then(|()| std::fs::rename(&temp, full)) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Merket settes *før* skrivet, aldri etter — det er dette som gjør at
+/// vokteren i [`overvaking`] aldri kan rekke å se hendelsen før merket er
+/// satt. Uten den rekkefølgen ville dette bare vært usannsynlig, ikke umulig.
+#[tauri::command]
+fn write_note(selv: tauri::State<Arc<Selvskrift>>, path: String, content: String) -> Result<(), String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    selv.merk(&full);
+    skriv_atomisk(&full, &content).map_err(|e| skrivefeil(&path, &e))
+}
+
+#[tauri::command]
+fn create_note(selv: tauri::State<Arc<Selvskrift>>, title: String) -> Result<String, String> {
+    let dir = notes_dir()?;
+    create_note_in(&dir, &title, &today(), Some(&selv))
+}
+
+#[tauri::command]
+fn search_notes(query: String) -> Result<Søkesvar, String> {
+    let dir = notes_dir()?;
+    let conn = db::open(&db_path()).map_err(|_| SØKEFEIL.to_string())?;
+    let hits = search::text(&conn, &query, BITER).map_err(|_| SØKEFEIL.to_string())?;
+
+    // Brukte søket opp hele biterammen, finnes det etter alt å dømme flere
+    // notater bakenfor den. Da er lista kappet selv om den er kortere enn
+    // notatrammen.
+    let mut avkortet = hits.len() >= BITER;
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for hit in hits {
+        if !seen.insert(hit.path.clone()) {
+            continue;
+        }
+        // Indeksen kan inneholde rader fra andre repoer. Bare treff som
+        // faktisk ligger i notatmappen vises.
+        let Ok(full) = resolve_in(&dir, &hit.path) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&full) else {
+            continue;
+        };
+        out.push(SearchHit {
+            title: derive_title(&hit.path, &content),
+            modified: endret(&full),
+            path: hit.path,
+            snippet: hit.text,
+            start_line: hit.start_line,
+            end_line: hit.end_line,
+        });
+        if out.len() == NOTATER {
+            avkortet = true;
+            break;
+        }
+    }
+    Ok(Søkesvar { treff: out, avkortet })
+}
+
+/// Da fila sist ble skrevet, i sekunder siden epoke. `0` når vi ikke vet.
+fn endret(full: &Path) -> u64 {
+    std::fs::metadata(full)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Leser notatet og sier hva det har forstått. Feiler kallet — `claude` finnes
+/// ikke, er ikke innlogget, eller bruker for lang tid — svarer den «av», og
+/// panelet viser én rolig linje. Ingen feilmelding: brukeren har ikke bedt om
+/// noe her, og skriving, lagring og søk går som før.
+///
+/// Hukommelsen holdes låst gjennom kallet. Det serialiserer to lagringer som
+/// kommer tett — som er det man vil: den andre finner arbeidet den første
+/// gjorde, i stedet for å betale for det på nytt.
+///
+/// Lange kilder leses pakke for pakke, og hver pakke skrives før neste kall
+/// gjøres. Panelet får delresultatet som hendelsen `forstår` underveis, og
+/// det som er skrevet står selv om en senere pakke feiler eller lesningen
+/// forlates. `synlig` er `[fra, til]` i UTF-16-enheter — området brukeren ser
+/// på skjermen, som klassifiseres først.
+#[tauri::command]
+fn understand_note(
+    app: tauri::AppHandle,
+    content: String,
+    path: String,
+    synlig: Option<[usize; 2]>,
+) -> Result<understand::Understanding, String> {
+    // Løpenummeret tas før låsen. Står en lang lesning og kjører, er det
+    // nettopp dette som forteller den at brukeren har gått videre — hadde vi
+    // ventet på låsen først, ville beskjeden kommet etter at den var ferdig.
+    let min = LESNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let gjelder_fortsatt = || LESNING.load(std::sync::atomic::Ordering::SeqCst) == min;
+
+    // Før noe leses, deles eller skrives: får vi lov?
+    if let Some(mut svar) = samtykke(&content) {
+        // Løpenummeret må med, ellers ser panelet svaret som en forlatt
+        // lesning og blir stående med det forrige notatets forståelse.
+        svar.lesning = min;
+        return Ok(svar);
+    }
+
+    let mut base = base().ok();
+    let biter = understand::split(&content);
+
+    // Er kilden en samtale, er hvert avsnitt ett innlegg med avsenderen først.
+    // Da bæres avsenderen med hele veien: inn i `avsnitt`-raden, ut i panelet,
+    // og videre til det strukturerte søket. Er den det ikke, er alt som før.
+    let er_samtale = samtale::er_samtale(&content);
+    let avsendere: Vec<Option<String>> = if er_samtale {
+        biter.iter().map(|c| samtale::avsender(&c.text)).collect()
+    } else {
+        Vec::new()
+    };
+
+    // Låsen tas før noe skrives. To lagringer som kommer tett skal ikke skrive
+    // avsnittsradene for den samme kilden samtidig.
+    let mut memo = understand::memo().lock().unwrap_or_else(|e| e.into_inner());
+
+    let eksempler = base
+        .as_ref()
+        .and_then(|c| minne::eksempler(c, minne::ANTALL_EKSEMPLER).ok())
+        .unwrap_or_default();
+
+    // Identiteten først: hvert avsnitt får id-en sin, og et avsnitt som bare
+    // har fått rettet en skrivefeil beholder den id-en det hadde. Det er dette
+    // rettelser og relasjoner henger på, og det skjer uavhengig av om
+    // klassifiseringen lykkes.
+    let ider: Option<Vec<i64>> = base.as_mut().and_then(|conn| {
+        let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
+        minne::synk(conn, &path, &tekster, &avsendere).ok()
+    });
+
+    // Alt som er forstått før hentes inn før klassifiseringen. Det er dette
+    // som gjør at et notat fra i går ikke koster et eneste kall i dag.
+    if let Some(conn) = &base {
+        let hasher: Vec<String> = biter.iter().map(|c| understand::nøkkel(&c.text)).collect();
+        if let Ok(kjente) = minne::kjente(conn, &hasher) {
+            for (nøkkel, label) in kjente {
+                memo.entry(nøkkel).or_insert(label);
+            }
+        }
+    }
+
+    let avviste = base
+        .as_ref()
+        .and_then(|c| minne::avviste(c, 3).ok())
+        .unwrap_or_default();
+    let cli = if er_samtale {
+        understand::Cli::over_samtale(eksempler)
+    } else {
+        understand::Cli::new(eksempler)
+    }
+    .med_avviste(avviste);
+    let tittel = derive_title(&path, &content);
+    // Dagen tanken ble skrevet, ikke dagen den ble klassifisert.
+    let skrevet = notes_dir().ok().and_then(|dir| skrevet(&dir, &path, &content));
+
+    // Rettelsene hentes før pakkene, ikke etter. Delresultatene gikk før rett
+    // inn i panelet med `correction: null`, og i de minuttene en lang lesning
+    // står på lå modellens lesning oppå linjene hun allerede hadde rettet.
+    // Rettelsen reverterte synlig, og den naturlige reaksjonen er å rette den
+    // igjen.
+    let mine = base
+        .as_ref()
+        .and_then(|conn| rettelser::aktive(conn, &path).ok())
+        .unwrap_or_default();
+
+    // Etter hver pakke: skriv, si ifra, og se om lesningen fortsatt gjelder.
+    // Det er dette som gjør delresultatet gyldig — feiler pakke fire, står
+    // pakke én til tre allerede i basen.
+    let lest = {
+        let base = &base;
+        let mine = &mine;
+        let biter = &biter;
+        let ider = ider.as_deref().unwrap_or(&[]);
+        let tittel = &tittel;
+        let skrevet = &skrevet;
+        let app = &app;
+        let mut etter_pakke = |ferske: &[understand::Paragraph], lest, totalt| {
+            let mut ferske = ferske.to_vec();
+            understand::sett_ider(&mut ferske, biter, ider);
+            sett_avsendere(&mut ferske, er_samtale);
+            if let Some(conn) = base {
+                let _ = minne::lagre(conn, tittel, &ferske, *skrevet);
+            }
+            rettelser::merge(&mut ferske, mine);
+            let _ = app.emit(
+                "forstår",
+                understand::Framdrift {
+                    lesning: min,
+                    lest,
+                    totalt,
+                    fase: None,
+                    paragraphs: ferske,
+                },
+            );
+            gjelder_fortsatt()
+        };
+        understand::understand(
+            &content,
+            &cli,
+            &mut memo,
+            synlig.map(|s| (s[0], s[1])),
+            &mut etter_pakke,
+        )
+    };
+
+    let mut avsnitt = match lest {
+        Ok(a) => a,
+        // Kallet feilet — `claude` mangler, er ikke innlogget, eller svarte
+        // ikke i tide. Feilteksten bæres til panelet, slik at «lesningen
+        // feilet» ikke ser ut som «ingenting ble funnet».
+        Err(e) => {
+            let mut svar = understand::Understanding::av(&e);
+            svar.lesning = min;
+            return Ok(svar);
+        }
+    };
+    understand::sett_ider(&mut avsnitt, &biter, ider.as_deref().unwrap_or(&[]));
+    sett_avsendere(&mut avsnitt, er_samtale);
+
+    // Låsen slippes her. Den finnes for å serialisere klassifiseringen — to
+    // lagringer som kommer tett skal dele arbeidet, ikke betale for det to
+    // ganger — og klassifiseringen er ferdig nå. Sammenligningen under bruker
+    // ikke hukommelsen, men tar opptil to modellkall à fem minutter, og holdt
+    // før hele appen i kø bak et notat brukeren for lengst hadde gått bort
+    // fra: hun byttet notat, og panelet sto stille uten forklaring.
+    drop(memo);
+
+    // Rettelsene er det beste vi har, men de er ikke verdt å felle panelet
+    // for: klarer vi ikke å åpne basen, står linjene der som systemet leste
+    // dem, og brukeren merker ingenting annet.
+    let mut lest_på_nytt = Vec::new();
+    let mut tidligere = Vec::new();
+    let mut avkortet = false;
+    if let Some(conn) = &base {
+        let _ = minne::lagre(conn, &tittel, &avsnitt, skrevet);
+        // Kryssnotat-minnet koster egne modellkall. Er lesningen forlatt, er
+        // det arbeid for et notat brukeren har gått bort fra.
+        if gjelder_fortsatt() {
+            // Panelet så ferdig ut her, og var det ikke: to modellkall står
+            // igjen, og «Tidligere om dette» er tom til de svarer.
+            let _ = app.emit(
+                "forstår",
+                understand::Framdrift {
+                    lesning: min,
+                    lest: 0,
+                    totalt: 0,
+                    fase: Some(understand::SAMMENLIGNER.to_string()),
+                    paragraphs: Vec::new(),
+                },
+            );
+            avkortet = minne::avkortet(&avsnitt);
+            tidligere =
+                minne::tidligere(conn, &avsnitt, synlig.map(|s| (s[0], s[1])), &cli)
+                    .unwrap_or_default();
+        }
+
+        // Avsnittene i teksten, ikke linjene i panelet: en linje kan mangle
+        // fordi klassifiseringen ikke fikk lest den, og da er rettelsen
+        // fortsatt god — teksten står jo der.
+        //
+        // Bare når identiteten faktisk ble satt. Feilet den, vet vi ikke hvilke
+        // avsnitt som finnes, og å foreldde alle rettelsene på en gjetning er
+        // den ene feilen som koster brukeren noe hun ikke kan skrive om igjen.
+        if let Some(ider) = &ider {
+            let nåværende = ider.iter().copied().collect();
+            lest_på_nytt = rettelser::foreldede(conn, &path, &nåværende).unwrap_or_default();
+        }
+        if let Ok(mine) = rettelser::aktive(conn, &path) {
+            rettelser::merge(&mut avsnitt, &mine);
+        }
+    }
+
+    // Avsnitt uten linje. Et avsnitt modellen ikke svarte for, og et avsnitt
+    // som lå i en pakke som feilet, ser begge ut som et avsnitt uten innhold.
+    // Tallet er det eneste som skiller «vi leste dette og fant ingenting» fra
+    // «vi klarte ikke å lese det».
+    let uleste = biter.len().saturating_sub(avsnitt.len());
+
+    let mut ut = understand::Understanding::on(avsnitt, lest_på_nytt);
+    ut.earlier = tidligere;
+    ut.avkortet = avkortet;
+    ut.lesning = min;
+    ut.uleste = uleste;
+    Ok(ut)
+}
+
+/// Brukerens egen dom over en kobling: disse to hører ikke sammen.
+///
+/// Det eneste hun kunne gjøre med en falsk kobling før var å se på den.
+/// `RELASJONER.md` sier rett ut at ti falske koblinger etter hverandre gjør at
+/// hun slutter å lese seksjonen, og at funksjonen da er verre enn ingenting.
+///
+/// `avvist: false` tar dommen tilbake, og paret dømmes på nytt.
+#[tauri::command]
+fn avvis_kobling(gjelder: i64, annen_hash: String, sti: String, avvist: bool) -> Result<(), String> {
+    let conn = base()?;
+    let annen: i64 = conn
+        .query_row(
+            "select id from avsnitt where kilde = ?1 and innhold_hash = ?2",
+            (&sti, &annen_hash),
+            |r| r.get(0),
+        )
+        .map_err(|_| "fant ikke avsnittet koblingen peker på".to_string())?;
+    minne::avvis(&conn, gjelder, annen, avvist)
+        .map_err(|e| si("Klarte ikke å lagre valget.", e))
+}
+
+/// Hvem som sa hva, satt på linjene panelet får. Avsenderen leses ut av
+/// avsnittsteksten, som er nøyaktig den linja som står i fila — det er derfor
+/// den overlever at appen lukkes, uten at noe måtte lagres for å få den fram.
+///
+/// Bare når kilden er en samtale. Et vanlig notat med «Marius: ja» i seg skal
+/// ikke plutselig få deltakere.
+fn sett_avsendere(avsnitt: &mut [understand::Paragraph], er_samtale: bool) {
+    for a in avsnitt.iter_mut() {
+        a.avsender = if er_samtale { samtale::avsender(&a.text) } else { None };
+    }
+}
+
+/// Er dette limt inn en samtale? Svarer med innleggene skrevet om til
+/// markdown, eller `null` når teksten ikke er gjenkjent som en samtale — da
+/// limes den inn som den er, og blir et vanlig notat.
+///
+/// Regelbasert og umiddelbar: ingen modell, ingen nettverk. Den kjører mellom
+/// ⌘V og at teksten står på skjermen.
+#[tauri::command]
+fn importer_samtale(tekst: String) -> Option<String> {
+    samtale::del(&tekst).map(|innlegg| samtale::skriv(&innlegg))
+}
+
+/// Hvordan notatet leses nå — som samtale eller som notat, gjenkjent eller
+/// bestemt av brukeren, og med hvem som er med.
+#[tauri::command]
+fn samtaleform(innhold: String) -> samtale::Form {
+    samtale::form(&innhold)
+}
+
+/// Brukerens overstyring: «dette er en samtale» eller «dette er det ikke».
+/// Svaret er hele notatet med `kilde` satt i toppfeltet, slik at valget står i
+/// fila og gjelder neste gang også.
+#[tauri::command]
+fn sett_samtale(innhold: String, er_samtale: bool) -> String {
+    let verdi = if er_samtale { samtale::SAMTALE } else { samtale::NOTAT };
+    samtale::sett_kilde(&innhold, verdi)
+}
+
+/// Brukeren har gått videre. Lesningen som kjører forlates ved neste
+/// pakkeslutt; det den rakk å skrive står. Panelet kaller dette når det er i
+/// ferd med å be om en ny lesning mens en gammel fortsatt går.
+#[tauri::command]
+fn avbryt_lesning() {
+    LESNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Svarer på et spørsmål om det som er forstått, når søket er ett. Er det et
+/// vanlig søk, svarer den ingenting, og fritekstsøket står alene.
+#[tauri::command]
+fn spor_notater(query: String) -> Result<Option<minne::Svar>, String> {
+    let conn = base()?;
+    minne::spør(&conn, &query).map_err(|e| si(SØKEFEIL, e))
+}
+
+/// Hvor et avsnitt står i et notat. Brukes når en linje under «Tidligere om
+/// dette» åpner notatet den peker på.
+#[tauri::command]
+fn finn_avsnitt(path: String, hash: String) -> Result<Option<[usize; 2]>, String> {
+    let dir = notes_dir()?;
+    let full = resolve_in(&dir, &path)?;
+    let innhold =
+        std::fs::read_to_string(&full).map_err(|e| lesefeil(&path, &e))?;
+    Ok(minne::posisjon(&innhold, &hash).map(|(a, b)| [a, b]))
+}
+
+/// Basen appen allerede bruker, med app-tabellene på plass.
+///
+/// Migreringen kjører først og gjør ingenting når skjemaet alt er nytt. Den må
+/// stå foran `sørg_for_*`, som bare lager tabeller som mangler og derfor ville
+/// latt et gammelt skjema stå urørt.
+fn base() -> Result<rusqlite::Connection, String> {
+    let fil = db_path();
+    let mut conn = db::open(&fil).map_err(|e| si(BASEFEIL, e))?;
+    migrering::kjør(&mut conn, Some(&fil))
+        .map_err(|e| si(BASEFEIL, e))?;
+    rettelser::sørg_for_tabell(&conn).map_err(|e| si(BASEFEIL, e))?;
+    minne::sørg_for_tabeller(&conn).map_err(|e| si(BASEFEIL, e))?;
+    Ok(conn)
+}
+
+/// Lagrer brukerens egen retting av én linje, eller tar den bort igjen —
+/// som er det angre gjør når det ikke var noen rettelse fra før.
+#[tauri::command]
+fn rett_avsnitt(retting: rettelser::Retting) -> Result<(), String> {
+    if let Some(plass) = retting.plass.as_deref() {
+        if !rettelser::PLASSER.contains(&plass)
+            && plass != rettelser::FJERNET
+            && plass != rettelser::FERDIG
+        {
+            return Err(format!("«{plass}» er ikke en av plassene i panelet."));
+        }
+    }
+    let conn = base()?;
+    rettelser::lagre(&conn, &retting).map_err(|e| si("Klarte ikke å lagre rettelsen. Linja står som den var.", e))
+}
+
+#[tauri::command]
+fn reindex() -> Result<String, String> {
+    let dir = notes_dir()?;
+    reindex_in(&dir, &db_path())
+}
+
+// ---- ordlista -----------------------------------------------------------
+
+/// Norsk Ordbank, slik grensesnittet trenger å vite om den.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ordbankstatus {
+    /// Setningen brukeren skal se, ordrett fra [`ordbank::status`]. Ingen
+    /// sjargong: den sier hva søket får til og hva det ikke får til.
+    tekst: String,
+    /// Ordlista er ikke lastet ned. Bare da har «Last ned ordlista» noe å
+    /// gjøre, og bare da er søket dårligere enn det kan bli.
+    mangler: bool,
+}
+
+/// Ordlista fra Språkbanken ved Nasjonalbiblioteket, CC BY 4.0.
+///
+/// Målt: arkivet er 15 MB, fullformslista i det 98 MB, og `ordbank.db` etter
+/// innlasting 102 MB. Nedlastingen er det som tar tid; innlastingen tar litt
+/// over ett sekund.
+const ORDBANK_URL: &str =
+    "https://www.nb.no/sbfil/leksikalske_databaser/ordbank/20220201_norsk_ordbank_nob_2005.tar.gz";
+
+/// Én nedlasting av gangen. To samtidige ville skrevet i den samme fila.
+static ORDBANK_LASTER: Mutex<()> = Mutex::new(());
+
+#[tauri::command]
+fn ordbank_status() -> Result<Ordbankstatus, String> {
+    let conn = db::open(&db_path()).map_err(|_| SØKEFEIL.to_string())?;
+    let status = ordbank::status(&conn);
+    Ok(Ordbankstatus {
+        tekst: status.to_string(),
+        mangler: status == ordbank::Status::Mangler,
+    })
+}
+
+/// Henter ordlista og leser den inn. Tar et par minutter på en vanlig linje,
+/// og sier fra underveis gjennom hendelsen `ordbank`.
+///
+/// `curl` og `tar` er allerede på maskinen — appen kaller `git` og `claude`
+/// på samme måte. Å dra inn en HTTP-klient og en tar-leser for én nedlasting
+/// som skjer én gang i appens levetid ville vært to avhengigheter for
+/// ingenting.
+///
+/// Alt havner i `ordbank.db` ved siden av `notater.db`. Sletter man den fila,
+/// mister man bøyningen i søket og ingenting annet.
+#[tauri::command]
+fn last_ned_ordbank(app: tauri::AppHandle) -> Result<Ordbankstatus, String> {
+    let Ok(_lås) = ORDBANK_LASTER.try_lock() else {
+        return Err("Nedlastingen er allerede i gang.".into());
+    };
+    let meld = |tekst: &str| {
+        let _ = app.emit("ordbank", tekst);
+    };
+
+    let mappe = std::env::temp_dir().join(format!("creatorhub-ordbank-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&mappe);
+    std::fs::create_dir_all(&mappe)
+        .map_err(|e| skrivefeil(&mappe.to_string_lossy(), &e))?;
+    // Ryddes uansett hvordan dette går: 98 MB skal ikke bli liggende igjen.
+    let rydd = || {
+        let _ = std::fs::remove_dir_all(&mappe);
+    };
+
+    meld("Laster ned ordlista fra Nasjonalbiblioteket. Den er på 15 MB.");
+    let arkiv = mappe.join("ordbank.tar.gz");
+    let hentet = Command::new("curl")
+        .args(["-fsSL", "--retry", "2", "-o"])
+        .arg(&arkiv)
+        .arg(ORDBANK_URL)
+        .status();
+    match hentet {
+        Ok(s) if s.success() => {}
+        _ => {
+            rydd();
+            return Err("Klarte ikke å laste ned ordlista. Sjekk at maskinen er på nett, \
+                        og prøv igjen."
+                .into());
+        }
+    }
+
+    meld("Pakker ut ordlista. Den blir til rundt 100 MB på disken.");
+    let pakket = Command::new("tar")
+        .arg("xzf")
+        .arg(&arkiv)
+        .arg("-C")
+        .arg(&mappe)
+        .status();
+    match pakket {
+        Ok(s) if s.success() => {}
+        _ => {
+            rydd();
+            return Err("Nedlastingen ble ødelagt på veien. Prøv igjen.".into());
+        }
+    }
+
+    let Some(fullform) = finn_fil(&mappe, "fullformsliste.txt") else {
+        rydd();
+        return Err("Fant ikke ordlista i det som ble lastet ned. Prøv igjen.".into());
+    };
+
+    meld("Leser inn ordene. Det tar noen sekunder.");
+    let fil = db_path().with_file_name(sti::Lager::Ordbank.filnavn());
+    if let Some(foreldre) = fil.parent() {
+        let _ = std::fs::create_dir_all(foreldre);
+    }
+    let utfall = match rusqlite::Connection::open(&fil) {
+        Ok(conn) => ordbank::load(&conn, &fullform).map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    rydd();
+    if let Err(e) = utfall {
+        eprintln!("ordbank::load: {e}");
+        return Err("Klarte ikke å lese inn ordlista. Prøv igjen.".into());
+    }
+
+    meld("Ordlista er på plass.");
+    ordbank_status()
+}
+
+/// Første fil med dette navnet under `mappe`. Arkivet fra Språkbanken pakker
+/// ut i en mappe med dato i navnet, og det navnet er ikke vårt å love.
+fn finn_fil(mappe: &Path, navn: &str) -> Option<PathBuf> {
+    let mut køen = vec![mappe.to_path_buf()];
+    while let Some(m) = køen.pop() {
+        for oppføring in std::fs::read_dir(&m).ok()?.flatten() {
+            let sti = oppføring.path();
+            if sti.is_dir() {
+                køen.push(sti);
+            } else if sti.file_name().and_then(|n| n.to_str()) == Some(navn) {
+                return Some(sti);
+            }
+        }
+    }
+    None
+}
+
+/// Holder `notify`-vakten i live for appens levetid. Slipper man den, stopper
+/// overvåkingen — det er derfor den legges i Tauris egen tilstand og aldri
+/// tas ut igjen.
+struct Vokter(#[allow(dead_code)] notify::RecommendedWatcher);
+
+/// Setter overvåkingen i gang, om den kan. Feiler notatmappen å finnes, eller
+/// feiler vakten å starte, skjer ingenting mer her: appen faller tilbake til
+/// å lese ved oppstart og etter lagring, akkurat som før denne fantes. Ingen
+/// feilmelding — brukeren kan ikke gjøre noe med det uansett.
+fn start_overvaking(app: &tauri::AppHandle, selv: Arc<Selvskrift>) {
+    let Ok(dir) = notes_dir() else { return };
+    let for_hendelser = app.clone();
+    let resultat = overvaking::start(dir, selv, move |stier| {
+        let relative: Vec<String> = stier
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        let _ = for_hendelser.emit("notat-endret", relative);
+    });
+    if let Ok(watcher) = resultat {
+        app.manage(Vokter(watcher));
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .manage(Arc::new(Selvskrift::default()))
+        .setup(|app| {
+            let selv = app.state::<Arc<Selvskrift>>().inner().clone();
+            start_overvaking(&app.handle().clone(), selv);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            list_notes,
+            read_note,
+            write_note,
+            create_note,
+            search_notes,
+            reindex,
+            understand_note,
+            avbryt_lesning,
+            rett_avsnitt,
+            spor_notater,
+            finn_avsnitt,
+            avvis_kobling,
+            importer_samtale,
+            samtaleform,
+            sett_samtale,
+            sett_lesning,
+            sett_privat,
+            ordbank_status,
+            last_ned_ordbank
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Et krasj midt i skrivet skal gi enten den gamle fila eller den nye.
+    /// `std::fs::write` avkorter først og fyller etterpå, og en leser som
+    /// treffer det vinduet ser et halvt notat. Her leses fila i en stram
+    /// løkke mens den skrives om, og hver eneste lesning må være hel.
+    #[test]
+    fn krasj_midt_i_skrivet_gir_enten_gammel_eller_ny_fil() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = tmp.path().join("notat.md");
+        let gammel = "# Gammelt\n".to_string();
+        let ny: String = std::iter::repeat("En setning som fyller fila.\n").take(80_000).collect();
+        std::fs::write(&full, &gammel).unwrap();
+
+        let stopp = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let leser = {
+            let (full, stopp) = (full.clone(), stopp.clone());
+            std::thread::spawn(move || {
+                let mut sett = Vec::new();
+                while !stopp.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Ok(t) = std::fs::read_to_string(&full) {
+                        sett.push(t.len());
+                    }
+                }
+                sett
+            })
+        };
+
+        for _ in 0..5 {
+            skriv_atomisk(&full, &ny).unwrap();
+            skriv_atomisk(&full, &gammel).unwrap();
+        }
+        stopp.store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let sett = leser.join().unwrap();
+        assert!(!sett.is_empty(), "leseren må ha rukket å se fila");
+        for lengde in sett {
+            assert!(
+                lengde == gammel.len() || lengde == ny.len(),
+                "leste {lengde} bytes — verken den gamle ({}) eller den nye ({})",
+                gammel.len(),
+                ny.len()
+            );
+        }
+        // Ingen temp-fil skal ligge igjen.
+        let rester: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(rester.is_empty(), "temp-filer ble liggende: {rester:?}");
+    }
+
+    /// Porten alt går gjennom. Et notat merket privat sendes aldri, og uten
+    /// et ja fra brukeren sendes ingenting i det hele tatt.
+    #[test]
+    fn et_notat_merket_privat_sendes_aldri() {
+        let vanlig = "---\nid: 2026-09-13-notat\n---\n\n# Notat\n\nEn tanke.\n";
+        let hemmelig = "---\nid: 2026-09-13-notat\nprivat: ja\n---\n\n# Notat\n\nEn tanke.\n";
+
+        // Lesningen er på, og brukeren har sagt ja.
+        assert!(samtykke_med(vanlig, true).is_none(), "et vanlig notat skal leses");
+        assert_eq!(
+            samtykke_med(hemmelig, true).unwrap().grunn.as_deref(),
+            Some(understand::PRIVAT),
+            "notatets eget svar vinner over den globale bryteren"
+        );
+
+        // Lesningen er av — som den er til brukeren sier noe annet.
+        assert_eq!(
+            samtykke_med(vanlig, false).unwrap().grunn.as_deref(),
+            Some(understand::AVSLÅTT)
+        );
+        assert_eq!(
+            samtykke_med(hemmelig, false).unwrap().grunn.as_deref(),
+            Some(understand::PRIVAT)
+        );
+    }
+
+    /// Valget skal stå i fila, og kunne tas tilbake.
+    #[test]
+    fn privatvalget_skrives_i_toppfeltet_og_kan_angres() {
+        let doc = "---\nid: 2026-09-13-notat\n---\n\n# Notat\n\nEn tanke.\n";
+        let merket = sett_privat(doc.to_string(), true);
+        assert!(merket.contains("privat: ja"));
+        assert!(er_privat(&merket));
+
+        let angret = sett_privat(merket, false);
+        assert!(angret.contains("privat: nei"));
+        assert!(!er_privat(&angret));
+
+        // Uten toppfeltblokk lages den, som for `kilde`.
+        let bart = sett_privat("Bare tekst.\n".to_string(), true);
+        assert!(er_privat(&bart));
+        assert!(bart.contains("Bare tekst."));
+    }
+
+    /// Datoen i «Tidligere om dette» var klassifiseringsdatoen. En importert
+    /// tråd eller en gammel fil fikk dermed dagens dato på hver linje, og
+    /// «Du forkastet dette 10. september» kunne være usant om brukerens egen
+    /// historikk.
+    #[test]
+    fn datoen_kommer_fra_kilden_ikke_fra_klokka() {
+        assert_eq!(dato_til_sekunder("2026-09-13"), Some(1_789_257_600));
+        assert_eq!(dato_til_sekunder("2026-09-13-utstyrs-tab"), Some(1_789_257_600));
+        assert_eq!(dato_til_sekunder("1970-01-01"), Some(0));
+        assert_eq!(dato_til_sekunder("utstyrs-tab"), None);
+        assert_eq!(dato_til_sekunder("2026-13-01"), None, "måned 13 finnes ikke");
+        assert_eq!(dato_til_sekunder("2026-09-1"), None);
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+
+        // `dato` i toppfeltet er skrevet av den som vet, og vinner.
+        std::fs::write(dir.join("a.md"), "---\nid: 2026-09-13-a\ndato: 2024-03-02\n---\n\n# A\n")
+            .unwrap();
+        let innhold = std::fs::read_to_string(dir.join("a.md")).unwrap();
+        assert_eq!(skrevet(dir, "a.md", &innhold), dato_til_sekunder("2024-03-02"));
+
+        // Ellers datoen notatet ble laget med.
+        std::fs::write(dir.join("b.md"), "---\nid: 2026-09-13-b\n---\n\n# B\n").unwrap();
+        let innhold = std::fs::read_to_string(dir.join("b.md")).unwrap();
+        assert_eq!(skrevet(dir, "b.md", &innhold), dato_til_sekunder("2026-09-13"));
+
+        // Uten toppfelt: filas endringstidspunkt, ikke klokka nå. (De to er
+        // like her, men det er fila som er kilden.)
+        std::fs::write(dir.join("c.md"), "# C\n\nEn tanke.\n").unwrap();
+        let fra_fila = skrevet(dir, "c.md", "# C\n\nEn tanke.\n").unwrap();
+        let mtime = std::fs::metadata(dir.join("c.md"))
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert_eq!(fra_fila, mtime);
+
+        // Fins fila ikke, og toppfeltet sier ingenting, er svaret ingenting.
+        assert_eq!(skrevet(dir, "finnes-ikke.md", "# D\n"), None);
+    }
+
+    /// Raden skal bære datoen kilden ga, og en rad som allerede står med en
+    /// senere dato skal rette seg selv når en eldre kilde dukker opp.
+    #[test]
+    fn tidspunktet_i_basen_er_det_tidligste_kjente() {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+
+        let tekst = "En tanke som står her.";
+        let ider = minne::synk(&mut conn, "notat.md", &[tekst.to_string()], &[]).unwrap();
+        let avsnitt = vec![understand::Paragraph {
+            id: ider[0],
+            start: 0,
+            end: 0,
+            hash: understand::nøkkel(tekst),
+            text: tekst.into(),
+            summary: "Noe".into(),
+            kind: "beslutning".into(),
+            action: "bygg".into(),
+            avsender: None,
+            dependency: None,
+            lest: 0,
+            modell: understand::MODEL.to_string(),
+            correction: None,
+        }];
+        let les = |conn: &rusqlite::Connection| -> i64 {
+            conn.query_row("select tidspunkt from forstatt", [], |r| r.get(0)).unwrap()
+        };
+
+        // Først lest uten at kilden visste noe: 0, og panelet viser ingen dato.
+        minne::lagre(&conn, "Notat", &avsnitt, None).unwrap();
+        assert_eq!(les(&conn), 0);
+
+        // Så dukker datoen opp i toppfeltet.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2026-09-13")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2026-09-13").unwrap());
+
+        // En senere filtid skal ikke flytte dagen tanken kom.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2026-09-20")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2026-09-13").unwrap());
+
+        // Men en eldre kilde retter en rad som sto galt fra før.
+        minne::lagre(&conn, "Notat", &avsnitt, dato_til_sekunder("2024-03-02")).unwrap();
+        assert_eq!(les(&conn), dato_til_sekunder("2024-03-02").unwrap());
+    }
+
+    #[test]
+    fn tittel_hentes_fra_forste_overskrift() {
+        let md = "---\nid: 2026-09-10-utstyr\ntype: \n---\n\n# Utstyrs-tab\n\ntekst\n";
+        assert_eq!(derive_title("2026-09-10-utstyr.md", md), "Utstyrs-tab");
+        assert_eq!(derive_title("a.md", "## Nivå to\n"), "Nivå to");
+    }
+
+    #[test]
+    fn tittel_faller_tilbake_til_filnavn_uten_dato() {
+        assert_eq!(
+            derive_title("2026-09-10-utstyrs-tab.md", "bare brødtekst\n"),
+            "utstyrs-tab"
+        );
+        assert_eq!(derive_title("løse-tanker.md", ""), "løse-tanker");
+        // `#` uten tekst er ikke en tittel.
+        assert_eq!(derive_title("x.md", "#\n#  \n"), "x");
+    }
+
+    #[test]
+    fn stier_utenfor_notatmappen_avvises() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::write(dir.join("ok.md"), "# ok").unwrap();
+        std::fs::create_dir(dir.join("under")).unwrap();
+
+        assert!(resolve_in(dir, "ok.md").is_ok());
+        assert!(resolve_in(dir, "under/nytt.md").is_ok(), "fil som ikke finnes ennå er lov");
+
+        for ond in ["../ond.md", "under/../../ond.md", "/etc/passwd.md", ""] {
+            assert!(
+                resolve_in(dir, ond).is_err(),
+                "{ond} skulle vært avvist"
+            );
+        }
+        assert!(resolve_in(dir, "ok.txt").is_err(), "bare .md");
+    }
+
+    #[test]
+    fn symlenke_ut_av_mappen_avvises() {
+        let tmp = tempfile::tempdir().unwrap();
+        let utenfor = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(utenfor.path(), tmp.path().join("lenke")).unwrap();
+        assert!(resolve_in(tmp.path(), "lenke/ond.md").is_err());
+
+        // Og fila si egen symlenke. Den ble ikke fanget: kanoniseringen tok
+        // bare forelderen. `read_note` leste målet, indekseringen tok det inn
+        // i søkebasen, og `write_note` trunkerte det.
+        let hemmelig = utenfor.path().join("config");
+        std::fs::write(&hemmelig, "en fil som ikke er et notat").unwrap();
+        std::os::unix::fs::symlink(&hemmelig, tmp.path().join("x.md")).unwrap();
+        assert!(resolve_in(tmp.path(), "x.md").is_err(), "en symlenket .md rømmer mappen");
+
+        // Et helt vanlig notat, og et som ennå ikke finnes, skal fortsatt gå.
+        std::fs::write(tmp.path().join("ekte.md"), "# Notat\n").unwrap();
+        assert!(resolve_in(tmp.path(), "ekte.md").is_ok());
+        assert!(resolve_in(tmp.path(), "finnes-ikke-ennå.md").is_ok());
+    }
+
+    #[test]
+    fn nytt_notat_far_dato_frontmatter_og_overskrift() {
+        let tmp = tempfile::tempdir().unwrap();
+        let name = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10", None).unwrap();
+        assert_eq!(name, "2026-09-10-utstyrs-tab-bør-ryddes.md");
+
+        let body = std::fs::read_to_string(tmp.path().join(&name)).unwrap();
+        assert!(body.starts_with("---\nid: 2026-09-10-utstyrs-tab-bør-ryddes\ntype: \n---\n"));
+        assert!(body.contains("# Utstyrs-tab: bør ryddes\n"));
+        assert_eq!(derive_title(&name, &body), "Utstyrs-tab: bør ryddes");
+
+        // Samme tittel samme dag åpner det samme notatet, uten å nullstille det.
+        std::fs::write(tmp.path().join(&name), "# endret\n").unwrap();
+        let igjen = create_note_in(tmp.path(), "Utstyrs-tab: bør ryddes", "2026-09-10", None).unwrap();
+        assert_eq!(igjen, name);
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join(&name)).unwrap(),
+            "# endret\n"
+        );
+    }
+
+    #[test]
+    fn to_notater_uten_tittel_samme_dag_blir_to_filer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = create_note_in(tmp.path(), "   ", "2026-09-10", None).unwrap();
+        let b = create_note_in(tmp.path(), "", "2026-09-10", None).unwrap();
+        assert_eq!(a, "2026-09-10-uten-tittel.md");
+        assert_eq!(b, "2026-09-10-uten-tittel-2.md");
+        assert!(std::fs::read_to_string(tmp.path().join(&a))
+            .unwrap()
+            .contains("# Uten tittel"));
+    }
+
+    /// Rettelsene bor i den samme fila som indeksen. Tabellen skal kunne lages
+    /// på toppen av det skjemaet uten å kollidere med noe, og tåle å bli laget
+    /// igjen ved hver oppstart.
+    #[test]
+    fn rettelsestabellen_lever_side_om_side_med_indeksen() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_file = tmp.path().join("notater.db");
+        let mut conn = db::open(&db_file).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+
+        let id = minne::synk(&mut conn, "notat.md", &["En tanke.".to_string()], &[]).unwrap()[0];
+        rettelser::lagre(
+            &conn,
+            &rettelser::Retting {
+                avsnitt_id: id,
+                sti: "notat.md".into(),
+                tekst: "En tanke.".into(),
+                lest_type: "beslutning".into(),
+                lest_handling: "bygg".into(),
+                lest_kortform: "Noe".into(),
+                plass: Some("idé".into()),
+                kortform: Some("Noe annet".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            rettelser::aktive(&conn, "notat.md").unwrap().get(&id).unwrap().summary,
+            "Noe annet"
+        );
+    }
+
+    #[test]
+    fn en_plass_panelet_ikke_har_avvises() {
+        let ugyldig = rettelser::Retting {
+            avsnitt_id: 1,
+            sti: "notat.md".into(),
+            tekst: "En tanke.".into(),
+            lest_type: "beslutning".into(),
+            lest_handling: "bygg".into(),
+            lest_kortform: "Noe".into(),
+            plass: Some("marker_åpent".into()),
+            kortform: Some("Noe".into()),
+        };
+        assert!(rett_avsnitt(ugyldig).is_err(), "vokabularet vårt er ikke en plass");
+    }
+
+    /// Forståelsen bor i den samme fila som indeksen og rettelsene. Den skal
+    /// legges på toppen av det skjemaet uten å kollidere med `chunk_fts`, tåle
+    /// å bli laget igjen ved hver oppstart, og fortsatt være der etter at
+    /// basen er lukket og åpnet på nytt — det er hele poenget med å lagre den.
+    #[test]
+    fn forståelsen_ligger_i_samme_fil_og_overlever_at_den_lukkes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_file = tmp.path().join("notater.db");
+        let tekst = "Kanskje vi burde ha depositum.";
+
+        {
+            let mut conn = db::open(&db_file).unwrap();
+            rettelser::sørg_for_tabell(&conn).unwrap();
+            minne::sørg_for_tabeller(&conn).unwrap();
+            minne::sørg_for_tabeller(&conn).unwrap();
+            let id = minne::synk(&mut conn, "notat.md", &[tekst.to_string()], &[]).unwrap()[0];
+            let avsnitt = vec![understand::Paragraph {
+                id,
+                start: 0,
+                end: 0,
+                hash: understand::nøkkel(tekst),
+                text: tekst.into(),
+                summary: "Depositum".into(),
+                avsender: None,
+                kind: "tvil".into(),
+                action: "marker_åpent".into(),
+                dependency: None,
+                correction: None,
+                lest: 0,
+                modell: understand::MODEL.to_string(),
+            }];
+            minne::lagre(&conn, "Låne-app", &avsnitt, Some(1_757_000_000)).unwrap();
+        }
+
+        // Ny prosess, samme fil.
+        let conn = db::open(&db_file).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+
+        let kjente = minne::kjente(&conn, &[understand::nøkkel(tekst)]).unwrap();
+        assert_eq!(kjente.len(), 1, "det som er lest før skal fortsatt være lest");
+        assert_eq!(kjente.values().next().unwrap().summary, "Depositum");
+
+        // Og ordsøket over kortformene virker på fila, side om side med
+        // indeksens egen `chunk_fts`.
+        let treff = minne::kandidater(&conn, "Depositum tar vi likevel.", 0, 5).unwrap();
+        assert_eq!(treff.len(), 1);
+        assert_eq!(treff[0].tittel, "Låne-app");
+
+        let uavklart = minne::spør(&conn, "hva er uavklart").unwrap().unwrap();
+        assert_eq!(uavklart.treff.len(), 1);
+    }
+
+    /// Et slettet notat som fortsatt står i lista skal gi en setning hun kan
+    /// gjøre noe med, ikke «Os { code: 2, kind: NotFound }» i et varsel.
+    #[test]
+    fn et_slettet_notat_gir_en_forstaaelig_beskjed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = std::fs::read_to_string(tmp.path().join("borte.md")).unwrap_err();
+        let melding = lesefeil("2026-09-10-borte.md", &e);
+
+        assert!(melding.contains("finnes ikke lenger"), "fikk {melding}");
+        assert!(melding.contains("2026-09-10-borte.md"), "notatet skal navngis: {melding}");
+        for sjargong in ["Os {", "NotFound", "kind:", "errno", "No such file"] {
+            assert!(!melding.contains(sjargong), "{sjargong} i «{melding}»");
+        }
+
+        // Og en skrivefeil skal si at teksten ikke gikk ned, uten io-språk.
+        let melding = skrivefeil("notat.md", &e);
+        assert!(!melding.contains("NotFound"), "fikk {melding}");
+        assert!(melding.contains("notat.md"), "fikk {melding}");
+    }
+
+    /// Uten ordlista skal søket virke — bare uten bøyning — og statusen skal
+    /// si hva som mangler, med ord.
+    #[test]
+    fn uten_ordlista_virker_soeket_og_statusen_sier_hva_som_mangler() {
+        let tmp = tempfile::tempdir().unwrap();
+        let notes = tmp.path().join("notater");
+        std::fs::create_dir(&notes).unwrap();
+        git(&notes, &["init", "-q"]).unwrap();
+        // Basen ligger der appen legger den, uten `ordbank.db` ved siden av.
+        let db_file = tmp.path().join("notater.db");
+
+        let name = create_note_in(&notes, "Utstyr", "2026-09-10", None).unwrap();
+        std::fs::write(notes.join(&name), "# Utstyr\n\nVi kjøpte nytt utstyr til kontoret.\n")
+            .unwrap();
+        reindex_in(&notes, &db_file).unwrap();
+
+        let conn = db::open(&db_file).unwrap();
+        assert!(!tmp.path().join("ordbank.db").exists(), "ordlista skal ikke være der");
+
+        // Søket virker på ordet slik det ble skrevet.
+        assert_eq!(search::text(&conn, "utstyr", 5).unwrap().len(), 1);
+        // Og bøyningen mangler, som statusen sier.
+        assert!(search::text(&conn, "utstyret", 5).unwrap().is_empty());
+
+        let status = ordbank::status(&conn);
+        assert_eq!(status, ordbank::Status::Mangler);
+        let tekst = status.to_string();
+        assert!(tekst.contains("Ordlista mangler"), "fikk {tekst}");
+        for sjargong in ["lemma", "fullform", "stemming", "sqlite", "index"] {
+            assert!(!tekst.to_lowercase().contains(sjargong), "{sjargong} i «{tekst}»");
+        }
+    }
+
+    /// Hele poenget med staging før indeksering: et notat som nettopp ble
+    /// skrevet, og aldri committet, skal kunne finnes igjen med søk.
+    #[test]
+    fn ustaget_notat_blir_sokbart_etter_reindeksering() {
+        let tmp = tempfile::tempdir().unwrap();
+        let notes = tmp.path().join("notater");
+        std::fs::create_dir(&notes).unwrap();
+        git(&notes, &["init", "-q"]).unwrap();
+        let db_file = tmp.path().join("notater.db");
+
+        let name = create_note_in(&notes, "Forhandler-firmware", "2026-09-10", None).unwrap();
+        std::fs::write(
+            notes.join(&name),
+            "# Forhandler-firmware\n\nMotoren låste seg på ratatoskr-oppdateringen.\n",
+        )
+        .unwrap();
+
+        reindex_in(&notes, &db_file).unwrap();
+
+        let conn = db::open(&db_file).unwrap();
+        let hits = search::text(&conn, "ratatoskr", 5).unwrap();
+        assert_eq!(hits.len(), 1, "notatet skulle vært søkbart uten commit");
+        assert_eq!(hits[0].path, name);
+        assert!(hits[0].text.contains("ratatoskr"));
+    }
+
+    /// Delresultat er gyldig, hele veien ned i basen. Dette er nøyaktig det
+    /// `understand_note` gjør mellom pakkene — skriver, og lar det stå.
+    /// Feiler pakke tre, står pakke én og to i `forstatt` etterpå.
+    #[test]
+    fn en_feil_i_tredje_pakke_lar_de_to_første_stå_i_basen() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// Klassifiserer to pakker og feiler på den tredje.
+        struct Toav3(AtomicUsize);
+        impl understand::Classifier for Toav3 {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                if self.0.fetch_add(1, Ordering::Relaxed) >= 2 {
+                    return Err("pakke tre feilet".into());
+                }
+                Ok(svar(texts))
+            }
+        }
+
+        /// Teller hvor mange avsnitt som faktisk ble sendt.
+        struct Teller<'a>(&'a AtomicUsize);
+        impl understand::Classifier for Teller<'_> {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                self.0.fetch_add(texts.len(), Ordering::Relaxed);
+                Ok(svar(texts))
+            }
+        }
+
+        fn svar(texts: &[String]) -> String {
+            texts
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("{}|beslutning|bygg|{}", i + 1, t.trim()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        let per_pakke = understand::AVSNITT_PER_PAKKE;
+        let doc = (1..=per_pakke * 4)
+            .map(|i| format!("Innlegg {i} slår fast noe eget."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut conn = base_i(&tmp.path().join("notater.db"));
+        let biter = understand::split(&doc);
+        let tekster: Vec<String> = biter.iter().map(|c| c.text.clone()).collect();
+        let ider = minne::synk(&mut conn, "samtale.md", &tekster, &[]).unwrap();
+
+        let mut memo = understand::Memo::new();
+        understand::understand(
+            &doc,
+            &Toav3(AtomicUsize::new(0)),
+            &mut memo,
+            None,
+            &mut |nye, _, _| {
+                let mut nye = nye.to_vec();
+                understand::sett_ider(&mut nye, &biter, &ider);
+                minne::lagre(&conn, "Samtale", &nye, Some(1_757_000_000)).unwrap();
+                true
+            },
+        )
+        .expect("to pakker kom fram");
+
+        let i_basen: i64 = conn
+            .query_row("select count(*) from forstatt", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            i_basen as usize,
+            per_pakke * 2,
+            "de to pakkene som lyktes skal stå igjen, ingenting rullet tilbake"
+        );
+
+        // Og andre kjøring tar bare det som mangler.
+        let resten = AtomicUsize::new(0);
+        understand::les(&doc, &Teller(&resten), &mut memo).unwrap();
+        assert_eq!(
+            resten.load(Ordering::Relaxed),
+            per_pakke * 2,
+            "bare avsnittene som manglet skal sendes andre gang"
+        );
+    }
+
+    /// Basen slik `base()` bygger den, men på en fil testen eier.
+    fn base_i(fil: &Path) -> rusqlite::Connection {
+        let mut conn = db::open(fil).unwrap();
+        migrering::kjør(&mut conn, Some(fil)).unwrap();
+        rettelser::sørg_for_tabell(&conn).unwrap();
+        minne::sørg_for_tabeller(&conn).unwrap();
+        conn
+    }
+
+    /// Avsenderen følger med hele veien til panelet: fra fila, gjennom
+    /// lesningen, ut i linjene grensesnittet viser. Og to like setninger fra
+    /// to avsendere er to linjer, ikke én — det er beviset på at
+    /// identitetsarbeidet løste det det skulle.
+    #[test]
+    fn avsenderen_følger_med_til_panelet() {
+        let limt = "Marius: Vi går for Stripe.\n\
+                    Kari: Vi går for Stripe.\n\
+                    Marius: Da er vi enige.";
+        let innlegg = samtale::del(limt).expect("dette er en samtale");
+        let fil = format!(
+            "---\nid: 2026-09-13-betaling\nkilde: samtale\n---\n\n# Betaling\n\n{}\n",
+            samtale::skriv(&innlegg)
+        );
+        // Sannheten er markdown på disk. Går appen bort, står samtalen igjen i
+        // lesbar tekst — og appen leser den tilbake til de samme innleggene.
+        let tmp = tempfile::tempdir().unwrap();
+        let sti = tmp.path().join("2026-09-13-betaling.md");
+        std::fs::write(&sti, &fil).unwrap();
+        let fra_disk = std::fs::read_to_string(&sti).unwrap();
+        assert!(fra_disk.contains("Marius: Vi går for Stripe."), "et menneske kan lese den");
+        assert!(samtale::er_samtale(&fra_disk));
+        let fil = fra_disk;
+
+        struct Alle;
+        impl understand::Classifier for Alle {
+            fn ask(&self, texts: &[String]) -> Result<String, String> {
+                Ok(texts
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| format!("{}|beslutning|bygg|{}", i + 1, t.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n"))
+            }
+        }
+
+        let mut memo = understand::Memo::new();
+        let mut avsnitt = understand::les(&fil, &Alle, &mut memo).unwrap();
+        assert_eq!(avsnitt.len(), 3, "overskriften og toppfeltet er ikke innlegg");
+        sett_avsendere(&mut avsnitt, true);
+
+        let sagt_av: Vec<Option<&str>> =
+            avsnitt.iter().map(|a| a.avsender.as_deref()).collect();
+        assert_eq!(sagt_av, vec![Some("Marius"), Some("Kari"), Some("Marius")]);
+
+        // Samme setning fra to avsendere: to linjer, to klassifiseringer.
+        assert_ne!(avsnitt[0].hash, avsnitt[1].hash);
+        assert_eq!(memo.len(), 3);
+
+        // Og i et vanlig notat står det ingen avsender, selv om teksten
+        // skulle ligne.
+        sett_avsendere(&mut avsnitt, false);
+        assert!(avsnitt.iter().all(|a| a.avsender.is_none()));
+    }
+}
