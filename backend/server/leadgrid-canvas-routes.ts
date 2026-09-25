@@ -17,6 +17,7 @@ import {
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
 import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
+import { koblingerFor, lagKobling } from "./leadgrid-nexus-koblinger.js";
 
 // Strukturen (Daniel 2026-08-05): Møte/Lead/Befaring/Salgsplan/Prosjekt/
 // Rute — gamle verdier beholdes så eksisterende notater dekoder.
@@ -800,6 +801,85 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Element-biblioteket: mine + org-delte elementer. */
+  /**
+   * Hva henger sammen med dette notatet?
+   *
+   * Det meste utledes — samme kunde, samme sted, samme møte — så listen er
+   * full uten at noen har lenket noe. Se leadgrid-nexus-koblinger.ts.
+   */
+  app.get("/api/leadgrid/canvas/:id/koblinger", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      // MERK: kvotevakten (innenforKvote) kommer fra PR #2490. Når den er
+      // merget skal disse to rutene inn i NEXUS_KVOTER — les for GET,
+      // skriv for POST. Uten den er de eneste rutene i Nexus uten tak.
+      const ut = await koblingerFor(pool, {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        userId: session.userId,
+        notatId: String(req.params.id),
+        perKategori: Number(req.query.per_kategori) || undefined,
+      });
+      if (!ut.notat) {
+        res.status(404).json({ error: "notat_ikke_funnet" });
+        return;
+      }
+      res.json(ut);
+    } catch (e) {
+      console.error("[nexus] koblinger feilet:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  app.post("/api/leadgrid/canvas/:id/koblinger", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const tilType = String(body.til_type ?? "");
+      const tilId = String(body.til_id ?? "").trim();
+      if (!["notat", "lead", "mote"].includes(tilType) || !tilId) {
+        res.status(400).json({ error: "ugyldig_kobling" });
+        return;
+      }
+      // Notatet må tilhøre dette prosjektet. Uten sjekken kunne en kobling
+      // laget på en fremmed notat-ID lekke at den finnes.
+      const eier = await pool.query(
+        `SELECT 1 FROM leadgrid_canvas_notater
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3`,
+        [String(req.params.id), scope.organizationId, scope.projectId]);
+      if (eier.rowCount === 0) {
+        res.status(404).json({ error: "notat_ikke_funnet" });
+        return;
+      }
+      res.status(201).json(await lagKobling(pool, {
+        organizationId: scope.organizationId,
+        fraNotatId: String(req.params.id),
+        tilType: tilType as "notat" | "lead" | "mote",
+        tilId,
+        merknad: body.merknad ? String(body.merknad).slice(0, 500) : null,
+        brukerId: session.userId,
+      }));
+    } catch (e) {
+      if ((e as Error).message === "et_notat_kan_ikke_peke_paa_seg_selv") {
+        res.status(400).json({ error: "peker_paa_seg_selv" });
+        return;
+      }
+      console.error("[nexus] lenking feilet:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   app.get("/api/leadgrid/canvas/bibliotek", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
