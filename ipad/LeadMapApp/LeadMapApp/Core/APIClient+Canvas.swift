@@ -491,3 +491,61 @@ extension APIClient {
         return r.antall
     }
 }
+
+// MARK: - Koblinger (Nexus henger sammen)
+//
+// Backenden utleder hva som hører sammen med et notat fra data som allerede
+// finnes — samme kunde, samme møte, samme sted, samme selskap — og svarer i
+// tillegg med hvem du sannsynligvis sitter overfor, hentet fra
+// Foretaksregisteret. Appen har aldri spurt om dette før.
+
+struct NexusKoblingDTO: Decodable, Hashable, Identifiable {
+    let type: String        // notat | lead | mote
+    let id: String
+    let tittel: String
+    let kilde: String       // lead | sted | mote | selskap | manuell
+    let begrunnelse: String
+    let tidspunkt: String?
+    let styrke: Int
+}
+
+struct NexusPersonDTO: Decodable, Hashable, Identifiable {
+    let navn: String
+    let rolle: String
+    let vekt: Int
+    var id: String { navn + rolle }
+}
+
+struct NexusKoblingerDTO: Decodable {
+    let koblinger: [NexusKoblingDTO]
+    let personer: [NexusPersonDTO]
+}
+
+extension APIClient {
+
+    func hentCanvasKoblinger(
+        notatId: String, projectId: String
+    ) async throws -> NexusKoblingerDTO {
+        try await _get(canvasScopedPath(
+            "/api/leadgrid/canvas/\(notatId)/koblinger", projectId: projectId))
+    }
+
+    /// Eksplisitt lenke — det mennesket så og systemet ikke kunne gjette.
+    @discardableResult
+    func lagCanvasKobling(
+        notatId: String, projectId: String,
+        tilType: String, tilId: String, merknad: String? = nil
+    ) async throws -> Bool {
+        struct Body: Encodable {
+            let til_type: String
+            let til_id: String
+            let merknad: String?
+        }
+        struct Resp: Decodable { let nyopprettet: Bool? }
+        let r: Resp = try await _post(
+            canvasScopedPath("/api/leadgrid/canvas/\(notatId)/koblinger",
+                             projectId: projectId),
+            body: Body(til_type: tilType, til_id: tilId, merknad: merknad))
+        return r.nyopprettet ?? false
+    }
+}

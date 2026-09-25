@@ -27,9 +27,25 @@ struct LeadMapApp: App {
     }
     @UIApplicationDelegateAdaptor(NotificationAppDelegate.self) private var delegate
 
+    @ViewBuilder
+    private func nexusVisningEllerRot() -> some View {
+        #if DEBUG
+        if let visning = ProcessInfo.processInfo.environment["QA_NEXUS_VISNING"],
+           !visning.isEmpty {
+            NexusVisning()
+        } else {
+            RootView()
+        }
+        #else
+        RootView()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView()
+            // DEBUG-hook: designflaten for Nexus, uten innlogging.
+            // SIMCTL_CHILD_QA_NEXUS_VISNING=1 simctl launch …
+            nexusVisningEllerRot()
                 .environment(appState)
                 .environment(NetworkMonitor.shared)
                 // Dark mode gjelder på alle plattformer inkl. Mac Catalyst.
