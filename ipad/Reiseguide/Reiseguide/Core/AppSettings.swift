@@ -32,8 +32,9 @@ import UIKit
 @MainActor
 @Observable
 final class AppSettings {
-    /// Språk appen kan vise UI på. Innholdsspråk styres av hva backend har.
-    static let uiLanguages: [String] = ["nb", "en"]
+    /// Språk appen kan vise UI på (Localizable.xcstrings har alle tre).
+    /// Innholdsspråk styres av hva backend har.
+    static let uiLanguages: [String] = ["nb", "en", "da"]
 
     private enum Key {
         static let guideLanguage = "reiseguide.guideLanguage"

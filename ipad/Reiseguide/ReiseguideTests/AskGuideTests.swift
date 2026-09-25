@@ -68,6 +68,10 @@ final class AskGuideTests: XCTestCase {
         XCTAssertTrue(english.contains("\"The guide text doesn't say.\""))
         XCTAssertTrue(english.contains("Answer in English"))
 
+        let danish = AskGuideGrounding.instructions(poi: poi, answerLanguage: "da-DK")
+        XCTAssertTrue(danish.contains("\"Det fremgår ikke af guideteksten.\""))
+        XCTAssertTrue(danish.contains("Answer in Danish"))
+
         let german = AskGuideGrounding.instructions(poi: poi, answerLanguage: "de")
         XCTAssertTrue(german.contains("that the guide text does not say"))
         XCTAssertTrue(german.contains("Answer in German"))

@@ -306,6 +306,6 @@ final class VeiviserViewModel {
     }
 
     private static func bcp47(for uiLanguage: String) -> String {
-        uiLanguage == "en" ? "en-US" : "nb-NO"
+        L10n.speechLanguageCode(for: uiLanguage)
     }
 }

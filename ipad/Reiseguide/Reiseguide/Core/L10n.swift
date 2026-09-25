@@ -18,7 +18,18 @@ enum L10n {
         return Bundle.main.localizedString(forKey: key, value: nil, table: nil)
     }
 
-    /// Navnet på et språk, på sitt eget språk («Norsk», «English», «Deutsch»).
+    /// BCP-47-kode for opplesning med AVSpeechSynthesizer i UI-språket
+    /// (veiviser og rutesteg): dansk UI får dansk stemme, engelsk amerikansk,
+    /// alt annet norsk.
+    static func speechLanguageCode(for uiLanguage: String) -> String {
+        switch uiLanguage {
+        case "en": return "en-US"
+        case "da": return "da-DK"
+        default: return "nb-NO"
+        }
+    }
+
+    /// Navnet på et språk, på sitt eget språk («Norsk», «English», «Dansk»).
     static func languageName(_ code: String) -> String {
         Locale(identifier: code).localizedString(forLanguageCode: code)?.capitalized(with: Locale(identifier: code)) ?? code
     }

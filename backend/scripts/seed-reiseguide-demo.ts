@@ -32,7 +32,7 @@ import {
   type DemoLang,
 } from "../server/reiseguide-demo-data.ts";
 
-const LANGS: DemoLang[] = ["nb", "en"];
+const LANGS: DemoLang[] = ["nb", "en", "da"];
 
 async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) {

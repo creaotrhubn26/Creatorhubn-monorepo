@@ -49,7 +49,7 @@ final class RouteStepAnnouncer {
             AccessibilityNotification.Announcement(text).post()
         } else {
             let utterance = AVSpeechUtterance(string: text)
-            utterance.voice = AVSpeechSynthesisVoice(language: settings.uiLanguage == "en" ? "en-US" : "nb-NO")
+            utterance.voice = AVSpeechSynthesisVoice(language: L10n.speechLanguageCode(for: settings.uiLanguage))
             // Uten aktiv .playback-sesjon demper lydløs-bryteren talen helt.
             AudioEngine.activatePlaybackSession()
             synthesizer.speak(utterance)

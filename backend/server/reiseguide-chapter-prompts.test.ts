@@ -84,6 +84,9 @@ describe("buildChapterPrompts", () => {
   });
 });
 
+/** «Se opp»-kortet begynner med dette på hvert språk. */
+const LOOK_PREFIX = { nb: /^Se opp: /, en: /^Look up: /, da: /^Se op: / } as const;
+
 /** Ord på minst fire bokstaver, små bokstaver, uten tegnsetting. */
 function words(text: string): string[] {
   return text
@@ -97,7 +100,7 @@ describe("demo-innholdet for spørsmål underveis", () => {
     for (const poi of DEMO_POIS) {
       const byLang = DEMO_CHAPTER_PROMPTS[poi.id];
       expect(byLang, poi.id).toBeDefined();
-      for (const lang of ["nb", "en"] as const) {
+      for (const lang of ["nb", "en", "da"] as const) {
         const prompts = byLang[lang];
         expect(prompts.map((p) => p.kind).sort(), `${poi.id} ${lang}`).toEqual(["guess", "look"]);
         for (const prompt of prompts) {
@@ -107,7 +110,7 @@ describe("demo-innholdet for spørsmål underveis", () => {
           expect(prompt.atFraction).toBeLessThan(1);
           expect(prompt.text.trim()).not.toBe("");
           if (prompt.kind === "look") {
-            expect(prompt.text).toMatch(lang === "nb" ? /^Se opp: / : /^Look up: /);
+            expect(prompt.text).toMatch(LOOK_PREFIX[lang]);
             expect(prompt.options).toBeUndefined();
             expect(prompt.answerIndex).toBeUndefined();
           } else {
@@ -124,14 +127,14 @@ describe("demo-innholdet for spørsmål underveis", () => {
 
   it("bygger fasit og «se opp»-tekst bare på ord som står i kapittelets manus", () => {
     for (const poi of DEMO_POIS) {
-      for (const lang of ["nb", "en"] as const) {
+      for (const lang of ["nb", "en", "da"] as const) {
         for (const prompt of DEMO_CHAPTER_PROMPTS[poi.id][lang]) {
           const chapter = poi.scripts[lang].find((s) => s.kind === "narration" && s.chapterNo === prompt.chapterNo);
           const manus = new Set(words(chapter?.text ?? ""));
           const grounded =
             prompt.kind === "guess"
               ? words((prompt.options ?? [])[prompt.answerIndex ?? -1] ?? "")
-              : words(prompt.text.replace(/^(Se opp|Look up): /, ""));
+              : words(prompt.text.replace(LOOK_PREFIX[lang], ""));
           const missing = grounded.filter((w) => !manus.has(w));
           // «Se opp»-tekstene omformulerer litt; minst tre av fire ord må stå i manuset.
           const allowed = prompt.kind === "guess" ? 0 : Math.floor(grounded.length / 4);

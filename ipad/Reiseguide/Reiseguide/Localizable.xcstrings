@@ -15,6 +15,12 @@
             "state": "translated",
             "value": "Add to favourites"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Føj til favoritter"
+          }
         }
       }
     },
@@ -31,6 +37,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Back"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbage"
           }
         }
       }
@@ -49,6 +61,12 @@
             "state": "translated",
             "value": "Cancel"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuller"
+          }
         }
       }
     },
@@ -65,6 +83,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Luk"
           }
         }
       }
@@ -83,6 +107,12 @@
             "state": "translated",
             "value": "Done"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Færdig"
+          }
         }
       }
     },
@@ -99,6 +129,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Play %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil %@"
           }
         }
       }
@@ -117,6 +153,12 @@
             "state": "translated",
             "value": "Remove from favourites"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern fra favoritter"
+          }
         }
       }
     },
@@ -133,6 +175,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Try again"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prøv igen"
           }
         }
       }
@@ -151,6 +199,12 @@
             "state": "translated",
             "value": "Share"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Del"
+          }
         }
       }
     },
@@ -167,6 +221,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Thanks for visiting %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tak for turen til %@"
           }
         }
       }
@@ -185,6 +245,12 @@
             "state": "translated",
             "value": "After your visit"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Efter besøget"
+          }
         }
       }
     },
@@ -201,6 +267,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Visited %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøgt %@"
           }
         }
       }
@@ -219,6 +291,12 @@
             "state": "translated",
             "value": "The map, the list, your progress and arrival alerts follow the area you choose."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kortet, listen, fremskridtet og «Du er fremme» følger det område, du vælger."
+          }
         }
       }
     },
@@ -235,6 +313,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Choose another area"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vælg et andet område"
           }
         }
       }
@@ -253,6 +337,12 @@
             "state": "translated",
             "value": "Area"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Område"
+          }
         }
       }
     },
@@ -269,6 +359,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn't load the areas. You may be offline. Showing the areas saved on your phone."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke hente områderne. Du er måske uden net. Viser de områder, der er gemt på telefonen."
           }
         }
       }
@@ -287,6 +383,12 @@
             "state": "translated",
             "value": "Couldn't load the areas. You may be offline. Try again when you're connected."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke hente områderne. Du er måske uden net. Prøv igen, når du har net."
+          }
         }
       }
     },
@@ -303,6 +405,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Choose area"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vælg område"
           }
         }
       }
@@ -321,6 +429,12 @@
             "state": "translated",
             "value": "1 place"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 sted"
+          }
         }
       }
     },
@@ -337,6 +451,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ places"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ steder"
           }
         }
       }
@@ -355,6 +475,12 @@
             "state": "translated",
             "value": "Shows the places in this area"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser stederne i dette område"
+          }
         }
       }
     },
@@ -371,6 +497,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "selected"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "valgt"
           }
         }
       }
@@ -389,6 +521,12 @@
             "state": "translated",
             "value": "You're standing at %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du står ved %@"
+          }
         }
       }
     },
@@ -405,6 +543,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not now"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke nu"
           }
         }
       }
@@ -423,6 +567,12 @@
             "state": "translated",
             "value": "Play"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil"
+          }
         }
       }
     },
@@ -439,6 +589,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Switch to %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skift til %@"
           }
         }
       }
@@ -457,6 +613,12 @@
             "state": "translated",
             "value": "You've arrived"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er fremme"
+          }
         }
       }
     },
@@ -473,6 +635,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The guide's answer: %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar fra guiden: %@"
           }
         }
       }
@@ -491,6 +659,12 @@
             "state": "translated",
             "value": "The guide's answer"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar fra guiden"
+          }
         }
       }
     },
@@ -507,6 +681,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ask"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg"
           }
         }
       }
@@ -525,6 +705,12 @@
             "state": "translated",
             "value": "Ask the guide"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg guiden"
+          }
         }
       }
     },
@@ -541,6 +727,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ask a question about this place. The answer is based only on the guide text."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stil et spørgsmål om stedet. Svaret bygger kun på guideteksten."
           }
         }
       }
@@ -559,6 +751,12 @@
             "state": "translated",
             "value": "Type a question first."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv et spørgsmål først."
+          }
         }
       }
     },
@@ -575,6 +773,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The guide couldn't answer right now. Try again, or ask in a different way."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guiden kunne ikke svare lige nu. Prøv igen, eller spørg på en anden måde."
           }
         }
       }
@@ -593,6 +797,12 @@
             "state": "translated",
             "value": "Type, or tap the microphone on the keyboard to dictate."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv, eller tryk på mikrofonen på tastaturet for at diktere."
+          }
         }
       }
     },
@@ -609,6 +819,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your question"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dit spørgsmål"
           }
         }
       }
@@ -627,6 +843,12 @@
             "state": "translated",
             "value": "Answers are made on your phone with Apple Intelligence and are based only on the guide text. They may contain mistakes."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svarene laves på telefonen med Apple Intelligence og bygger kun på guideteksten. De kan indeholde fejl."
+          }
         }
       }
     },
@@ -643,6 +865,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ask about %@. The guide answers only from the guide text."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg om %@. Guiden svarer kun ud fra teksten i guiden."
           }
         }
       }
@@ -661,6 +889,12 @@
             "state": "translated",
             "value": "For example: How old is this?"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For eksempel: Hvor gammelt er det her?"
+          }
         }
       }
     },
@@ -677,6 +911,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Available. Answers are made on your phone with Apple Intelligence, from the guide text."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilgængelig. Svarene laves på telefonen med Apple Intelligence ud fra guideteksten."
           }
         }
       }
@@ -695,6 +935,12 @@
             "state": "translated",
             "value": "What is the most important thing to know about this place?"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvad er det vigtigste at vide om stedet?"
+          }
         }
       }
     },
@@ -711,6 +957,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Who built it, and when?"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvem byggede det, og hvornår?"
           }
         }
       }
@@ -729,6 +981,12 @@
             "state": "translated",
             "value": "Is there step-free access here?"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Er der niveaufri adgang her?"
+          }
         }
       }
     },
@@ -745,6 +1003,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Asks the question right away."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stiller spørgsmålet med det samme."
           }
         }
       }
@@ -763,6 +1027,12 @@
             "state": "translated",
             "value": "Suggestions"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forslag"
+          }
         }
       }
     },
@@ -779,6 +1049,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The guide is thinking …"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guiden tænker …"
           }
         }
       }
@@ -797,6 +1073,12 @@
             "state": "translated",
             "value": "Ask the guide"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørg guiden"
+          }
         }
       }
     },
@@ -813,6 +1095,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not available: this phone does not support Apple Intelligence."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgængelig: denne telefon understøtter ikke Apple Intelligence."
           }
         }
       }
@@ -831,6 +1119,12 @@
             "state": "translated",
             "value": "Not available: turn on Apple Intelligence in the Settings app to use Ask the guide."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgængelig: slå Apple Intelligence til i appen Indstillinger for at bruge Spørg guiden."
+          }
         }
       }
     },
@@ -847,6 +1141,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not available in the language you have chosen yet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endnu ikke tilgængelig på det sprog, du har valgt."
           }
         }
       }
@@ -865,6 +1165,12 @@
             "state": "translated",
             "value": "Not available yet: Apple Intelligence is getting ready. Ask the guide appears when it is ready."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgængelig endnu: Apple Intelligence gør sig klar. Spørg guiden dukker op, når den er klar."
+          }
         }
       }
     },
@@ -881,6 +1187,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not available: requires iOS 26 or later with Apple Intelligence."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgængelig: kræver iOS 26 eller nyere med Apple Intelligence."
           }
         }
       }
@@ -899,6 +1211,12 @@
             "state": "translated",
             "value": "You asked: %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du spurgte: %@"
+          }
         }
       }
     },
@@ -915,6 +1233,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Less"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mindre"
           }
         }
       }
@@ -933,6 +1257,12 @@
             "state": "translated",
             "value": "More description"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mere beskrivelse"
+          }
         }
       }
     },
@@ -949,6 +1279,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Now"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nu"
           }
         }
       }
@@ -967,6 +1303,12 @@
             "state": "translated",
             "value": "Audio description"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synstolkning"
+          }
         }
       }
     },
@@ -983,6 +1325,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Captions are estimated from the script until the audio is ready."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekstningen er anslået ud fra manuskriptet, indtil lyden er klar."
           }
         }
       }
@@ -1001,6 +1349,12 @@
             "state": "translated",
             "value": "Captions"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekstning"
+          }
         }
       }
     },
@@ -1017,6 +1371,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Double-tap to hide the text"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dobbelttryk for at skjule teksten"
           }
         }
       }
@@ -1035,6 +1395,12 @@
             "state": "translated",
             "value": "Double-tap to read the text"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dobbelttryk for at læse teksten"
+          }
         }
       }
     },
@@ -1051,6 +1417,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Add to my places"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Føj til mine steder"
           }
         }
       }
@@ -1069,6 +1441,12 @@
             "state": "translated",
             "value": "Added to my places"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Føjet til mine steder"
+          }
         }
       }
     },
@@ -1085,6 +1463,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quiz and rating"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiz og vurdering"
           }
         }
       }
@@ -1103,6 +1487,12 @@
             "state": "translated",
             "value": "Automatically translated"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisk oversat"
+          }
         }
       }
     },
@@ -1119,6 +1509,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not available in your language yet. Showing another language."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Findes endnu ikke på det valgte sprog. Viser et andet sprog."
           }
         }
       }
@@ -1137,6 +1533,12 @@
             "state": "translated",
             "value": "A visual 360° preview of the place. Not accessible with VoiceOver."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En visuel 360°-forhåndsvisning af stedet. Ikke tilgængelig med VoiceOver."
+          }
         }
       }
     },
@@ -1153,6 +1555,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "3D preview"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D-forhåndsvisning"
           }
         }
       }
@@ -1171,6 +1579,12 @@
             "state": "translated",
             "value": "See the place in 3D"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se stedet i 3D"
+          }
         }
       }
     },
@@ -1187,6 +1601,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "No narration has been added for this place yet"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der er endnu ikke lagt nogen fortælling ind for denne seværdighed"
           }
         }
       }
@@ -1205,6 +1625,12 @@
             "state": "translated",
             "value": "The narration is not ready yet."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortællingen er ikke klar endnu."
+          }
         }
       }
     },
@@ -1221,6 +1647,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Practical information is coming."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Praktisk information kommer."
           }
         }
       }
@@ -1239,6 +1671,12 @@
             "state": "translated",
             "value": "Could not find this place."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke finde seværdigheden."
+          }
         }
       }
     },
@@ -1255,6 +1693,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Photo: %1$@ · %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %1$@ · %2$@"
           }
         }
       }
@@ -1273,6 +1717,12 @@
             "state": "translated",
             "value": "Opens the image source in your browser"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbner kilden til billedet i browseren"
+          }
         }
       }
     },
@@ -1289,6 +1739,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Photo: %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %@"
           }
         }
       }
@@ -1307,6 +1763,12 @@
             "state": "translated",
             "value": "Photo: %1$@. Licence: %2$@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto: %1$@. Licens: %2$@"
+          }
         }
       }
     },
@@ -1323,6 +1785,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show directions"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis vejen"
           }
         }
       }
@@ -1341,6 +1809,12 @@
             "state": "translated",
             "value": "Start the experience"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start oplevelsen"
+          }
         }
       }
     },
@@ -1357,6 +1831,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "About"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om"
           }
         }
       }
@@ -1375,6 +1855,12 @@
             "state": "translated",
             "value": "Experience"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oplevelse"
+          }
         }
       }
     },
@@ -1391,6 +1877,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Practical"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Praktisk"
           }
         }
       }
@@ -1409,6 +1901,12 @@
             "state": "translated",
             "value": "Unlock to start"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås op for at starte"
+          }
         }
       }
     },
@@ -1425,6 +1923,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Visited %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøgt %@"
           }
         }
       }
@@ -1443,6 +1947,12 @@
             "state": "translated",
             "value": "%@ away"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ væk"
+          }
         }
       }
     },
@@ -1459,6 +1969,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Explore More\nThan Places"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oplev mere\nend steder"
           }
         }
       }
@@ -1477,6 +1993,12 @@
             "state": "translated",
             "value": "Stories. People. Places. A guide that makes the journey deeper, wherever you are."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Historier. Mennesker. Steder. En guide, der gør rejsen dybere, uanset hvor du er."
+          }
         }
       }
     },
@@ -1493,6 +2015,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Or explore popular destinations"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eller udforsk populære destinationer"
           }
         }
       }
@@ -1511,6 +2039,12 @@
             "state": "translated",
             "value": "Search for a place"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søg efter et sted"
+          }
         }
       }
     },
@@ -1527,6 +2061,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Use my location"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brug min position"
           }
         }
       }
@@ -1545,6 +2085,12 @@
             "state": "translated",
             "value": "All"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle"
+          }
         }
       }
     },
@@ -1558,6 +2104,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Filter"
@@ -1579,6 +2131,12 @@
             "state": "translated",
             "value": "Audio"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lyd"
+          }
         }
       }
     },
@@ -1595,6 +2153,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Audio description"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synstolkning"
           }
         }
       }
@@ -1613,6 +2177,12 @@
             "state": "translated",
             "value": "Text"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekst"
+          }
         }
       }
     },
@@ -1629,6 +2199,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Duration"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varighed"
           }
         }
       }
@@ -1647,6 +2223,12 @@
             "state": "translated",
             "value": "Duration %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varighed %@"
+          }
         }
       }
     },
@@ -1663,6 +2245,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Has %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Har %@"
           }
         }
       }
@@ -1681,6 +2269,12 @@
             "state": "translated",
             "value": "Language"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprog"
+          }
         }
       }
     },
@@ -1697,6 +2291,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chapter %1$@ of %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapitel %1$@ af %2$@"
           }
         }
       }
@@ -1715,6 +2315,12 @@
             "state": "translated",
             "value": "%@ to next stop"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ til næste stop"
+          }
         }
       }
     },
@@ -1731,6 +2337,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Completed"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gennemført"
           }
         }
       }
@@ -1749,6 +2361,12 @@
             "state": "translated",
             "value": "Delete from log"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slet fra loggen"
+          }
         }
       }
     },
@@ -1765,6 +2383,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You haven't visited any places yet. Start an experience and it will appear here with date and time."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har ikke besøgt nogen steder endnu. Start en oplevelse, så havner den her med dato og klokkeslæt."
           }
         }
       }
@@ -1783,6 +2407,12 @@
             "state": "translated",
             "value": "%1$@ of %2$@ correct"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ af %2$@ rigtige"
+          }
         }
       }
     },
@@ -1799,6 +2429,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Opens the quiz, rating and tips for this visit"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbner quiz, vurdering og tips for dette besøg"
           }
         }
       }
@@ -1817,6 +2453,12 @@
             "state": "translated",
             "value": "Started"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Påbegyndt"
+          }
         }
       }
     },
@@ -1833,6 +2475,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The log lives only on this phone. You can keep it on the server under Settings → Privacy."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen ligger kun på denne telefon. Du kan gemme den på serveren under Indstillinger → Privatliv."
           }
         }
       }
@@ -1851,6 +2499,12 @@
             "state": "translated",
             "value": "The log is also stored on the server (Settings → Privacy)."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen gemmes også på serveren (Indstillinger → Privatliv)."
+          }
         }
       }
     },
@@ -1867,6 +2521,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ walk"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ til fods"
           }
         }
       }
@@ -1885,6 +2545,12 @@
             "state": "translated",
             "value": "%@ walk (estimate)"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ til fods (anslået)"
+          }
         }
       }
     },
@@ -1901,6 +2567,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "about %@ walk, estimate"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cirka %@ til fods, anslået"
           }
         }
       }
@@ -1919,6 +2591,12 @@
             "state": "translated",
             "value": "%@ walk"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ til fods"
+          }
         }
       }
     },
@@ -1935,6 +2613,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Places sorted by distance"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seværdigheder sorteret efter afstand"
           }
         }
       }
@@ -1953,6 +2637,12 @@
             "state": "translated",
             "value": "Location is off. Showing Kvadraturen."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Position er slået fra. Vi viser Kvadraturen."
+          }
         }
       }
     },
@@ -1969,6 +2659,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "next stop"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "næste stop"
           }
         }
       }
@@ -1987,6 +2683,12 @@
             "state": "translated",
             "value": "visited"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "besøgt"
+          }
         }
       }
     },
@@ -2003,6 +2705,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Double-tap to select"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dobbelttryk for at vælge"
           }
         }
       }
@@ -2021,6 +2729,12 @@
             "state": "translated",
             "value": "No places nearby"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen seværdigheder i nærheden"
+          }
         }
       }
     },
@@ -2037,6 +2751,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open Settings"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn Indstillinger"
           }
         }
       }
@@ -2055,6 +2775,12 @@
             "state": "translated",
             "value": "Places on the map"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steder på kortet"
+          }
         }
       }
     },
@@ -2071,6 +2797,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ in a straight line"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ i luftlinje"
           }
         }
       }
@@ -2089,6 +2821,12 @@
             "state": "translated",
             "value": "%1$@ walk · %2$@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ til fods · %2$@"
+          }
         }
       }
     },
@@ -2105,6 +2843,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Walking time %1$@, %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gåtid %1$@, %2$@"
           }
         }
       }
@@ -2123,6 +2867,12 @@
             "state": "translated",
             "value": "Search nearby"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søg i nærheden"
+          }
         }
       }
     },
@@ -2139,6 +2889,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show the demo area"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis demo-området"
           }
         }
       }
@@ -2157,6 +2913,12 @@
             "state": "translated",
             "value": "Show directions"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis vejen"
+          }
         }
       }
     },
@@ -2173,6 +2935,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "List"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liste"
           }
         }
       }
@@ -2191,6 +2959,12 @@
             "state": "translated",
             "value": "Map"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kort"
+          }
         }
       }
     },
@@ -2207,6 +2981,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show my location"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis min position"
           }
         }
       }
@@ -2225,6 +3005,12 @@
             "state": "translated",
             "value": "%1$@ places within %2$@."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ steder inden for %2$@."
+          }
         }
       }
     },
@@ -2241,6 +3027,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nearest: %1$@, %2$@ %3$@."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nærmeste: %1$@, %2$@ %3$@."
           }
         }
       }
@@ -2259,6 +3051,12 @@
             "state": "translated",
             "value": "Places on the map: %@. Turn on location to hear distances."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steder på kortet: %@. Slå position til for at høre afstande."
+          }
         }
       }
     },
@@ -2275,6 +3073,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "No places within %@."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen steder inden for %@."
           }
         }
       }
@@ -2293,6 +3097,12 @@
             "state": "translated",
             "value": "1 place within %@."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 sted inden for %@."
+          }
         }
       }
     },
@@ -2309,6 +3119,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You have no saved places yet. Tap the heart on a place to add it."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har ingen gemte steder endnu. Tryk på hjertet ved en seværdighed for at tilføje den."
           }
         }
       }
@@ -2327,6 +3143,12 @@
             "state": "translated",
             "value": "Favourites"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritter"
+          }
         }
       }
     },
@@ -2340,6 +3162,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Log"
@@ -2361,6 +3189,12 @@
             "state": "translated",
             "value": "View"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visning"
+          }
         }
       }
     },
@@ -2377,6 +3211,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Play"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil"
           }
         }
       }
@@ -2395,6 +3235,12 @@
             "state": "translated",
             "value": "%@ is waiting for you. Tap “Play” to hear the story."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ venter på dig. Tryk på «Afspil» for at høre fortællingen."
+          }
         }
       }
     },
@@ -2411,6 +3257,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You're at a place"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er ved en seværdighed"
           }
         }
       }
@@ -2429,6 +3281,12 @@
             "state": "translated",
             "value": "Unlock every story in this area. The first place is always free."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås alle fortællingerne i området op. Den første seværdighed er altid gratis."
+          }
         }
       }
     },
@@ -2445,6 +3303,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Demo: no payment. The choice is stored only on this phone."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo: ingen betaling. Valget gemmes kun på denne telefon."
           }
         }
       }
@@ -2463,6 +3327,12 @@
             "state": "translated",
             "value": "Unlock the area"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås området op"
+          }
         }
       }
     },
@@ -2479,6 +3349,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unlock (demo)"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lås op (demo)"
           }
         }
       }
@@ -2497,6 +3373,12 @@
             "state": "translated",
             "value": "Skip back 15 seconds"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spol 15 sekunder tilbage"
+          }
         }
       }
     },
@@ -2513,6 +3395,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Next chapter"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Næste kapitel"
           }
         }
       }
@@ -2531,6 +3419,12 @@
             "state": "translated",
             "value": "Previous chapter"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige kapitel"
+          }
         }
       }
     },
@@ -2547,6 +3441,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Listened to"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hørt"
           }
         }
       }
@@ -2565,6 +3465,12 @@
             "state": "translated",
             "value": "Now playing"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspilles nu"
+          }
         }
       }
     },
@@ -2581,6 +3487,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chapter %1$@ of %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapitel %1$@ af %2$@"
           }
         }
       }
@@ -2599,6 +3511,12 @@
             "state": "translated",
             "value": "Shows all chapters, with the option to jump."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser alle kapitlerne, så du kan springe mellem dem."
+          }
         }
       }
     },
@@ -2615,6 +3533,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chapters"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapitler"
           }
         }
       }
@@ -2633,6 +3557,12 @@
             "state": "translated",
             "value": "Finish the visit"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afslut besøget"
+          }
         }
       }
     },
@@ -2649,6 +3579,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Marks the place as visited and opens the quiz, rating and tips"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Markerer stedet som besøgt og åbner quiz, vurdering og tips"
           }
         }
       }
@@ -2667,6 +3603,12 @@
             "state": "translated",
             "value": "Skip forward 15 seconds"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spol 15 sekunder frem"
+          }
         }
       }
     },
@@ -2683,6 +3625,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "New chapter: %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyt kapitel: %@"
           }
         }
       }
@@ -2701,6 +3649,12 @@
             "state": "translated",
             "value": "Audio is not ready yet. The timeline is simulated."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lyden er ikke klar endnu. Tidslinjen er simuleret."
+          }
         }
       }
     },
@@ -2718,6 +3672,12 @@
             "state": "translated",
             "value": "Open the player"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbn afspilleren"
+          }
         }
       }
     },
@@ -2731,6 +3691,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Pause"
@@ -2752,6 +3718,12 @@
             "state": "translated",
             "value": "Play"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil"
+          }
         }
       }
     },
@@ -2768,6 +3740,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Progress"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fremskridt"
           }
         }
       }
@@ -2786,6 +3764,12 @@
             "state": "translated",
             "value": "%1$@ of %2$@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ af %2$@"
+          }
         }
       }
     },
@@ -2802,6 +3786,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playback speed"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspilningshastighed"
           }
         }
       }
@@ -2820,6 +3810,12 @@
             "state": "translated",
             "value": "%@ times"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ gange"
+          }
         }
       }
     },
@@ -2836,6 +3832,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Read by your phone"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Læst op af telefonen"
           }
         }
       }
@@ -2854,6 +3856,12 @@
             "state": "translated",
             "value": "Resuming from %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsætter fra %@"
+          }
         }
       }
     },
@@ -2870,6 +3878,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Start over"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start forfra"
           }
         }
       }
@@ -2888,6 +3902,12 @@
             "state": "translated",
             "value": "Starts the narration from the beginning instead."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortællingen forfra i stedet."
+          }
         }
       }
     },
@@ -2904,6 +3924,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Stop and close"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop og luk"
           }
         }
       }
@@ -2922,6 +3948,12 @@
             "state": "translated",
             "value": "Audio description"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synstolkning"
+          }
         }
       }
     },
@@ -2935,6 +3967,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Variant"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Variant"
@@ -2956,6 +3994,12 @@
             "state": "translated",
             "value": "Narration"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortælling"
+          }
         }
       }
     },
@@ -2972,6 +4016,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The visit to %@ is complete."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøget ved %@ er slut."
           }
         }
       }
@@ -2990,6 +4040,12 @@
             "state": "translated",
             "value": "Take the quiz and rate it"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tag quizzen og giv stjerner"
+          }
         }
       }
     },
@@ -3006,6 +4062,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Play again"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil igen"
           }
         }
       }
@@ -3024,6 +4086,12 @@
             "state": "translated",
             "value": "Starts the narration from the beginning."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortællingen forfra."
+          }
         }
       }
     },
@@ -3040,6 +4108,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Well done! Take the quiz and rate it, or continue to the next stop."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godt klaret! Tag quizzen og giv stjerner, eller fortsæt til næste stop."
           }
         }
       }
@@ -3058,6 +4132,12 @@
             "state": "translated",
             "value": "The visit is complete"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøget er slut"
+          }
         }
       }
     },
@@ -3074,6 +4154,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "locked"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "låst"
           }
         }
       }
@@ -3092,6 +4178,12 @@
             "state": "translated",
             "value": "Delete my data on the server"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slet mine data på serveren"
+          }
         }
       }
     },
@@ -3108,6 +4200,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slet"
           }
         }
       }
@@ -3126,6 +4224,12 @@
             "state": "translated",
             "value": "Your log and ratings are deleted from the server and the app gets a new device ID. The log on this phone is kept."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Din log og dine vurderinger slettes fra serveren, og appen får et nyt enheds-id. Loggen på telefonen bevares."
+          }
         }
       }
     },
@@ -3142,6 +4246,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete all data on the server?"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slet alle data på serveren?"
           }
         }
       }
@@ -3160,6 +4270,12 @@
             "state": "translated",
             "value": "The log always lives on your phone. If you turn this on, place, time, stars and quiz score are also stored on the server, tied to a random device ID without name, account or location. The data is deleted automatically after one year, when you turn this off, or when you delete it here."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen ligger altid på telefonen. Slår du dette til, gemmes sted, tidspunkt, stjerner og quizresultat også på serveren, knyttet til et tilfældigt enheds-id uden navn, konto eller position. Dataene slettes automatisk efter et år, når du slår kontakten fra, eller når du sletter dem her."
+          }
         }
       }
     },
@@ -3176,6 +4292,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Your data on the server has been deleted and the app has a new device ID."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dine data på serveren er slettet, og appen har fået et nyt enheds-id."
           }
         }
       }
@@ -3194,6 +4316,12 @@
             "state": "translated",
             "value": "Could not reach the server. Will try again later."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke nå serveren. Prøver igen senere."
+          }
         }
       }
     },
@@ -3210,6 +4338,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Stored only on this phone."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemmes kun på denne telefon."
           }
         }
       }
@@ -3228,6 +4362,12 @@
             "state": "translated",
             "value": "Your log is stored on the server."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loggen gemmes på serveren."
+          }
         }
       }
     },
@@ -3244,6 +4384,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for a connection to save."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Venter på net for at gemme."
           }
         }
       }
@@ -3262,6 +4408,12 @@
             "state": "translated",
             "value": "Last saved to the server %@."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidst gemt på serveren %@."
+          }
         }
       }
     },
@@ -3278,6 +4430,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Saving…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemmer …"
           }
         }
       }
@@ -3296,6 +4454,12 @@
             "state": "translated",
             "value": "Keep my log on the server"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gem loggen på serveren"
+          }
         }
       }
     },
@@ -3312,6 +4476,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ of %2$@ places"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ af %2$@ steder"
           }
         }
       }
@@ -3330,6 +4500,12 @@
             "state": "translated",
             "value": "Tour progress"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turens fremskridt"
+          }
         }
       }
     },
@@ -3346,6 +4522,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ of %2$@ places visited"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ af %2$@ steder besøgt"
           }
         }
       }
@@ -3364,6 +4546,12 @@
             "state": "translated",
             "value": "Continue"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsæt"
+          }
         }
       }
     },
@@ -3380,6 +4568,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close card"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Luk kortet"
           }
         }
       }
@@ -3398,6 +4592,12 @@
             "state": "translated",
             "value": "Guess. The narration is paused. %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gæt. Fortællingen er sat på pause. %@"
+          }
         }
       }
     },
@@ -3414,6 +4614,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "The narration waits until you answer."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortællingen venter, til du har svaret."
           }
         }
       }
@@ -3432,6 +4638,12 @@
             "state": "translated",
             "value": "Skip and continue"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spring over og fortsæt"
+          }
         }
       }
     },
@@ -3448,6 +4660,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guess"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gæt"
           }
         }
       }
@@ -3466,6 +4684,12 @@
             "state": "translated",
             "value": "Look up"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se op"
+          }
         }
       }
     },
@@ -3482,6 +4706,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Questions along the way"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørgsmål undervejs"
           }
         }
       }
@@ -3500,6 +4730,12 @@
             "state": "translated",
             "value": "“Look up” cards and guessing questions during the narration. For guessing questions the narration pauses until you answer or skip."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Se op»-kort og gættespørgsmål midt i fortællingen. Ved gættespørgsmål står fortællingen på pause, til du svarer eller springer over."
+          }
         }
       }
     },
@@ -3516,6 +4752,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Short cards and guessing questions during the narration."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Korte kort og gættespørgsmål midt i fortællingen."
           }
         }
       }
@@ -3534,6 +4776,12 @@
             "state": "translated",
             "value": "Try again"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prøv igen"
+          }
         }
       }
     },
@@ -3550,6 +4798,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Correct!"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rigtigt!"
           }
         }
       }
@@ -3568,6 +4822,12 @@
             "state": "translated",
             "value": "See the result"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se resultatet"
+          }
         }
       }
     },
@@ -3584,6 +4844,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nice! You caught most of it."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godt! Du fik det meste med."
           }
         }
       }
@@ -3602,6 +4868,12 @@
             "state": "translated",
             "value": "Three quick questions about what you just heard. No points, just fun."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tre hurtige spørgsmål om det, du lige har hørt. Ingen point, bare for sjov."
+          }
         }
       }
     },
@@ -3618,6 +4890,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Next question"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Næste spørgsmål"
           }
         }
       }
@@ -3636,6 +4914,12 @@
             "state": "translated",
             "value": "The quiz for this place isn't ready yet."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quizzen for dette sted er ikke lavet endnu."
+          }
         }
       }
     },
@@ -3652,6 +4936,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Better luck next time. Listen to the story once more."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Næste gang går det bedre. Hør fortællingen en gang til."
           }
         }
       }
@@ -3670,6 +4960,12 @@
             "state": "translated",
             "value": "Correct answer"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rigtigt svar"
+          }
         }
       }
     },
@@ -3686,6 +4982,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Wrong answer"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forkert svar"
           }
         }
       }
@@ -3704,6 +5006,12 @@
             "state": "translated",
             "value": "Full marks! You were listening closely."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle rigtige! Du lyttede godt efter."
+          }
         }
       }
     },
@@ -3720,6 +5028,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Question %1$@ of %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spørgsmål %1$@ af %2$@"
           }
         }
       }
@@ -3738,6 +5052,12 @@
             "state": "translated",
             "value": "You got %1$@ of %2$@ right"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du fik %1$@ af %2$@ rigtige"
+          }
         }
       }
     },
@@ -3754,6 +5074,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Start the quiz"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start quizzen"
           }
         }
       }
@@ -3772,6 +5098,12 @@
             "state": "translated",
             "value": "Quick quiz"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lille quiz"
+          }
         }
       }
     },
@@ -3788,6 +5120,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Not quite. The right answer: %@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke helt. Rigtigt svar: %@"
           }
         }
       }
@@ -3806,6 +5144,12 @@
             "state": "translated",
             "value": "Your rating is saved on this phone but could not be sent now. Try again later."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vurderingen er gemt på telefonen, men kunne ikke sendes nu. Prøv igen senere."
+          }
         }
       }
     },
@@ -3822,6 +5166,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Star rating"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stjernevurdering"
           }
         }
       }
@@ -3840,6 +5190,12 @@
             "state": "translated",
             "value": "Sending your rating…"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender vurderingen …"
+          }
         }
       }
     },
@@ -3856,6 +5212,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Thanks! Your rating was sent."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tak! Vurderingen er sendt."
           }
         }
       }
@@ -3874,6 +5236,12 @@
             "state": "translated",
             "value": "%1$@ out of 5 stars, %2$@ ratings"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ af 5 stjerner, %2$@ vurderinger"
+          }
         }
       }
     },
@@ -3890,6 +5258,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ out of 5 stars"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ af 5 stjerner"
           }
         }
       }
@@ -3908,6 +5282,12 @@
             "state": "translated",
             "value": "How was it?"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvad synes du om stedet?"
+          }
         }
       }
     },
@@ -3924,6 +5304,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "No more places nearby yet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen flere steder i nærheden endnu."
           }
         }
       }
@@ -3942,6 +5328,12 @@
             "state": "translated",
             "value": "Same category"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samme kategori"
+          }
         }
       }
     },
@@ -3958,6 +5350,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Similar places nearby"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lignende i nærheden"
           }
         }
       }
@@ -3976,6 +5374,12 @@
             "state": "translated",
             "value": "Clear search"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ryd søgning"
+          }
         }
       }
     },
@@ -3992,6 +5396,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Service"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tjeneste"
           }
         }
       }
@@ -4010,6 +5420,12 @@
             "state": "translated",
             "value": "Area"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Område"
+          }
         }
       }
     },
@@ -4026,6 +5442,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Allow"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillad"
           }
         }
       }
@@ -4044,6 +5466,12 @@
             "state": "translated",
             "value": "SenseAid Explore can send you a notification when you're at a place, even when the app isn't open. This requires granting “Always” location access. You can turn this off anytime in Settings. The notification doesn't start playback on its own — you choose to tap “Play”."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SenseAid Explore kan sende dig en notifikation, når du er ved en seværdighed, også når appen ikke er åben. Det kræver, at du giver adgang til din position «Altid». Du kan slå det fra når som helst i Indstillinger. Notifikationen starter ikke lyd af sig selv — du vælger selv at trykke på «Afspil»."
+          }
         }
       }
     },
@@ -4060,6 +5488,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notify me on arrival?"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giv mig besked ved ankomst?"
           }
         }
       }
@@ -4078,6 +5512,12 @@
             "state": "translated",
             "value": "Requires Always location access. Doesn't notify while the app is open — the usual card appears there instead. Opens the app when you tap “Play”; playback starts then."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kræver positionsadgang «Altid». Giver ikke besked, mens appen er åben — der vises kortet som sædvanligt. Åbner appen, når du trykker på «Afspil»; lyden starter først da."
+          }
         }
       }
     },
@@ -4094,6 +5534,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sends a notification when you're at a place, even if the app isn't open."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender en notifikation, når du er ved en seværdighed, selv om appen ikke er åben."
           }
         }
       }
@@ -4112,6 +5558,12 @@
             "state": "translated",
             "value": "Notify me on arrival"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giv mig besked ved ankomst"
+          }
         }
       }
     },
@@ -4129,6 +5581,12 @@
             "state": "translated",
             "value": "Start automatically when I arrive"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start automatisk, når jeg er fremme"
+          }
         }
       }
     },
@@ -4142,6 +5600,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Demo"
@@ -4163,6 +5627,12 @@
             "state": "translated",
             "value": "Under fortellingen"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Under fortællingen"
+          }
         }
       }
     },
@@ -4176,6 +5646,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vibration"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "Vibration"
@@ -4197,6 +5673,12 @@
             "state": "translated",
             "value": "Interactivity"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interaktivitet"
+          }
         }
       }
     },
@@ -4213,6 +5695,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Language"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprog"
           }
         }
       }
@@ -4231,6 +5719,12 @@
             "state": "translated",
             "value": "Showing saved content (offline)"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser gemt indhold (uden net)"
+          }
         }
       }
     },
@@ -4247,6 +5741,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playback"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspilning"
           }
         }
       }
@@ -4265,6 +5765,12 @@
             "state": "translated",
             "value": "Privacy"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privatliv"
+          }
         }
       }
     },
@@ -4281,6 +5787,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reload content"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hent indhold igen"
           }
         }
       }
@@ -4299,6 +5811,12 @@
             "state": "translated",
             "value": "Reset demo purchase"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulstil demokøb"
+          }
         }
       }
     },
@@ -4315,6 +5833,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Auto-play during tour"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afspil automatisk på turen"
           }
         }
       }
@@ -4333,6 +5857,12 @@
             "state": "translated",
             "value": "Unlocked"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Låst op"
+          }
         }
       }
     },
@@ -4349,6 +5879,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Send the link to someone who should hear this story."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send linket til nogen, der bør høre denne fortælling."
           }
         }
       }
@@ -4367,6 +5903,12 @@
             "state": "translated",
             "value": "I visited %@ with SenseAid Explore. Listen to the story here:"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeg besøgte %@ med SenseAid Explore. Hør fortællingen her:"
+          }
         }
       }
     },
@@ -4383,6 +5925,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recommend to a friend"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anbefal til en ven"
           }
         }
       }
@@ -4401,6 +5949,12 @@
             "state": "translated",
             "value": "Loading"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indlæser"
+          }
         }
       }
     },
@@ -4417,6 +5971,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "No"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nej"
           }
         }
       }
@@ -4435,6 +5995,12 @@
             "state": "translated",
             "value": "off"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "fra"
+          }
         }
       }
     },
@@ -4451,6 +6017,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "on"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "til"
           }
         }
       }
@@ -4469,6 +6041,12 @@
             "state": "translated",
             "value": "Yes"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ja"
+          }
         }
       }
     },
@@ -4485,6 +6063,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Explore"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udforsk"
           }
         }
       }
@@ -4503,6 +6087,12 @@
             "state": "translated",
             "value": "My places"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mine steder"
+          }
         }
       }
     },
@@ -4519,6 +6109,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Settings"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indstillinger"
           }
         }
       }
@@ -4537,6 +6133,12 @@
             "state": "translated",
             "value": "You've visited every place in %@. Well done!"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har besøgt alle stederne i %@. Godt klaret!"
+          }
         }
       }
     },
@@ -4553,6 +6155,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You've completed the tour!"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du har gennemført turen!"
           }
         }
       }
@@ -4571,6 +6179,12 @@
             "state": "translated",
             "value": "Resume tour"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsæt turen"
+          }
         }
       }
     },
@@ -4587,6 +6201,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Continues to the place the tour is waiting at."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går videre til det sted, turen venter ved."
           }
         }
       }
@@ -4605,6 +6225,12 @@
             "state": "translated",
             "value": "Start tour"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start tur"
+          }
         }
       }
     },
@@ -4621,6 +6247,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Walks to the first place on the route you haven't visited yet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går til det første ubesøgte sted på ruten."
           }
         }
       }
@@ -4639,6 +6271,12 @@
             "state": "translated",
             "value": "You have arrived at %@"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er fremme ved %@"
+          }
         }
       }
     },
@@ -4655,6 +6293,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You have arrived!"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er fremme!"
           }
         }
       }
@@ -4673,6 +6317,12 @@
             "state": "translated",
             "value": "%@ o'clock"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klokken %@"
+          }
         }
       }
     },
@@ -4689,6 +6339,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ o'clock, %2$@"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klokken %1$@, %2$@"
           }
         }
       }
@@ -4707,6 +6363,12 @@
             "state": "translated",
             "value": "East"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Øst"
+          }
         }
       }
     },
@@ -4723,6 +6385,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "North"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nord"
           }
         }
       }
@@ -4741,6 +6409,12 @@
             "state": "translated",
             "value": "Northeast"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nordøst"
+          }
         }
       }
     },
@@ -4757,6 +6431,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Northwest"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nordvest"
           }
         }
       }
@@ -4775,6 +6455,12 @@
             "state": "translated",
             "value": "South"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syd"
+          }
         }
       }
     },
@@ -4791,6 +6477,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Southeast"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sydøst"
           }
         }
       }
@@ -4809,6 +6501,12 @@
             "state": "translated",
             "value": "Southwest"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sydvest"
+          }
         }
       }
     },
@@ -4826,6 +6524,12 @@
             "state": "translated",
             "value": "West"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vest"
+          }
         }
       }
     },
@@ -4839,6 +6543,12 @@
           }
         },
         "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@, %2$@"
+          }
+        },
+        "da": {
           "stringUnit": {
             "state": "translated",
             "value": "%1$@, %2$@"
@@ -4860,6 +6570,12 @@
             "state": "translated",
             "value": "Finding your location …"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder position …"
+          }
         }
       }
     },
@@ -4876,6 +6592,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Direction sensor unavailable; using compass direction instead."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retningssensoren er ikke tilgængelig; bruger verdenshjørne i stedet."
           }
         }
       }
@@ -4894,6 +6616,12 @@
             "state": "translated",
             "value": "Couldn't find a place to show directions to."
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke finde et sted at vise vej til."
+          }
         }
       }
     },
@@ -4910,6 +6638,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "You're off the route. Recalculating."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er uden for ruten. Beregner ny rute."
           }
         }
       }
@@ -4928,6 +6662,12 @@
             "state": "translated",
             "value": "Repeat direction"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gentag retning"
+          }
         }
       }
     },
@@ -4944,6 +6684,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reads out the direction to the place again."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Læser retningen til stedet op igen."
           }
         }
       }
@@ -4962,6 +6708,12 @@
             "state": "translated",
             "value": "Read out the direction"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Læs retningen op"
+          }
         }
       }
     },
@@ -4978,6 +6730,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Speaks direction and distance while you walk. Never talks over the narration."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siger retning og afstand, mens du går. Taler aldrig oven i fortællingen."
           }
         }
       }
@@ -4996,6 +6754,12 @@
             "state": "translated",
             "value": "Go to the next stop"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gå til næste stop"
+          }
         }
       }
     },
@@ -5013,6 +6777,12 @@
             "state": "translated",
             "value": "Next stop"
           }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Næste stop"
+          }
         }
       }
     },
@@ -5029,6 +6799,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Opens the wayfinder to the next stop on the route you haven't visited yet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åbner vejviseren til det næste ubesøgte stop på ruten."
           }
         }
       }
