@@ -5,6 +5,30 @@ BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '120s';
 
+-- An early runtime prototype used this relation name with a different shape.
+-- Preserve that data and its dependencies under an explicit legacy name before
+-- creating the server-authoritative organization-scoped entitlement table.
+DO $reconcile_enterprise_entitlements$
+BEGIN
+  IF to_regclass('public.creatorhub_enterprise_entitlements') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'creatorhub_enterprise_entitlements'
+          AND column_name = 'organization_id'
+     ) THEN
+    IF to_regclass('public.creatorhub_enterprise_entitlements_legacy_0681') IS NOT NULL THEN
+      RAISE EXCEPTION
+        'Cannot reconcile creatorhub_enterprise_entitlements: legacy target already exists';
+    END IF;
+
+    ALTER TABLE public.creatorhub_enterprise_entitlements
+      RENAME TO creatorhub_enterprise_entitlements_legacy_0681;
+  END IF;
+END
+$reconcile_enterprise_entitlements$;
+
 CREATE TABLE IF NOT EXISTS creatorhub_enterprise_entitlements (
   organization_id VARCHAR(255) PRIMARY KEY,
   plan_id VARCHAR(100) NOT NULL DEFAULT 'enterprise',
