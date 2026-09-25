@@ -6,10 +6,11 @@
  * Rendrer WorkspaceShell + aktivt tab. Andre tabs enn Oversikt får et
  * pent «kommer»-skall inntil de wires (bygges ett om gangen).
  */
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Box, Typography, Stack, Snackbar, Alert, Dialog, DialogContent, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
@@ -288,6 +289,11 @@ const TeamWorkspacePage: React.FC = () => {
   const [designMode, setDesignMode] = useState<boolean>(() => {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
   });
+  const designTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeDesignMode = useCallback(() => {
+    setDesignMode(false);
+    window.requestAnimationFrame(() => designTriggerRef.current?.focus());
+  }, []);
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
@@ -384,6 +390,19 @@ const TeamWorkspacePage: React.FC = () => {
       badges={{ foresporsler: inboundCount, kundevisning: clientActivityUnseen, 'sound-room': bandUnseen, chat: chatUnread }}
       onClientView={() => goTab('kundevisning')}
       onInvite={workspaceAccess.isOwner ? () => goTab('team') : undefined}
+      adminAction={isAdmin && !designMode ? (
+        <IconButton
+          ref={designTriggerRef}
+          aria-label="Åpne CreatorHub Design"
+          title="Åpne CreatorHub Design"
+          onClick={() => setDesignMode(true)}
+          sx={{ minWidth: 44, minHeight: 44, color: ws.accent, border: `1px solid ${ws.accentBorder}`,
+            bgcolor: ws.accentSoft, '&:hover': { bgcolor: ws.accentSoft },
+            '&:focus-visible': { outline: `3px solid ${ws.accent}`, outlineOffset: 2 } }}
+        >
+          <PaletteOutlinedIcon aria-hidden sx={{ fontSize: 21 }} />
+        </IconButton>
+      ) : undefined}
     >
       {workspaceError && (
         <Alert severity="error" sx={{ mb: 2 }}>{workspaceError}</Alert>
@@ -406,22 +425,10 @@ const TeamWorkspacePage: React.FC = () => {
       >
         {content}
       </ErrorBoundary>
-      {/* CreatorHub Design (N3): admin-gated. Portalert til <body> så position:fixed er ekte
-          viewport-relativ (MUI-shell-wrappere lager containing-block-ancestorer som ellers
-          dytter FAB-en utenfor skjermen og forskyver overlay-pins). FAB åpner live-overlayet. */}
-      {isAdmin && typeof document !== 'undefined' && createPortal(
-        designMode ? (
-          <WorkspaceDesignOverlay onClose={() => setDesignMode(false)} />
-        ) : (
-          <Box role="button" tabIndex={0} onClick={() => setDesignMode(true)}
-            sx={{ position: 'fixed', bottom: 24, left: 24, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 1,
-              px: 1.75, py: 1, borderRadius: 999, cursor: 'pointer', bgcolor: '#FBFAF6', color: '#171C28',
-              border: '1px solid #E7E3D8', boxShadow: '0 4px 16px rgba(0,0,0,.28)', fontWeight: 700, fontSize: 13,
-              '&:hover': { bgcolor: '#fff' } }}>
-            <Box component="span" sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#EE7A08' }} />
-            CreatorHub Design
-          </Box>
-        ),
+      {/* CreatorHub Design (N3): admin-gated. Header-knappen åpner live-overlayet,
+          som portales til <body> slik at verktøylinje og pins er viewport-relative. */}
+      {isAdmin && designMode && typeof document !== 'undefined' && createPortal(
+        <WorkspaceDesignOverlay onClose={closeDesignMode} />,
         document.body,
       )}
       <Snackbar open={!!accepted} autoHideDuration={5000} onClose={() => setAccepted(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

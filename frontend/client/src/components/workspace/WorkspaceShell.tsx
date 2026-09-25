@@ -119,6 +119,7 @@ interface ShellProps {
   onNewProject?: () => void;
   onLogout?: () => void;
   headerActions?: React.ReactNode;
+  adminAction?: React.ReactNode;
   onClientView?: () => void;
   onInvite?: () => void;
   navItems?: WsNavItem[]; // profesjons-filtrert nav (default WS_NAV)
@@ -226,7 +227,7 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
   return { copy };
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onlineNow, onNewProject, onLogout, headerActions, onClientView, onInvite, navItems = WS_NAV, badges, readOnly = false, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onlineNow, onNewProject, onLogout, headerActions, adminAction, onClientView, onInvite, navItems = WS_NAV, badges, readOnly = false, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
@@ -408,6 +409,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
                       {t('inviteMember')}
                     </Button>
                   )}
+                  {adminAction}
                   <IconButton size="small" aria-label={t('projectMenu')} onClick={(e) => setProjMenu(e.currentTarget)} sx={{ color: ws.textDim }}><MoreVert fontSize="small" /></IconButton>
                   <Menu anchorEl={projMenu} open={!!projMenu} onClose={() => setProjMenu(null)}
                     PaperProps={{ sx: { bgcolor: ws.panel, color: ws.text, border: `1px solid ${ws.border}` } }}>
