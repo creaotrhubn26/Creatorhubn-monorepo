@@ -174,7 +174,7 @@ struct MoteBriefSheet: View {
                             HStack(spacing: 5) {
                                 Image(systemName: "arrow.up.right.square")
                                     .font(.appScaled(size: 10, weight: .bold))
-                                Text("Åpne i Canvas")
+                                Text("Åpne i Nexus")
                                     .font(.appScaled(size: 11, weight: .bold))
                             }
                             .foregroundStyle(BfBrand.purpleLight)

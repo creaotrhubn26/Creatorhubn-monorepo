@@ -24,6 +24,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import pg from "pg";
+import { deleteCreatorHubObject, putCreatorHubObject } from "../server/creatorhub-object-storage.js";
 import { buildCaptionCues } from "../server/reiseguide-captions.js";
 import { SENSEAID_ENV, requireSenseAidEnv } from "../server/reiseguide-config.js";
 import {
@@ -34,8 +35,30 @@ import {
   type JobFilter,
 } from "../server/reiseguide-content-pipeline.js";
 import { SONIOX_TTS_DEFAULT_VOICE, createSonioxTts } from "../server/reiseguide-soniox-tts.js";
+import { SENSEAID_STORAGE_PREFIX } from "../server/reiseguide-storage.js";
 
 const DEFAULT_AREA = "oslo-kvadraturen-festningen-operaen";
+
+/**
+ * Skriver og sletter en liten fil under SenseAid-prefikset før noe sendes til
+ * Soniox. Mangler IAM-tilgangen (SenseAidExploreMediaAccess), stopper jobben
+ * her i stedet for å betale for lyd som så avvises ved lagring (24.09.2026).
+ */
+async function assertMediaStoreWritable(): Promise<void> {
+  const key = `${SENSEAID_STORAGE_PREFIX}/_preflight/audio-job-${Date.now()}.txt`;
+  try {
+    if (!(await putCreatorHubObject(key, Buffer.from("ok"), "text/plain"))) {
+      throw new Error("CreatorHub S3 er ikke konfigurert (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, CREATORHUB_S3_BUCKET).");
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Kan ikke skrive til ${SENSEAID_STORAGE_PREFIX}/ i CreatorHub S3, så ingen lyd lages. Legg inn infrastructure/aws/creatorhubn-storage/application-policy.json (SenseAidExploreMediaAccess) på backendens IAM-bruker. Feil: ${reason}`,
+    );
+  }
+  await deleteCreatorHubObject(key);
+  console.log(`S3-sjekk OK: kan skrive til ${SENSEAID_STORAGE_PREFIX}/.`);
+}
 
 function describe(result: GenerateResult): string {
   const j = result.job;
@@ -84,6 +107,7 @@ async function main(): Promise<void> {
   const voice = values.voice?.trim() || process.env[SENSEAID_ENV.sonioxVoice]?.trim() || SONIOX_TTS_DEFAULT_VOICE;
 
   try {
+    if (!values["dry-run"] && !values.out) await assertMediaStoreWritable();
     const areaSlugs =
       values.area === "all"
         ? (await pool.query<{ slug: string }>("SELECT slug FROM guide_areas ORDER BY slug")).rows.map((r) => r.slug)
@@ -114,7 +138,10 @@ async function runArea(pool: pg.Pool, filter: JobFilter, values: CliValues, voic
     return 0;
   }
 
-  const tts = createSonioxTts({ apiKey: requireSenseAidEnv(SENSEAID_ENV.sonioxApiKey) });
+  const tts = createSonioxTts({
+    apiKey: requireSenseAidEnv(SENSEAID_ENV.sonioxApiKey),
+    region: process.env[SENSEAID_ENV.sonioxRegion]?.trim() || undefined,
+  });
 
   if (values.out) {
     const dir = path.resolve(values.out);
