@@ -30,6 +30,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getRoleRoomObjectStorage } from "./role-room-object-storage.js";
 
 // Match user-b2-credentials-routes.ts crypto-konstanter eksakt
 const KEK_LENGTH = 32;
@@ -99,21 +100,20 @@ function makeByoClient(creds: ByoB2Creds): { client: S3Client; bucket: string } 
   };
 }
 
-function makeAdminB2Client(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  const region = process.env.B2_REGION || "eu-central-003";
-  return {
-    client: new S3Client({
-      region,
-      endpoint: `https://s3.${region}.backblazeb2.com`,
-      credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-      forcePathStyle: true,
-    }),
-    bucket,
-  };
+/**
+ * Kildelagringen kunden migrerer FRA.
+ *
+ * Het makeAdminB2Client og bygget sin egen Backblaze-klient. Da
+ * ROLE_ROOM_STORAGE_PROVIDER ble satt til aws_s3, begynte tjenesten å skrive
+ * til S3 — mens denne fortsatt leste fra B2. «Migrer til egen bøtte» kopierte
+ * altså fra et sted filene ikke lenger lå.
+ *
+ * Kundens EGEN B2-konto er urørt: den er hele poenget med BYO, og creds
+ * hentes fra user_b2_credentials, ikke herfra.
+ */
+function makeAdminStorageClient(): { client: S3Client; bucket: string } | null {
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 /**
@@ -364,7 +364,7 @@ async function runMigrationWorker(
   userId: string,
   creds: ByoB2Creds,
 ): Promise<void> {
-  const admin = makeAdminB2Client();
+  const admin = makeAdminStorageClient();
   if (!admin) {
     await pool.query(
       `UPDATE role_room_byo_migration_jobs

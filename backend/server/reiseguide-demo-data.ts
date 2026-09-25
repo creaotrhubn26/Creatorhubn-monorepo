@@ -43,6 +43,13 @@
  * (reiseguide-demo-data-nesoddtangen.ts). DEMO_POIS er alle stedene flatt, og
  * DEMO_CHAPTER_PROMPTS og DEMO_HERO_IMAGES dekker alle områdene. Id-er og
  * slugger er unike på tvers av områdene (slug er UNIQUE i guide_pois).
+ *
+ * Dansk (da, 25.09.2026): tredje språk ved siden av nb og en, for alle
+ * områdene. Oversatt fra de norske manusene uten nye fakta, med omtrent samme
+ * antall setninger (så tekstingen deler seg likt). Egennavn står på norsk.
+ * Varighet anslått fra ordtall med 145 ord/min, som nb. «Se opp»-kortene
+ * begynner med «Se op: ». Samme utkast-status som resten; bør leses av en
+ * dansk morsmålsbruker før felttest.
  */
 
 import {
@@ -58,7 +65,7 @@ import {
   NESODDTANGEN_POIS,
 } from "./reiseguide-demo-data-nesoddtangen.js";
 
-export type DemoLang = "nb" | "en";
+export type DemoLang = "nb" | "en" | "da";
 
 export interface DemoScript {
   kind: "narration" | "audio_description";
@@ -114,10 +121,10 @@ export const DEMO_AREA = {
 };
 
 export const DEMO_CATEGORIES = [
-  { id: "museum", sortOrder: 1, labels: { nb: "Museum", en: "Museum" } },
-  { id: "historisk", sortOrder: 2, labels: { nb: "Historiske", en: "Historic" } },
-  { id: "natur", sortOrder: 3, labels: { nb: "Natur", en: "Nature" } },
-  { id: "arkitektur", sortOrder: 4, labels: { nb: "Arkitektur", en: "Architecture" } },
+  { id: "museum", sortOrder: 1, labels: { nb: "Museum", en: "Museum", da: "Museum" } },
+  { id: "historisk", sortOrder: 2, labels: { nb: "Historiske", en: "Historic", da: "Historiske" } },
+  { id: "natur", sortOrder: 3, labels: { nb: "Natur", en: "Nature", da: "Natur" } },
+  { id: "arkitektur", sortOrder: 4, labels: { nb: "Arkitektur", en: "Architecture", da: "Arkitektur" } },
 ];
 
 const OSLO_POIS: DemoPoi[] = [
@@ -162,6 +169,21 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Museums", value: "Armed Forces Museum daily 10–16; Resistance Museum 10–16 (10–17 May–Aug)" },
           { label: "Step-free access", value: "Partial; cobblestones and steep sections inside the walls" },
           { label: "Toilets", value: "At the visitor centre (daily 10–17)" },
+        ],
+      },
+      da: {
+        title: "Akershus festning",
+        subtitle: "Borgen der aldrig faldt",
+        summary:
+          "Håkon den Femte begyndte på borgen omkring år 1300. Den har modstået ni belejringer uden at blive indtaget, blev Christian den Fjerdes renæssanceslot, siden fængsel, og i dag er området åbent for alle.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Akershus festning",
+        practicalInfo: [
+          { label: "Fæstningsområdet", value: "Åbent dagligt 06–21, gratis" },
+          { label: "Akershus slot", value: "Maj–august man–lør 10–16, søn 12–16; september–april lør–søn 12–17" },
+          { label: "Museer", value: "Forsvarsmuseet dagligt 10–16, Hjemmefrontmuseet 10–16 (10–17 maj–august)" },
+          { label: "Niveaufri adgang", value: "Delvis; brosten og stejle partier inden for murene" },
+          { label: "Toilet", value: "Ved besøgscentret (dagligt 10–17)" },
         ],
       },
     },
@@ -218,6 +240,32 @@ const OSLO_POIS: DemoPoi[] = [
           estimatedDurationS: 46,
         },
       ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Borgen der aldrig faldt",
+          text:
+            "Du står ved Akershus festning, Norges vigtigste borg. Kong Håkon den Femte begyndte at bygge her omkring år 1300, på en klippe, hvor byen kunne forsvares fra søsiden. Allerede i 1308 modstod borgen et svensk angreb, og siden er den blevet belejret ni gange uden at blive indtaget. I 1567, under Den Nordiske Syvårskrig, brændte slotsherren Christen Munk hele byen ned, for at svenskerne ikke skulle finde mad og ly. Efter 39 dage gav de op. Skrækken fra den belejring førte til, at borgen fik sine første moderne bastioner, de lave, skrå volde af jord og sten, som du ser omkring dig.\n\nDet slot, der rejser sig inden for murene i dag, er alligevel mest Christian den Fjerdes værk. Tidligt i 1600-tallet lod han den mørke middelalderborg bygge om til et lyst renæssanceslot med de to trappetårne Blåtårnet og Romerikstårnet. Sidste gang nogen forsøgte, var i 1716, da den svenske konge Karl den Tolvte selv ledede belejringen. Han holdt byen i seks uger, men gav op, efter at Tordenskiold sænkede hans forsyningsflåde i Dynekilen.",
+          estimatedDurationS: 72,
+        },
+        {
+          kind: "narration",
+          chapterNo: 2,
+          title: "Fængsel, krig og frihed",
+          text:
+            "Da fæstningen mistede sin militære betydning, blev den fængsel. Fra 1739 til 1950 sad straffefanger her, først i det, der blev kaldt Slaveriet, hvor fangerne huggede sten i tunge lænker og sov i fællessale. Mange af dem blev dygtige stenhuggere, og meget af granitten i byen omkring dig er hugget af fanger herfra.\n\nUnder Anden Verdenskrig overtog den tyske besættelsesmagt fæstningen og brugte den som fængsel for modstandsfolk. Efter befrielsen i 1945 blev Vidkun Quisling, lederen af Nasjonal Samling, dømt for landsforræderi og skudt her natten til den 24. oktober. Flere andre, der var dømt for landsforræderi, blev også henrettet på fæstningen.\n\nI dag rummer området Forsvarsmuseet og Hjemmefrontmuseet, som fortæller netop denne historie. I slottet ligger det kongelige mausoleum, hvor kong Haakon den Syvende og dronning Maud hviler, og staten bruger stadig salene til festmiddage. Resten af tiden er fæstningen din: en park med kanoner, mure og byens bedste udsigt over fjorden.",
+          estimatedDurationS: 63,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på en høj over fjorden, mellem lave volde af græs og grå kampesten. Foran dig rejser slottet sig: lyse, pudsede mure med to slanke tårne, der har spidse, mørke tage. Til venstre går en brostensbelagt vej skråt op mod slotsporten, med en høj mur på hver side. Til højre, over et lavt brystværn, ligger fjorden. Der ser du Aker Brygge, det grå Rådhus med sine to firkantede tårne, og længere ude havnen. På volden foran brystværnet står to gamle kanoner af mørk bronze, rettet mod vandet. Træerne omkring dig er høje lindetræer, der giver skygge over stien.",
+          estimatedDurationS: 41,
+        },
+      ],
     },
     quiz: {
       nb: [
@@ -258,6 +306,26 @@ const OSLO_POIS: DemoPoi[] = [
           options: ["A royal residence", "A prison", "A university"],
           correctIndex: 1,
           explanation: "At the 'Slavery' prisoners cut stone in chains; much of the city's granite was cut here.",
+        },
+      ],
+      da: [
+        {
+          question: "Hvor mange gange er Akershus festning blevet belejret uden at blive indtaget?",
+          options: ["Tre gange", "Ni gange", "Fjorten gange"],
+          correctIndex: 1,
+          explanation: "Ni belejringer, den sidste i 1716, da Karl den Tolvte selv ledede svenskerne.",
+        },
+        {
+          question: "Hvilken konge byggede middelalderborgen om til et renæssanceslot?",
+          options: ["Håkon den Femte", "Christian den Fjerde", "Karl den Tolvte"],
+          correctIndex: 1,
+          explanation: "Christian den Fjerde gav borgen lyse mure og tårnene Blåtårnet og Romerikstårnet tidligt i 1600-tallet.",
+        },
+        {
+          question: "Hvad blev fæstningen brugt til fra 1739 til 1950?",
+          options: ["Kongelig bolig", "Fængsel", "Universitet"],
+          correctIndex: 1,
+          explanation: "I «Slaveriet» huggede fangerne sten i lænker; meget af granitten i byen er hugget her.",
         },
       ],
     },
@@ -301,6 +369,19 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Food and drink", value: "Café Celsius and Gamle Raadhus are on the square; check their own opening hours" },
         ],
       },
+      da: {
+        title: "Christiania torv",
+        subtitle: "Her skal byen ligge",
+        summary:
+          "Da Oslo brændte i 1624, flyttede Christian den Fjerde byen hertil, i ly af fæstningen, og gav den sit eget navn. Torvet var den nye bys første, og handsken i bronze minder om kongens ord.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Christiania torv",
+        practicalInfo: [
+          { label: "Adgang", value: "Åbent torv, tilgængeligt hele døgnet" },
+          { label: "Niveaufri adgang", value: "Ja, men belægningen er af sten" },
+          { label: "Mad og drikke", value: "Kafé Celsius og Gamle Raadhus ligger ved torvet, tjek deres egne åbningstider" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -337,6 +418,24 @@ const OSLO_POIS: DemoPoi[] = [
           text:
             "You are standing on a small, stone-paved square surrounded by low buildings of two and three storeys. In the middle of the square, on a small raised island, stands a large hand in dark bronze, shaped like a glove, its index finger pointing down at the ground. Around the hand is a low granite basin. On one side is a wide building of reddish brick with white window frames; there is a café with tables outside. On the corner diagonally opposite stands a pale, rendered building with a steep roof of dark, glossy tiles. That is the Old Town Hall. The streets run straight out from the square in all four directions.",
           estimatedDurationS: 45,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Her skal byen ligge",
+          text:
+            "Natten til den 17. august 1624 begyndte det at brænde i Oslo, og på tre dage var næsten hele byen væk. Byen lå dengang på den anden side af Bjørvika, hvor Gamlebyen ligger i dag. Kong Christian den Fjerde kom selv op fra København, og han besluttede, at byen ikke skulle genopføres, hvor den stod. Den skulle flyttes hertil, ind under kanonerne på Akershus, og den skulle hedde Christiania, efter ham selv. Sagnet siger, at han pegede ned mod jorden, lige her, og sagde: «Her skal byen ligge.» Handsken i bronze, der står midt på torvet, lavet af Wenche Gulbrandsen i 1997, er byens tak for den pegende finger. Den samme handske holder kongen i hånden på sin statue på Stortorvet.\n\nDen nye by blev tegnet med lineal. Gaderne skulle krydse hinanden i rette vinkler og være brede nok til, at ilden ikke kunne springe fra hus til hus. Derfor hedder bydelen Kvadraturen. Kongen indførte også murtvang: inden for bymuren skulle alle bygge i mursten eller sten, og de, der ikke havde råd, måtte nøjes med bindingsværk fyldt med mursten. Torvet, du står på, var den nye bys første, med byens første kirke fra 1639 og rådhuset fra 1641 lige i nærheden. Rådmannsgården på hjørnet, med murankre, der viser årstallet 1626, er formentlig den ældste murede bygning, der er tilbage fra Christian den Fjerdes by. Den blev senere garnisonshospital, og naboen Anatomigården husede universitetets første dissektionssal.",
+          estimatedDurationS: 98,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på et lille, brostensbelagt torv omgivet af lave bygninger i to og tre etager. Midt på torvet, på en lille hævet ø, står en stor hånd i mørk bronze, formet som en handske, med pegefingeren rettet ned mod jorden. Rundt om hånden er der et lavt bassin i granit. Til den ene side ligger en bred bygning i rødlige mursten med hvide vinduesrammer; der er en café med borde udenfor. På hjørnet skråt over for står en lys, pudset bygning med stejlt tag af mørke, blanke tagsten. Det er Gamle rådhus. Gaderne går lige ud fra torvet i alle fire retninger.",
+          estimatedDurationS: 43,
         },
       ],
     },
@@ -381,6 +480,26 @@ const OSLO_POIS: DemoPoi[] = [
           explanation: "The city was drawn with a ruler, with streets wide enough that fire could not jump between houses.",
         },
       ],
+      da: [
+        {
+          question: "Hvad skete der i 1624, som fik byen til at flytte hertil?",
+          options: ["En stor oversvømmelse", "En bybrand", "Et svensk angreb"],
+          correctIndex: 1,
+          explanation: "Branden natten til den 17. august 1624 tog næsten hele byen på tre dage.",
+        },
+        {
+          question: "Hvad peger bronzehandsken midt på torvet på?",
+          options: ["Mod fæstningen", "Ned mod jorden, hvor byen skulle ligge", "Mod fjorden"],
+          correctIndex: 1,
+          explanation: "Sagnet siger, at kongen pegede ned og sagde: «Her skal byen ligge.» Handsken er lavet af Wenche Gulbrandsen i 1997.",
+        },
+        {
+          question: "Hvorfor hedder bydelen Kvadraturen?",
+          options: ["Gaderne krydser hinanden i rette vinkler", "Bymuren havde fire porte", "Torvet er helt kvadratisk"],
+          correctIndex: 0,
+          explanation: "Byen blev tegnet med lineal, med brede gader, så ilden ikke kunne springe fra hus til hus.",
+        },
+      ],
     },
   },
   {
@@ -422,6 +541,19 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed; ask the restaurant" },
         ],
       },
+      da: {
+        title: "Gamle rådhus",
+        subtitle: "Byens første rådhus",
+        summary:
+          "Huset fra 1641 var Christianias rådhus i næsten hundrede år. Siden har det været kirke, fængsel, Højesteret og teatermuseum, og i dag serveres der lutefisk i de gamle celler.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Gamle rådhus",
+        practicalInfo: [
+          { label: "Adresse", value: "Nedre Slottsgate 1, på hjørnet af Christiania torv" },
+          { label: "Restaurant og scene", value: "Gamle Raadhus, tjek åbningstider på gamleraadhus.no" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet, spørg restauranten" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -458,6 +590,24 @@ const OSLO_POIS: DemoPoi[] = [
           text:
             "In front of you, on the corner between the square and the street, stands a two-storey building with pale, rendered brick walls. The roof is steep and covered in dark, glossy tiles, and towards the square rises a tall stepped gable with small blind windows. The windows on both floors are small and many, with white glazing bars. By the entrance from the street hangs a sign with the name Gamle Raadhus, and in summer there are tables and chairs on the pavement. To the right of the house Rådhusgata continues away from the square, and to the left Nedre Slottsgate climbs towards the fortress.",
           estimatedDurationS: 42,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Byens første rådhus",
+          text:
+            "Det lyse hus på hjørnet er byens ældste rådhus. Vicestatholder Lauritz Hansen lod det bygge i 1641, med penge fra Christian den Fjerde selv, kun sytten år efter at byen blev grundlagt. I to etager, med pudsede murvægge, høje gavle og et stejlt tag af sortglaserede tagsten, var det et af de flotteste huse i den nye by. Her mødtes byens råd, her blev der afsagt domme, og i kælderen sad de dømte og ventede.\n\nRådhus var det indtil 1733. Så begyndte et langt og broget liv. Huset var brandstation, i en kort periode kirke, privatbolig og fængsel. Fra 1815 til 1846 holdt Norges Højesteret til her, i det unge lands første årtier med egen grundlov. Frimurerne havde loge her, og i 1700-tallet forsvandt både trappetårnet og gavlene, før de høje renæssancegavle blev genskabt i 1900-tallet, sådan som du ser dem i dag.\n\nI 1856 flyttede restauratøren Matheus Helseth ind i stueetagen, og siden er der blevet serveret mad i huset. Gamle Raadhus er i dag mest kendt for sin lutefisk, lavet af håndskåret tørfisk fra Værøy i Lofoten, og de gamle fængselsceller i kælderen er blevet til vinkælder og selskabslokale. På første sal holdt Teatermuseet til fra 1981 til 2008, og nu bruges salen til koncerter og forestillinger. En brand i 1996 gjorde stor skade, men huset blev sat i stand igen af byen, som ejer det.",
+          estimatedDurationS: 94,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Foran dig, på hjørnet mellem torvet og gaden, står en bygning i to etager med lyse, pudsede murvægge. Taget er stejlt og dækket af mørke, blanke tagsten, og mod torvet rejser der sig en høj, trappet gavl med små blændingsvinduer. Vinduerne i etagerne er små og mange, med hvide sprosser. Ved indgangen fra gaden hænger et skilt med navnet Gamle Raadhus, og om sommeren står der borde og stole på fortovet. Til højre for huset fortsætter Rådhusgata væk fra torvet, og til venstre går Nedre Slottsgate op mod fæstningen.",
+          estimatedDurationS: 37,
         },
       ],
     },
@@ -502,6 +652,26 @@ const OSLO_POIS: DemoPoi[] = [
           explanation: "The lutefisk is made from hand-cut stockfish from Værøy in Lofoten, and the old cells are now a wine cellar.",
         },
       ],
+      da: [
+        {
+          question: "Hvilket år blev Gamle rådhus bygget?",
+          options: ["1624", "1641", "1733"],
+          correctIndex: 1,
+          explanation: "Vicestatholder Lauritz Hansen lod det bygge i 1641, kun sytten år efter at byen blev grundlagt.",
+        },
+        {
+          question: "Hvilken institution holdt til i huset fra 1815 til 1846?",
+          options: ["Stortinget", "Højesteret", "Norges Bank"],
+          correctIndex: 1,
+          explanation: "Norges Højesteret holdt til her i det unge lands første årtier med egen grundlov.",
+        },
+        {
+          question: "Hvad er restauranten Gamle Raadhus mest kendt for?",
+          options: ["Lutefisk", "Pinnekjøtt", "Fårikål"],
+          correctIndex: 0,
+          explanation: "Lutefisken laves af håndskåret tørfisk fra Værøy i Lofoten, og de gamle celler er blevet til vinkælder.",
+        },
+      ],
     },
   },
   {
@@ -541,6 +711,18 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "The park has gravel paths without steps" },
         ],
       },
+      da: {
+        title: "Oslo Børs",
+        subtitle: "Handelens hus",
+        summary:
+          "Christian Heinrich Grosch tegnede børsbygningen i streng empirestil i 1826–1828. Selve børsen er ældre: den første handelsdag var den 15. april 1819, dengang med varer, ikke aktier.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Oslo Børs",
+        practicalInfo: [
+          { label: "Adgang", value: "Børshagen er en åben park; selve bygningen rummer kontorer og er ikke åben for publikum" },
+          { label: "Niveaufri adgang", value: "Parken har grusstier uden trin" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -577,6 +759,24 @@ const OSLO_POIS: DemoPoi[] = [
           text:
             "You are standing in Børshagen, a small park with gravel paths, tall deciduous trees and benches. Straight ahead, beyond the fountain with the figure of Mercury, lies the exchange building: a low, wide building of two storeys above a high base, in a pale, warm yellow with white details. In the middle of the facade, sturdy smooth columns carry a triangular pediment. The windows are tall and set in even rows. On either side the wings reach out and frame the park. Behind you is Tollbugata, and to your right you can glimpse the houses of Kvadraturen.",
           estimatedDurationS: 39,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Handelens hus",
+          text:
+            "Bygningen foran dig er Oslo Børs, tegnet af Christian Heinrich Grosch og opført mellem 1826 og 1828. Grosch var egentlig assistent for slotsarkitekten Linstow, men da Stortinget i 1827 nægtede at bevilge penge til Slottet, stod han pludselig uden opgaver, og købmanden Thor Olsen gav ham opdraget. Resultatet blev et af de første monumentalbyggerier i den unge hovedstad: streng empirestil, doriske søjler og rolige, symmetriske proportioner. Det oprindelige hus var kun én etage på en høj kælder, omtrent en tredjedel af det, du ser i dag. Sidefløjene og sydfløjen kom til i 1909 og 1910, tegnet af Carl Michalsen i samme stil.\n\nSelve børsen er ældre end huset. Den blev oprettet ved lov i 1818, og den første handelsdag var den 15. april 1819. Dengang var det varer, der blev handlet, ikke aktier. Værdipapirbørs blev den først i 1881, med 16 obligationslån og 23 aktier på listen, blandt dem Norges Bank. I dag hedder den Euronext Oslo Børs, og handlen foregår elektronisk, men bygningen er stadig børsens hjem.\n\nForan indgangen står Merkur, handelens gud, i bronze på et springvand med fire løvehoveder. Han blev givet af grosserer Conrad Langaard, da tilbygningen blev indviet i 1911. Parken, du står i, Børshagen, er endnu ældre end børsen. Den blev anlagt lige efter 1800 og er et af landets første offentlige parkanlæg.",
+          estimatedDurationS: 91,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står i Børshagen, en lille park med grusstier, høje løvtræer og bænke. Lige foran dig, bag springvandet med Merkur-figuren, ligger børsbygningen: en lav, bred bygning i to etager over en høj sokkel, i en lys, varm gul farve med hvide detaljer. Midt på facaden bærer kraftige, glatte søjler en trekantet gavl. Vinduerne er høje og står i jævne rækker. På hver side strækker fløjene sig ud og rammer parken ind. Bag dig ligger Tollbugata, og til højre skimter du husene i Kvadraturen.",
+          estimatedDurationS: 34,
         },
       ],
     },
@@ -621,6 +821,26 @@ const OSLO_POIS: DemoPoi[] = [
           explanation: "Mercury, the god of commerce, was a gift from the wholesaler Conrad Langaard in 1911.",
         },
       ],
+      da: [
+        {
+          question: "Hvem tegnede børsbygningen?",
+          options: ["Christian Heinrich Grosch", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 0,
+          explanation: "Grosch fik opdraget i 1827, da Stortinget nægtede at bevilge penge til Slottet, som han egentlig arbejdede på.",
+        },
+        {
+          question: "Hvad blev der handlet på børsen den første handelsdag i 1819?",
+          options: ["Aktier", "Varer", "Obligationer"],
+          correctIndex: 1,
+          explanation: "Værdipapirbørs blev den først i 1881, med 16 obligationslån og 23 aktier på listen.",
+        },
+        {
+          question: "Hvilken gud står i bronze på springvandet foran indgangen?",
+          options: ["Thor", "Merkur", "Neptun"],
+          correctIndex: 1,
+          explanation: "Merkur, handelens gud, blev givet af grosserer Conrad Langaard i 1911.",
+        },
+      ],
     },
   },
   {
@@ -662,6 +882,19 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Museum", value: "The National Museum – Architecture; check opening hours at nasjonalmuseet.no" },
         ],
       },
+      da: {
+        title: "Bankplassen",
+        subtitle: "Tre banker og en café",
+        summary:
+          "Norges Bank har haft tre huse omkring denne plads: Grosch-bygningen fra 1828, jugendpaladset fra 1906 og det nuværende hovedsæde fra 1986. På hjørnet ligger Engebret Café, byens ældste restaurant.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Bankplassen",
+        practicalInfo: [
+          { label: "Adgang", value: "Åben plads, tilgængelig hele døgnet" },
+          { label: "Niveaufri adgang", value: "Pladsen er flad, men brostensbelagt" },
+          { label: "Museum", value: "Nasjonalmuseet – Arkitektur, tjek åbningstider på nasjonalmuseet.no" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -698,6 +931,24 @@ const OSLO_POIS: DemoPoi[] = [
           text:
             "You are standing on an open, cobbled square surrounded by large stone buildings. In the middle of the square is a round fountain with benches around it. On one side rises the former Norges Bank headquarters from 1906: three tall storeys of pale grey, rough-hewn granite, with heavy arches over the entrance and small turrets on the roof. Directly opposite is the low, pale building from 1828 with calm classical forms, and next to it a pavilion of glass and concrete. On the corner, in an older building with a light facade, hangs the sign of Engebret Café. The trees along the edges of the square are young and slender.",
           estimatedDurationS: 44,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Tre banker og en café",
+          text:
+            "Pladsen hedder Bankplassen, fordi Norges Bank flyttede ind her. Den første bankbygning står der stadig: den lave, klassicistiske bygning fra 1828, tegnet af Christian Heinrich Grosch, samme arkitekt som Børsen et stenkast herfra. Da banken voksede ud af huset, udskrev den en arkitektkonkurrence. Ingvar Hjorth vandt i 1900, og i 1906 stod det nye hovedsæde færdigt på den anden side af pladsen: et tungt palads i hugget norsk granit og marmor, rigt dekoreret i jugendstil. Hjorth tegnede også store dele af interiøret og møblerne, og bygningen regnes for et samlet kunstværk. Den er fredet.\n\nI 1986 flyttede Norges Bank ind i sit tredje hus på pladsen, det moderne hovedsæde, som stadig er i brug. Siden har de to gamle huse levet videre som museer. Grosch-bygningen blev Arkitekturmuseet, og i 2008 fik den en ny pavillon i glas og rå beton af Sverre Fehn, den eneste norske arkitekt, der har vundet Pritzker-prisen. Hjorths granitpalads husede Museet for samtidskunst fra 1990 til 2017, da samlingen flyttede til det nye Nasjonalmuseet ved Vestbanen.\n\nPå hjørnet af pladsen ligger Engebret Café, åbnet i 1857 og byens ældste restaurant. Skuespillerne fra Christiania Theater havde den som stamsted, og Ibsen, Bjørnson, Grieg og Munch kom der fast. Grieg havde sine egne kaffekopper her, og Munchs bord er stadig det mest eftertragtede.",
+          estimatedDurationS: 89,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på en åben, brostensbelagt plads omgivet af store stenbygninger. Midt på pladsen står et rundt springvand med bænke omkring. På den ene side rejser Norges Banks gamle hovedsæde fra 1906 sig: tre høje etager i lysegrå, groft tilhugget granit, med tunge buer over indgangen og små tårne oppe på taget. Lige over for ligger den lave, lyse bygning fra 1828 med rolige, klassiske former, og op ad den en pavillon af glas og beton. På hjørnet, i en ældre ejendom med lys facade, hænger skiltet til Engebret Café. Træerne langs kanten af pladsen er unge og smalle.",
+          estimatedDurationS: 41,
         },
       ],
     },
@@ -742,6 +993,26 @@ const OSLO_POIS: DemoPoi[] = [
           explanation: "The city's oldest restaurant; Ibsen, Bjørnson, Grieg and Munch were regulars.",
         },
       ],
+      da: [
+        {
+          question: "Hvor mange huse har Norges Bank haft omkring Bankplassen?",
+          options: ["Et", "To", "Tre"],
+          correctIndex: 2,
+          explanation: "Grosch-bygningen fra 1828, jugendpaladset fra 1906 og det nuværende hovedsæde fra 1986.",
+        },
+        {
+          question: "Hvem tegnede pavillonen i glas og beton ved Arkitekturmuseet?",
+          options: ["Snøhetta", "Sverre Fehn", "Ingvar Hjorth"],
+          correctIndex: 1,
+          explanation: "Sverre Fehn, den eneste norske arkitekt, der har vundet Pritzker-prisen, tegnede pavillonen fra 2008.",
+        },
+        {
+          question: "Hvilket år åbnede Engebret Café?",
+          options: ["1857", "1906", "1986"],
+          correctIndex: 0,
+          explanation: "Byens ældste restaurant; Ibsen, Bjørnson, Grieg og Munch kom der fast.",
+        },
+      ],
     },
   },
   {
@@ -783,6 +1054,20 @@ const OSLO_POIS: DemoPoi[] = [
           { label: "Foyer and toilets", value: "Check today's opening hours at operaen.no" },
           { label: "Step-free access", value: "Step-free entrance, lift and accessible toilet inside; the roof ramps are sloped but have no steps" },
           { label: "Getting there", value: "A five-minute walk from Oslo Central Station" },
+        ],
+      },
+      da: {
+        title: "Operaen",
+        subtitle: "Et tag, du kan gå på",
+        summary:
+          "Snøhettas operahus åbnede den 12. april 2008. Taget af hvid marmor rejser sig direkte op af fjorden og er åbent for alle, døgnet rundt og uden billet.",
+        locationLabel: "Oslo, Norge",
+        heroImageAlt: "Foto af Operaen",
+        practicalInfo: [
+          { label: "Taget", value: "Åbent hele døgnet, gratis, ingen billet" },
+          { label: "Foyer og toiletter", value: "Tjek dagens åbningstider på operaen.no" },
+          { label: "Niveaufri adgang", value: "Niveaufri indgang, elevator og handicaptoilet indenfor; tagramperne er skrå, men uden trin" },
+          { label: "Adgang", value: "5 minutters gang fra Oslo S" },
         ],
       },
     },
@@ -839,6 +1124,32 @@ const OSLO_POIS: DemoPoi[] = [
           estimatedDurationS: 42,
         },
       ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Et bjerg af marmor",
+          text:
+            "Foran dig ligger Operaen, hjemsted for Den Norske Opera & Ballett. Bygningen blev tegnet af den norske tegnestue Snøhetta og åbnede den 12. april 2008. Idéen var enkel og dristig: et hus, du kan gå på. Taget er en skrå flade af hvid italiensk marmor, der rejser sig direkte op af fjorden, som en isflage eller en gletsjer. Marmoren, af typen La Facciata, blev valgt, fordi den bevarer sit lys og sin farve, også når den er våd. Tilsammen dækker den omkring 20 000 kvadratmeter, tag og foyer i ét, så byens gulv fortsætter helt op på huset.\n\nBag marmoren rejser scenetårnet sig, beklædt med aluminiumsplader med et mønster skabt af tekstilkunstnerne Astrid Løvaas og Kirsten Wagle, inspireret af gamle vævemønstre. Inde i foyeren bølger en væg af eg rundt om hovedsalen, og bag garderoberne lyser Olafur Eliassons «Den anden væg». Prisen endte på omkring 4,4 milliarder norske kroner. Året efter åbningen fik bygningen EU's arkitekturpris, Mies van der Rohe-prisen, og den er i dag et af Norges mest besøgte bygningsværker.",
+          estimatedDurationS: 71,
+        },
+        {
+          kind: "narration",
+          chapterNo: 2,
+          title: "Taget og fjorden",
+          text:
+            "Taget er åbent for alle, hele døgnet, uden billet. Gå op ad skråningerne, så får du udsigt over Bjørvika, fjorden og byen. Ude i vandet, lige foran huset, flyder «She Lies» af Monica Bonvicini: en skulptur i stål og glas, tolv meter høj, som drejer langsomt med tidevandet. Den er en tredimensionel fortolkning af Caspar David Friedrichs maleri «Ishavet» fra 1820'erne og blev afsløret i maj 2010, med dronning Sonja til stede.\n\nIndenfor har hovedsalen plads til 1 364 tilskuere, og to mindre scener rummer 400 og 200. På taget har der været koncerter med op til 15 000 mennesker. Vender du dig mod land, ser du de høje huse i Barcode, det nye Munchmuseum og Deichman-biblioteket, alle opført efter at Operaen viste vejen for den nye bydel.",
+          estimatedDurationS: 53,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på pladsen foran Operaen. Foran dig skråner store flader af hvid marmor op fra jorden, som en bred rampe uden trin. Overfladen er glat og lys, med lange, tynde fuger. Til venstre for rampen, i gadeplan, er hele facaden af glas, så du kan se den varme, gyldne væg af egetræ, der bølger indenfor. Over det hele knejser scenetårnet, en høj, firkantet blok i lyst, mønstret aluminium. Til højre glitrer fjorden, og ude i vandet står en kantet form af glas og stål, som fanger solen.",
+          estimatedDurationS: 36,
+        },
+      ],
     },
     quiz: {
       nb: [
@@ -879,6 +1190,26 @@ const OSLO_POIS: DemoPoi[] = [
           options: ["'The Sea of Ice'", "'She Lies'", "'The Other Wall'"],
           correctIndex: 1,
           explanation: "'She Lies' by Monica Bonvicini turns with the tide and interprets Caspar David Friedrich's 'The Sea of Ice'.",
+        },
+      ],
+      da: [
+        {
+          question: "Hvilket år åbnede Operaen?",
+          options: ["2000", "2008", "2012"],
+          correctIndex: 1,
+          explanation: "Operaen åbnede den 12. april 2008 og fik Mies van der Rohe-prisen året efter.",
+        },
+        {
+          question: "Hvad er taget beklædt med?",
+          options: ["Hvid italiensk marmor", "Norsk granit", "Glas"],
+          correctIndex: 0,
+          explanation: "Marmoren La Facciata bevarer sit lys og sin farve, også når den er våd; omkring 20 000 kvadratmeter.",
+        },
+        {
+          question: "Hvad hedder skulpturen, der flyder i vandet foran Operaen?",
+          options: ["«Ishavet»", "«She Lies»", "«Den anden væg»"],
+          correctIndex: 1,
+          explanation: "«She Lies» af Monica Bonvicini drejer med tidevandet og fortolker Caspar David Friedrichs «Ishavet».",
         },
       ],
     },
@@ -961,6 +1292,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         revealText: null,
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.27,
+        text: "Hvad gjorde slotsherren Christen Munk i 1567, for at svenskerne ikke skulle finde mad og ly?",
+        options: ["Han lukkede alle byportene", "Han brændte hele byen ned", "Han sænkede skibene i havnen"],
+        answerIndex: 1,
+        revealText: "Han brændte hele byen ned. Efter 39 dage gav svenskerne op.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.8,
+        text: "Se op: Slottets to trappetårne er Blåtårnet og Romerikstårnet. De kom, da Christian den Fjerde lod borgen bygge om tidligt i 1600-tallet.",
+        revealText: null,
+      },
+    ],
   },
   poi_christiania_torv: {
     nb: [
@@ -996,6 +1345,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         kind: "look",
         atFraction: 0.92,
         text: "Look up: The councillor's house is on the corner. Its wall anchors show the year 1626.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.62,
+        text: "Hvad skulle alle, der byggede inden for bymuren, bygge i?",
+        options: ["Ler og tørv", "Mursten eller sten", "Kun træ"],
+        answerIndex: 1,
+        revealText: "Mursten eller sten. Kongen indførte murtvang, og de, der ikke havde råd, måtte nøjes med bindingsværk fyldt med mursten.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.93,
+        text: "Se op: Rådmannsgården står på hjørnet. Murankrene viser årstallet 1626.",
         revealText: null,
       },
     ],
@@ -1037,6 +1404,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         revealText: "A wine cellar and a private dining room. Today the house is best known for its lutefisk.",
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.62,
+        text: "Se op: De høje renæssancegavle, du ser i dag, blev genskabt i 1900-tallet.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.71,
+        text: "Hvad er de gamle fængselsceller i kælderen blevet til?",
+        options: ["Et bibliotek", "Vinkælder og selskabslokale", "Et bageri"],
+        answerIndex: 1,
+        revealText: "Vinkælder og selskabslokale. Huset er i dag mest kendt for sin lutefisk.",
+      },
+    ],
   },
   poi_oslo_bors: {
     nb: [
@@ -1072,6 +1457,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         kind: "look",
         atFraction: 0.83,
         text: "Look up: In front of the entrance stands Mercury, the god of commerce, in bronze on a fountain with four lion heads.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.33,
+        text: "Hvor stort var det oprindelige børshus sammenlignet med det, du ser i dag?",
+        options: ["Omtrent en tredjedel", "Omtrent halvdelen", "Lige så stort"],
+        answerIndex: 0,
+        revealText: "Omtrent en tredjedel: kun én etage på en høj kælder. Sidefløjene og sydfløjen kom til i 1909 og 1910.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.83,
+        text: "Se op: Foran indgangen står Merkur, handelens gud, i bronze på et springvand med fire løvehoveder.",
         revealText: null,
       },
     ],
@@ -1113,6 +1516,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         revealText: "Grieg. And Munch's table is still the most sought after.",
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.35,
+        text: "Se op: Norges Banks hovedsæde fra 1906 er et palads i hugget norsk granit og marmor, rigt dekoreret i jugendstil.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.93,
+        text: "Hvem havde sine egne kaffekopper på Engebret Café?",
+        options: ["Ibsen", "Grieg", "Munch"],
+        answerIndex: 1,
+        revealText: "Grieg. Og Munchs bord er stadig det mest eftertragtede.",
+      },
+    ],
   },
   poi_operaen: {
     nb: [
@@ -1149,6 +1570,24 @@ export const DEMO_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChapterPr
         options: ["The wind", "The tide", "A motor"],
         answerIndex: 1,
         revealText: "The tide. Monica Bonvicini's sculpture is in steel and glass and twelve metres tall.",
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.7,
+        text: "Se op: Scenetårnet er beklædt med aluminiumsplader med et mønster af tekstilkunstnerne Astrid Løvaas og Kirsten Wagle, inspireret af gamle vævemønstre.",
+        revealText: null,
+      },
+      {
+        chapterNo: 2,
+        kind: "guess",
+        atFraction: 0.17,
+        text: "Skulpturen «She Lies» ude i vandet drejer langsomt. Hvad får den til at dreje?",
+        options: ["Vinden", "Tidevandet", "En motor"],
+        answerIndex: 1,
+        revealText: "Tidevandet. Skulpturen af Monica Bonvicini er i stål og glas og tolv meter høj.",
       },
     ],
   },

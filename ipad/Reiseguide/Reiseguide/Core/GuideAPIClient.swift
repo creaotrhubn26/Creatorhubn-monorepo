@@ -64,12 +64,12 @@ actor GuideAPIClient: VisitSyncTransport {
         try await get(AreasResponse.self, path: "/api/guide/areas", query: []).areas
     }
 
-    func area(idOrSlug: String, lang: String) async throws -> AreaResponse {
-        try await get(
-            AreaResponse.self,
-            path: "/api/guide/areas/\(idOrSlug)",
-            query: [URLQueryItem(name: "lang", value: lang)]
-        )
+    /// `voice` er stemmen brukeren har valgt (GuideVoice.id); nil gir
+    /// språkets standardstemme.
+    func area(idOrSlug: String, lang: String, voice: String? = nil) async throws -> AreaResponse {
+        var query = [URLQueryItem(name: "lang", value: lang)]
+        if let voice { query.append(URLQueryItem(name: "voice", value: voice)) }
+        return try await get(AreaResponse.self, path: "/api/guide/areas/\(idOrSlug)", query: query)
     }
 
     func poi(idOrSlug: String, lang: String) async throws -> GuidePOI {

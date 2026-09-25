@@ -19,6 +19,8 @@
 import SwiftUI
 import MapKit
 import AVFoundation
+import CoreLocation
+import UIKit
 
 // MARK: - Brand-konstanter
 private enum KrBrand {
@@ -539,6 +541,10 @@ struct KartView: View {
         center: CLLocationCoordinate2D(latitude: 59.918, longitude: 10.762),
         span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.13)
     ))
+    /// Hvor tett kartet følger deg. Av / følger posisjon / følger posisjon
+    /// og retning — samme progresjon som Apple Maps, fordi selgeren allerede
+    /// kan den. Enum-en bor i CenterOnMeFAB.swift.
+    @State private var følgMeg: CenterTrackingMode = .off
     /// Speiler current region fra camera så zoom-FAB-er kan endre span.
     /// Oppdateres via `.onMapCameraChange`.
     @State private var currentRegion: MKCoordinateRegion = MKCoordinateRegion(
@@ -1023,7 +1029,7 @@ struct KartView: View {
         case territories = "Territorier"
         case dataOverlay = "Bedrifts-data"
         case teamMembers = "Team på kartet"
-        case canvasNotater = "Canvas-notater"
+        case canvasNotater = "Nexus-notater"
         var icon: String {
             switch self {
             case .heatmap:        return "flame.circle.fill"
@@ -1043,7 +1049,7 @@ struct KartView: View {
             case .territories:   return "Polygon-soner: din vs kollegas region"
             case .dataOverlay:   return "Pin-radius reflekterer omsetning (Brønnøysund)"
             case .teamMembers:   return "Live-avatar for selgere og promotører m/ destinasjon"
-            case .canvasNotater: return "Stedfestede Canvas-notater — der skissene ble til"
+            case .canvasNotater: return "Stedfestede Nexus-notater — der skissene ble til"
             }
         }
         var color: Color {
@@ -1277,7 +1283,7 @@ struct KartView: View {
         // Canvas-notater: der skissene ble til — tap hopper til Canvas-fanen.
         if activeOverlays.contains(.canvasNotater) {
             ForEach(canvasKartNotater) { n in
-                Annotation(n.tittel.isEmpty ? "Canvas-notat" : n.tittel,
+                Annotation(n.tittel.isEmpty ? "Nexus-notat" : n.tittel,
                            coordinate: CLLocationCoordinate2D(latitude: n.lat, longitude: n.lon)) {
                     Button {
                         appState.selectedSidebarItem = .canvas
@@ -1338,6 +1344,17 @@ struct KartView: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Kompasset går bare mens kartet er framme. Lyskjeglen er poenget
+        // med å ha det på; ingen kjegle synlig, ingen grunn til å tappe
+        // batteriet på magnetometeret.
+        .onAppear { KartLocationManager.shared.startHeadingUpdates() }
+        .onDisappear { KartLocationManager.shared.stopHeadingUpdates() }
+        // CoreLocation antar portrett. Snur selgeren iPaden til landskap
+        // uten dette, peker kjeglen 90 grader feil — og ser like trygg ut.
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIDevice.orientationDidChangeNotification)) { _ in
+            KartLocationManager.shared.oppdaterHeadingOrientasjon()
+        }
         // Ren dørsalg-org: kartet står fast i dørsalg. Entitlements lander
         // async etter login → poll noen sekunder før vi gir oss.
         .task {
@@ -2765,9 +2782,14 @@ struct KartView: View {
                                               || navFollowSpeed > 0.5,
                                           // Rute-tangent − kamera-heading:
                                           // bilen peker alltid LANGS VEIEN.
-                                          screenCourse: navTangent.map { $0 - navCamHeading })
+                                          screenCourse: navTangent.map { $0 - navCamHeading },
+                                          konusGrader: navKonusGrader,
+                                          konusUsikkerhet: KartLocationManager.shared
+                                              .retning?.usikkerhet ?? -1)
                         } else {
-                            MeMapPin(initials: appState.initials, profileImageURL: appState.profileImageURL)
+                            MeMapPin(initials: appState.initials,
+                                     profileImageURL: appState.profileImageURL,
+                                     kartHeading: kartetsHeading)
                                 .onTapGesture { zoomToMeAndOpenHUD(coord: coord) }
                         }
                     }
@@ -2975,9 +2997,20 @@ struct KartView: View {
                 .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
 
-                mapFABButton(icon: "location.fill", action: centerOnMe)
-                    .background(KrBrand.card, in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).stroke(KrBrand.stroke, lineWidth: 1))
+                // Ett trykk sentrerer, to følger deg, tre roterer kartet med
+                // retningen din. Å gå tilbake til «av» krever et fjerde trykk
+                // — men et hvilket som helst dra i kartet gjør det også, som
+                // i Apple Maps, fordi det er det man instinktivt prøver.
+                mapFABButton(icon: følgMeg.sfSymbol, action: syklusFølgMeg)
+                    .background(
+                        følgMeg == .off ? KrBrand.card : KrBrand.purple.opacity(0.35),
+                        in: RoundedRectangle(cornerRadius: 9)
+                    )
+                    .overlay(RoundedRectangle(cornerRadius: 9)
+                        .stroke(følgMeg == .off ? KrBrand.stroke : KrBrand.purpleLight.opacity(0.5),
+                                lineWidth: 1))
+                    .accessibilityLabel(følgMeg.accessibilityLabel)
+                    .accessibilityIdentifier("kart.folg-meg")
 
                 // Fullskjerm-kart (2026-07-18) — hele flaten til kartet.
                 mapFABButton(
@@ -4892,6 +4925,67 @@ struct KartView: View {
         return la.distance(from: lb) / 1000
     }
 
+    /// Lyskjeglen i nav-modus, i skjermgrader — eller `nil` når den ikke
+    /// ville sagt noe nytt.
+    ///
+    /// Regelen er kilden, ikke reisemåten. Kommer retningen fra GPS-kursen,
+    /// peker den per definisjon samme vei som figuren allerede gjør: en bil
+    /// som kjører, peker dit den kjører. Da er kjeglen bare ekstra lys på et
+    /// kart du styrer etter i 60 km/t.
+    ///
+    /// Kommer den fra kompasset, vet den noe ruta ikke vet — at du har snudd
+    /// deg. Det er nettopp det som skjer når du står i et kryss til fots, og
+    /// det er da kjeglen er verdt å tegne.
+    private var navKonusGrader: Double? {
+        guard let r = KartLocationManager.shared.retning, r.kilde == .kompass else { return nil }
+        return r.grader - navCamHeading
+    }
+
+    /// Hvor mye kartet selv er rotert akkurat nå.
+    ///
+    /// Interaksjonsmodusene er `[.pan, .zoom]` — brukeren kan ikke rotere
+    /// kartet selv. Kartet er derfor nord-opp bestandig, unntatt når MapKit
+    /// roterer det for oss i «følg med kompass». Da peker retningen din opp,
+    /// og lyskjeglen skal stå rett opp i stedet for å peke mot nord.
+    private var kartetsHeading: Double {
+        følgMeg == .followWithHeading
+            ? (KartLocationManager.shared.deviceHeading ?? 0)
+            : 0
+    }
+
+    /// Neste steg i «følg meg»: av → posisjon → posisjon og retning → av.
+    ///
+    /// Første trykk gjør det gamle: sentrerer én gang. Det er fortsatt det
+    /// folk forventer av en posisjonsknapp, og man skal ikke måtte lære noe
+    /// nytt for å få det man alltid har fått.
+    private func syklusFølgMeg() {
+        let mgr = KartLocationManager.shared
+        mgr.requestIfNeeded()
+        if mgr.status == .denied || mgr.status == .restricted {
+            showToast("Sted-tilgang avslått — skru på i Innstillinger")
+            return
+        }
+        følgMeg = følgMeg.next
+        switch følgMeg {
+        case .off:
+            break
+        case .follow:
+            centerOnMe()
+        case .followWithHeading:
+            guard CLLocationManager.headingAvailable() else {
+                // Ingen magnetometer (simulator, enkelte enheter). Ikke la
+                // knappen havne i en tilstand som ikke gjør noe.
+                følgMeg = .off
+                showToast("Denne enheten har ikke kompass")
+                return
+            }
+            withAnimation(.easeInOut(duration: 0.5)) {
+                camera = .userLocation(followsHeading: true,
+                                       fallback: .region(currentRegion))
+            }
+        }
+    }
+
     /// Sentrer kartet på ekte user-location via CoreLocation. Ber om
     /// WhenInUseAuthorization ved første tap. Fallback til Oslo-sentrum
     /// hvis tilgang nektes eller loc ikke er klart ennå.
@@ -6022,7 +6116,11 @@ struct KartView: View {
     /// segmenter foran deg. Gir stabil heading-up som følger veien (ikke luftlinje).
     private func navRouteHeading(from me: CLLocationCoordinate2D, dest: CLLocationCoordinate2D) -> Double {
         guard let route = navRoute, route.count > 1 else {
-            return KartLocationManager.shared.heading ?? bearing(me, dest)
+            // Uten rute-polylinje: bruk den valgte retningen. Før falt dette
+            // tilbake til `heading` — kursen — som er nil når du står stille,
+            // og kameraet pekte da rett mot målet gjennom bygningene i stedet
+            // for dit du faktisk så.
+            return KartLocationManager.shared.retning?.grader ?? bearing(me, dest)
         }
         // nærmeste rute-punkt
         var bestI = 0
@@ -7454,12 +7552,25 @@ fileprivate struct NavAvatarPuck: View {
     /// Kjøreretning i SKJERM-grader (kurs minus kamera-heading) — pilen
     /// peker dit du faktisk beveger deg, uansett kamera-modus.
     var screenCourse: Double?
+    /// Lyskjeglen i SKJERM-grader. `nil` når den ikke ville sagt noe nytt.
+    var konusGrader: Double?
+    /// Kompassets usikkerhet, som styrer hvor bred kjeglen blir.
+    var konusUsikkerhet: Double = -1
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
 
     var body: some View {
         ZStack {
+            // Lyskjegle bakerst — hvilken vei du SER, mot figuren som viser
+            // hvilken vei du BEVEGER deg. Står du stille i et kryss under
+            // gange-navigasjon, er dette det eneste som fortsatt svarer.
+            if let konusGrader {
+                HeadingCone(skjermgrader: konusGrader,
+                            usikkerhet: konusUsikkerhet,
+                            farge: purpleLight)
+            }
+
             // Tett bakke-skygge RETT UNDER — grunner figuren på veien (ingen
             // stråle/sveve-effekt som får den til å se «flyvende» ut).
             Ellipse()

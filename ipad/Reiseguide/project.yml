@@ -4,7 +4,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
-  # Norsk er kildespråk i Localizable.xcstrings; engelsk er oversatt.
+  # Norsk er kildespråk i Localizable.xcstrings; engelsk og dansk er oversatt.
   # UI-språket følger språkvelgeren i appen (ikke bare systemspråket), se
   # Core/AppSettings.swift og L10n.swift.
   developmentLanguage: nb
@@ -52,11 +52,18 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # Posisjon bes om først når brukeren trykker «Bruk posisjonen min»
-        # (UI-spesifikasjon 6.1). Kun «når appen er i bruk» i POC; bakgrunns-
-        # geofencing («alltid») er fase 2.
+        # (UI-spesifikasjon 6.1). Kun «når appen er i bruk» som standard;
+        # «Alltid» (bakgrunnsvarsel, pakke 2 item 2) er opt-in og bes om via
+        # et eget to-stegs samtykke i Innstillinger — aldri automatisk.
         NSLocationWhenInUseUsageDescription: SenseAid Explore bruker posisjonen din til å vise severdigheter i nærheten og starte fortellingen når du er nær en av dem.
+        # Bakgrunnsvarsel (pakke 2, item 2): «Du er ved …»-varsel selv når
+        # appen ikke er åpen. Bes bare om etter at brukeren har slått på
+        # innstillingen og sagt ja til forklaringsarket i appen.
+        NSLocationAlwaysAndWhenInUseUsageDescription: SenseAid Explore kan varsle deg når du er ved en severdighet, selv når appen ikke er åpen. Dette er valgfritt og kan skrus av når som helst i Innstillinger.
         # Fortellingen skal spille videre med skjermen låst og fra lomma
-        # (UI-spesifikasjon 8.4, punkt 9).
+        # (UI-spesifikasjon 8.4, punkt 9). Ikke «location»: regionovervåking
+        # (CLCircularRegion) for bakgrunnsvarselet trenger bare «Alltid»-
+        # tillatelse, og en ubrukt location-modus avvises i App Store-review.
         UIBackgroundModes:
           - audio
         # Live Activity (pakke 2, item 6): «Nå spilles» på låseskjerm og i

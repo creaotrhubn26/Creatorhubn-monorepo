@@ -10,7 +10,7 @@ name: SenseAid Explore lag Soniox-lyd
 # derfra med RENDER_API_KEY i stedet for å kreve egne GitHub-secrets:
 # SENSEAID_SONIOX_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
 # CREATORHUB_S3_BUCKET (påkrevd) og CREATORHUB_S3_REGION, SENSEAID_SONIOX_VOICE,
-# SENSEAID_SONIOX_REGION (valgfrie; Soniox-regionen er US når den mangler).
+# SENSEAID_SONIOX_VOICE_NB/_EN/_DA (stemme per språk), SENSEAID_SONIOX_REGION (valgfrie; Soniox-regionen er US når den mangler).
 # Verdiene maskeres i loggen. Bare lesing, aldri skriving til Render.
 #
 # Manuell trigger i Production-miljøet (samme database som seed-jobben). Kjør
@@ -125,6 +125,10 @@ jobs:
           fetch_var CREATORHUB_S3_BUCKET required
           fetch_var CREATORHUB_S3_REGION optional
           fetch_var SENSEAID_SONIOX_VOICE optional
+          # Egen stemme per språk (hver stemme har sin aksent; norsk trenger norsk aksent).
+          fetch_var SENSEAID_SONIOX_VOICE_NB optional
+          fetch_var SENSEAID_SONIOX_VOICE_EN optional
+          fetch_var SENSEAID_SONIOX_VOICE_DA optional
           fetch_var SENSEAID_SONIOX_REGION optional
 
       # Samme installasjon som seed-jobben: dev-pakker (tsx) og optional-pakker

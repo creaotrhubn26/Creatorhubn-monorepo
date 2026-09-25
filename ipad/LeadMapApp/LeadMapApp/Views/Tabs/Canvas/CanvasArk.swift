@@ -364,7 +364,7 @@ struct CanvasAnalyseSheet: View {
                 projectId: projectId ?? "",
                 requestId: persistenceRequestId)
         } catch {
-            feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Canvas-analysen bruker samme AI-nøkkel)."
+            feil = "Analysen feilet — sjekk nettet, og at «Møter · AI-møtebrief» er aktivert (Nexus-analysen bruker samme AI-nøkkel)."
         }
     }
 }
@@ -813,7 +813,7 @@ struct CanvasTypeVelger: View {
                     .padding(16)
                 }
             }
-            .navigationTitle("Nytt Canvas")
+            .navigationTitle("Nytt notat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -409,6 +409,30 @@ describe("GET /api/guide/areas/:idOrSlug", () => {
     expect(translationCall?.[1]).toEqual([["poi_akershus", "poi_opera"]]);
   });
 
+  it("sender ønsket stemme til spørringen og lister norske stemmer med norske navn", async () => {
+    const pool = makePool(handlers);
+    const res = await request(makeApp(pool)).get("/api/guide/areas/area_oslo?lang=nb&voice=Walter");
+    expect(res.status).toBe(200);
+    expect(res.body.voices).toEqual([
+      { id: "Hazel", name: "Hedda", gender: "female" },
+      { id: "Walter", name: "Vidar", gender: "male" },
+    ]);
+    const scriptCall = pool.query.mock.calls.find(([sql]) => /FROM guide_poi_scripts s/.test(sql));
+    expect(scriptCall?.[0]).toMatch(/ORDER BY \(act\.voice_id = \$2\) DESC NULLS LAST/);
+    expect(scriptCall?.[1]?.slice(1, 2)).toEqual(["Walter"]);
+    expect(scriptCall?.[1]?.[2]).toEqual(expect.arrayContaining(["Hazel", "Walter"]));
+
+    const english = await request(makeApp(makePool(handlers))).get("/api/guide/areas/area_oslo?lang=en&voice=..%2Fx");
+    expect(english.body.voices).toEqual([]);
+  });
+
+  it("ignorerer ugyldig stemmenavn og bruker standardstemmen", async () => {
+    const pool = makePool(handlers);
+    await request(makeApp(pool)).get("/api/guide/areas/area_oslo?lang=nb&voice=Hazel%3B%20DROP");
+    const scriptCall = pool.query.mock.calls.find(([sql]) => /FROM guide_poi_scripts s/.test(sql));
+    expect(scriptCall?.[1]?.[1]).toBeNull();
+  });
+
   it("bruker områdets standardspråk når lang mangler", async () => {
     const res = await request(makeApp(makePool(handlers))).get("/api/guide/areas/area_oslo");
     expect(res.status).toBe(200);

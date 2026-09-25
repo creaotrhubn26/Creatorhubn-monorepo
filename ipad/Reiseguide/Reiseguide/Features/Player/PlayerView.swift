@@ -1,9 +1,14 @@
 // PlayerView.swift
 //
-// Avspiller (UI-spesifikasjon 6.4): bakgrunnsbilde fra kapittelet med kraftig
-// scrim, toppfelt (lukk, teksting av/på, del), tittel og kapittel, tid og
-// fremdriftslinje (5.13), transportkontroller (5.14), tekstingsvisning (5.16)
-// og synstolkingskort (5.15). VoiceOver-rekkefølge og -oppførsel etter 8.4.
+// Avspiller (UI-spesifikasjon 6.4), redesignet som en fullskjerms «Nå spilles»
+// (eieren: «avspilleren bør fullskjerm»): kapittelbildet øverst (ca. 40 % av
+// høyden) med toppfelt (lukk, teksting av/på, del) over, tittel/kapittel-
+// tittel/kilde som overlapper bunnen av bildet. Fremdrift, transportkontroller
+// (5.14) og teksting (5.16) står rett under, alltid synlige uten scrolling ved
+// vanlig tekststørrelse. Resten (spørsmål underveis, variantvelger, avslutt,
+// spør guiden, synstolkingskort) er under, i en egen scroll. Ved
+// tilgjengelighetstekststørrelser (8.2) scroller alt som én kolonne, så
+// ingenting klippes. VoiceOver-rekkefølge og -oppførsel etter 8.4.
 // Pakke 3: spørsmål underveis under tekstingen og «Spør guiden».
 
 import SwiftUI
@@ -15,20 +20,46 @@ struct PlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// Andel av skjermhøyden kapittelbildet får øverst (del 6.4-redesign).
+    private static let photoHeightFraction: CGFloat = 0.4
+    private static let minPhotoHeight: CGFloat = 220
+
+    /// Kapittellisten (item 4): eget ark, se PlayerChapterList.swift.
+    @State private var showChapterList = false
+
     private var player: PlayerViewModel { env.player }
     private var locale: Locale { env.settings.locale }
     private var uiLang: String { env.settings.uiLanguage }
 
     var body: some View {
-        ZStack {
-            background
-            VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, AppSpacing.screenMargin)
-                    .padding(.top, AppSpacing.s)
-                Spacer(minLength: AppSpacing.xl)
-                mainContent
+        GeometryReader { proxy in
+            Group {
+                // Ved accessibility3 og over scroller alt som én kolonne, så
+                // ingenting klippes (8.2). Under det er fremdrift, kontroller
+                // og teksting alltid synlige, med resten under i egen scroll.
+                if dynamicTypeSize >= .accessibility3 {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            photoSection(proxy: proxy)
+                            controlsSection
+                            endOfVisitSection
+                            secondaryContent
+                        }
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        photoSection(proxy: proxy)
+                        controlsSection
+                        // Avslutningskortet (item 1) står utenfor scrollen, rett
+                        // under kontrollene, så det alltid er synlig uten
+                        // scrolling ved vanlig tekststørrelse.
+                        endOfVisitSection
+                        ScrollView { secondaryContent }
+                            .scrollBounceBehavior(.basedOnSize)
+                    }
+                }
             }
+            .ignoresSafeArea(edges: .top)
         }
         .background(AppColor.bgBase)
         .preferredColorScheme(.dark)
@@ -39,11 +70,29 @@ struct PlayerView: View {
                 env.open(poi: related)
             }
         }
+        .sheet(isPresented: $showChapterList) {
+            PlayerChapterListSheet(
+                chapters: player.variant?.chapters ?? [],
+                currentChapterNo: player.chapter?.no,
+                completedChapterNos: completedChapterNos,
+                locale: locale,
+                uiLang: uiLang,
+                onSelect: { player.jump(toChapter: $0) }
+            )
+        }
         .onChange(of: player.pendingChapterAnnouncement) { _, title in
             guard let title else { return }
             let message = L10n.string("player.newChapter", lang: uiLang).replacingOccurrences(of: "%@", with: title)
             AccessibilityNotification.Announcement(message).post()
             player.pendingChapterAnnouncement = nil
+        }
+        // Avslutningskortet dukker opp (item 1): annonseres én gang, som
+        // kapittelbyttet over. VoiceOver-fokus flyttes av kortet selv
+        // (EndOfVisitCard.onAppear), samme mønster som ArrivalCardView.
+        .onChange(of: player.pendingVisitEndedAnnouncement) { _, message in
+            guard let message else { return }
+            AccessibilityNotification.Announcement(message).post()
+            player.pendingVisitEndedAnnouncement = nil
         }
         // Kapittelbytte (pakke 1, punkt 2): egen haptikk utenom kapittel-
         // annonseringen over, styrt av «Vibrasjon».
@@ -52,65 +101,85 @@ struct PlayerView: View {
         }
     }
 
+    /// Kapitler brukeren allerede har hørt i denne avspillingsøkten: alle
+    /// før det som spilles nå (item 4-listen har ingen annen kilde til
+    /// «hørt» per kapittel).
+    private var completedChapterNos: Set<Int> {
+        guard let currentNo = player.chapter?.no else { return [] }
+        return Set((player.variant?.chapters ?? []).map(\.no).filter { $0 < currentNo })
+    }
+
+    /// «Rolig slutt på besøket» (item 1): vises når fortellingen har tatt
+    /// slutt av seg selv. «Gå til neste stopp» skjules når ruten er tom for
+    /// ubesøkte stopp (item 2).
+    @ViewBuilder
+    private var endOfVisitSection: some View {
+        if let visit = player.narrationEndedVisit {
+            EndOfVisitCard(
+                nextStopTitle: env.nextStop(after: visit.poi.id)?.title,
+                uiLang: uiLang,
+                onTakeQuiz: { player.openAfterVisitFromEndCard() },
+                onNextStop: {
+                    guard let next = env.nextStop(after: visit.poi.id) else { return }
+                    env.openVeiviser(to: next)
+                },
+                onReplay: { player.replayVisit() }
+            )
+            .padding(.horizontal, AppSpacing.screenMargin)
+            .padding(.top, AppSpacing.l)
+        }
+    }
+
     // MARK: - Deler
 
-    private var background: some View {
-        ZStack {
-            AppColor.bgBase
-            if !reduceTransparency {
-                RemoteImage(url: player.chapter?.imageUrl ?? player.poi?.heroImageUrl)
-                    .ignoresSafeArea()
-                    .accessibilityHidden(true)
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: player.chapterIndex)
-                LinearGradient(
-                    stops: [
-                        .init(color: AppColor.bgBase.opacity(0.2), location: 0),
-                        .init(color: AppColor.bgBase.opacity(0.92), location: 0.4),
-                        .init(color: AppColor.bgBase.opacity(0.98), location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-            }
-        }
-    }
-
-    private var topBar: some View {
-        HStack(spacing: AppSpacing.m) {
-            IconCircleButton(systemImage: "chevron.down", label: "action.close") {
-                player.close()
-            }
-            Spacer()
-            Button {
-                player.toggleCaptions()
-            } label: {
-                Image(systemName: player.captionsEnabled ? "captions.bubble.fill" : "captions.bubble")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(player.captionsEnabled ? AppColor.accent : AppColor.textPrimary)
-                    .frame(width: 44, height: 44)
-                    .background(AppColor.bgOverlay, in: Circle())
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("captions.label"))
-            .accessibilityValue(Text(player.captionsEnabled ? "state.on" : "state.off"))
-            .accessibilityAddTraits(.isToggle)
-            if let poi = player.poi {
-                ShareLinkButton(url: poi.shareURL, fallbackText: poi.title, subject: poi.title, message: poi.title) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(AppColor.textPrimary)
-                        .frame(width: 44, height: 44)
-                        .background(AppColor.bgOverlay, in: Circle())
+    /// Kapittelbildet øverst med scrim, toppfelt og tittelblokken som
+    /// overlapper bunnen. Med «Reduser gjennomsiktighet» vises bildet fortsatt
+    /// som sin egen blokk, men teksten står på en heldekkende bunn i stedet
+    /// for et gradient-scrim (ingen tekst over foto).
+    private func photoSection(proxy: GeometryProxy) -> some View {
+        let height = max(Self.minPhotoHeight, proxy.size.height * Self.photoHeightFraction)
+        return ZStack(alignment: .top) {
+            RemoteImage(url: player.chapter?.imageUrl ?? player.poi?.heroImageUrl)
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .accessibilityHidden(true)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: player.chapterIndex)
+                .overlay(alignment: .bottom) {
+                    if !reduceTransparency {
+                        ScrimOverlay()
+                    }
                 }
-            }
+            PlayerTopBar(
+                poi: player.poi,
+                captionsEnabled: player.captionsEnabled,
+                onClose: { player.close() },
+                onToggleCaptions: { player.toggleCaptions() }
+            )
+            .padding(.horizontal, AppSpacing.screenMargin)
+            .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
+        }
+        .frame(height: height)
+        .overlay(alignment: .bottom) {
+            PlayerTitleBlock(
+                title: player.poi?.title ?? "",
+                chapterTitle: player.chapter?.title,
+                isReadByPhone: player.isReadByPhone,
+                isSimulated: player.isSimulated,
+                isPlaying: player.isPlaying
+            )
+            .padding(.horizontal, AppSpacing.screenMargin)
+            .padding(.vertical, AppSpacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(reduceTransparency ? AppColor.bgBase : Color.clear)
         }
     }
 
-    @ViewBuilder
-    private var mainContent: some View {
-        let inner = VStack(alignment: .leading, spacing: AppSpacing.xl) {
-            titleBlock
+    /// Fremdrift, transportkontroller og teksting: alltid synlige uten
+    /// scrolling ved vanlig tekststørrelse (kravet «avspilleren bør fullskjerm»).
+    private var controlsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.l) {
+            resumeHintSection
             progressBlock
             TransportControls(
                 isPlaying: player.isPlaying,
@@ -122,6 +191,17 @@ struct PlayerView: View {
                 onRate: { player.cycleRate() }
             )
             .frame(maxWidth: .infinity)
+            // Kapitler (item 4): forrige/neste og kapittelliste, skjult ved ett kapittel.
+            if player.hasMultipleChapters, let chapterNo = player.chapter?.no {
+                ChapterNavRow(
+                    currentChapterNo: chapterNo,
+                    totalChapters: player.variant?.chapters.count ?? 1,
+                    uiLang: uiLang,
+                    onPrevious: { player.previousChapter() },
+                    onNext: { player.nextChapter() },
+                    onShowList: { showChapterList = true }
+                )
+            }
             if player.captionsEnabled {
                 VStack(spacing: AppSpacing.xs) {
                     CaptionView(text: player.currentCaption)
@@ -132,6 +212,29 @@ struct PlayerView: View {
                     }
                 }
             }
+        }
+        .padding(.horizontal, AppSpacing.screenMargin)
+        .padding(.top, AppSpacing.l)
+    }
+
+    /// «Fortsett der du slapp» (item 3): vises rett etter `start(poi:)` har
+    /// hoppet til en lagret posisjon.
+    @ViewBuilder
+    private var resumeHintSection: some View {
+        if let hint = player.resumeHint {
+            ResumeHintBar(
+                savedPositionS: hint.savedPositionS,
+                uiLang: uiLang,
+                onRestart: { player.restartFromBeginning() },
+                onDismiss: { player.dismissResumeHint() }
+            )
+        }
+    }
+
+    /// Spørsmål underveis, variantvelger, avslutt/spør guiden og
+    /// synstolkingskortet: under kontrollene, i egen scroll.
+    private var secondaryContent: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xl) {
             ChapterPromptSlot()
             variantPicker
             SecondaryButton(title: "player.finish", systemImage: "checkmark.circle") {
@@ -149,33 +252,8 @@ struct PlayerView: View {
             }
         }
         .padding(.horizontal, AppSpacing.screenMargin)
+        .padding(.top, AppSpacing.xl)
         .padding(.bottom, AppSpacing.xl)
-
-        // Ved accessibility3 og over legges alt under en ScrollView så
-        // kontrollene aldri skyves ut av skjermen (8.2).
-        if dynamicTypeSize >= .accessibility3 {
-            ScrollView { inner }
-        } else {
-            ScrollView { inner }
-                .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            Text(player.poi?.title ?? "")
-                .font(AppFont.playerTitle)
-                .foregroundStyle(AppColor.textPrimary)
-                .asHeader()
-            if let chapterTitle = player.chapter?.title {
-                Text(chapterTitle)
-                    .font(AppFont.subtitle)
-                    .foregroundStyle(contrast.textSecondary)
-            }
-            PlaybackSourceLabel(isReadByPhone: player.isReadByPhone, isSimulated: player.isSimulated)
-            AudioLevelBars(isPlaying: player.isPlaying)
-                .padding(.top, AppSpacing.xs)
-        }
     }
 
     private var progressBlock: some View {
@@ -206,190 +284,5 @@ struct PlayerView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("player.variant.label"))
-    }
-}
-
-/// Fremdriftslinje (5.13): Slider-basert, adjustable ±5 s for VoiceOver.
-struct ProgressSlider: View {
-    let position: Double
-    let duration: Double
-    let locale: Locale
-    let onSeek: (Double) -> Void
-
-    @Environment(\.contrastColors) private var contrast
-
-    var body: some View {
-        GeometryReader { proxy in
-            let fraction = duration > 0 ? min(1, max(0, position / duration)) : 0
-            ZStack(alignment: .leading) {
-                Capsule().fill(contrast.border).frame(height: 4)
-                Capsule().fill(AppColor.accent).frame(width: proxy.size.width * fraction, height: 4)
-                Circle()
-                    .fill(AppColor.accent)
-                    .frame(width: 16, height: 16)
-                    .offset(x: max(0, proxy.size.width * fraction - 8))
-            }
-            .frame(height: AppSpacing.minTapTarget)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let f = min(1, max(0, value.location.x / max(1, proxy.size.width)))
-                        onSeek(f * duration)
-                    }
-            )
-        }
-        .frame(height: AppSpacing.minTapTarget)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("player.progress"))
-        .accessibilityValue(Text(spokenValue))
-        .accessibilityAddTraits(.updatesFrequently)
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: onSeek(position + 5)
-            case .decrement: onSeek(position - 5)
-            @unknown default: break
-            }
-        }
-    }
-
-    private var spokenValue: String {
-        L10n.string("player.progressValue", lang: locale.identifier)
-            .replacingOccurrences(of: "%1$@", with: L10n.spokenDuration(seconds: position, locale: locale))
-            .replacingOccurrences(of: "%2$@", with: L10n.spokenDuration(seconds: duration, locale: locale))
-    }
-}
-
-/// Transportkontroller (5.14): tilbake 15, spill/pause 72 pt, frem 15, hastighet.
-struct TransportControls: View {
-    let isPlaying: Bool
-    let rate: Double
-    let locale: Locale
-    let onBack: () -> Void
-    let onToggle: () -> Void
-    let onForward: () -> Void
-    let onRate: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        HStack(spacing: AppSpacing.xxl) {
-            Button(action: onBack) {
-                Image(systemName: "gobackward.15")
-                    .font(.system(size: 32))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 56, height: 56)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.back15"))
-
-            Button(action: onToggle) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(AppColor.onAccent)
-                    .frame(width: 72, height: 72)
-                    .background(AppColor.accent, in: Circle())
-                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .animation(reduceMotion ? nil : .default, value: isPlaying)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text(isPlaying ? "player.pause" : "player.play"))
-
-            Button(action: onForward) {
-                Image(systemName: "goforward.15")
-                    .font(.system(size: 32))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 56, height: 56)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.forward15"))
-
-            Button(action: onRate) {
-                Text(rateLabel)
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(AppColor.textPrimary)
-                    .underline()
-                    // minWidth i stedet for fast bredde: teksten («1.25×») får
-                    // vokse med Dynamic Type i stedet for å bli klippet mot
-                    // knappene ved siden av (8.2).
-                    .frame(minWidth: 56, minHeight: AppSpacing.minTapTarget)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.rate"))
-            .accessibilityValue(Text(rateSpoken))
-        }
-    }
-
-    private var rateLabel: String {
-        "\(rate.formatted(.number.precision(.fractionLength(0 ... 2)).locale(locale)))×"
-    }
-
-    private var rateSpoken: String {
-        L10n.string("player.rateValue", lang: locale.identifier)
-            .replacingOccurrences(of: "%@", with: rate.formatted(.number.precision(.fractionLength(0 ... 2)).locale(locale)))
-    }
-}
-
-/// Miniavspiller over tab baren når avspilleren er lukket (del 6).
-struct MiniPlayerBar: View {
-    @Environment(AppEnvironment.self) private var env
-    @Environment(\.contrastColors) private var contrast
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let player = env.player
-        HStack(spacing: AppSpacing.m) {
-            Button {
-                player.isPresented = true
-            } label: {
-                HStack(spacing: AppSpacing.m) {
-                    RemoteImage(url: player.chapter?.imageUrl ?? player.poi?.heroImageUrl)
-                        .frame(width: 40, height: 40)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(player.poi?.title ?? "")
-                            .font(AppFont.cardTitle)
-                            .foregroundStyle(AppColor.textPrimary)
-                            .lineLimit(1)
-                        Text(player.chapter?.title ?? "")
-                            .font(.caption)
-                            .foregroundStyle(contrast.textSecondary)
-                            .lineLimit(2)
-                    }
-                    AudioLevelBars(isPlaying: player.isPlaying, barCount: 3)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("player.openMini"))
-            Button {
-                player.togglePlayPause()
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(AppColor.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(AppColor.accent, in: Circle())
-                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .animation(reduceMotion ? nil : .default, value: player.isPlaying)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text(player.isPlaying ? "player.pause" : "player.play"))
-            Button {
-                player.stopAndClear()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.stop"))
-        }
-        .padding(.horizontal, AppSpacing.screenMargin)
-        .frame(minHeight: 56)
-        .background(AppColor.bgSurface)
-        .overlay(alignment: .top) { Rectangle().fill(contrast.border).frame(height: 0.5) }
     }
 }

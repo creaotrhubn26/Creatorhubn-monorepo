@@ -1,6 +1,6 @@
 // SettingsView.swift
 //
-// Innstillinger: område (AreaPickerView), språk, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
+// Innstillinger: område (AreaPickerView), språk, fortellerstemme, teksting, hastighet, interaktivt (pakke 3), personvern (besøksloggen på
 // serveren: samtykke, status og «slett mine data»), mock-kjøp (nullstill) og
 // informasjon om demo-modus og API.
 
@@ -29,6 +29,7 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.navigationLink)
             }
+            NarratorVoiceSettingsSection()
             Section("settings.playback") {
                 Toggle("captions.label", isOn: $settings.captionsEnabled)
                 Picker("player.rate", selection: $settings.playbackRate) {
@@ -40,7 +41,9 @@ struct SettingsView: View {
             Section("settings.interactivity") {
                 Toggle("settings.haptics", isOn: $settings.hapticsEnabled)
                 Toggle("settings.autoStartOnArrival", isOn: $settings.autoStartOnArrival)
+                Toggle("settings.tourModeAutoPlayOnArrival", isOn: $settings.tourModeAutoPlayOnArrival)
             }
+            ArrivalNotificationsSettingsSection()
             Section {
                 Toggle("veiviser.speakToggle", isOn: $settings.speakDirectionsEnabled)
             } footer: {

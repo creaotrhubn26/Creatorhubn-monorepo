@@ -42,6 +42,14 @@ struct AfterVisitView: View {
         RelatedPlaces.suggest(for: poi, among: env.store.pois)
     }
 
+    /// «Gå til neste stopp» (avspiller-redesignet, punkt 2): samme handling
+    /// som avslutningskortet i spilleren, tilgjengelig herfra også (arket
+    /// åpnes også direkte fra detaljsiden, uten at spilleren nødvendigvis
+    /// har vært innom).
+    private var nextStopPoi: GuidePOI? {
+        env.nextStop(after: poi.id)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -51,6 +59,7 @@ struct AfterVisitView: View {
                     QuizCardView(questions: poi.quizQuestions) { correct, total in
                         env.visits.setQuizResult(entryId: entryId, correct: correct, total: total)
                     }
+                    nextStopCard
                     relatedCard
                     shareCard
                 }
@@ -125,6 +134,20 @@ struct AfterVisitView: View {
             Text("rating.failed")
                 .font(.caption)
                 .foregroundStyle(AppColor.error)
+        }
+    }
+
+    @ViewBuilder
+    private var nextStopCard: some View {
+        if let nextStopPoi {
+            SectionCard(title: "visit.nextStop.cardTitle") {
+                SecondaryButton(title: "visit.nextStop", systemImage: "arrow.forward.circle") {
+                    dismiss()
+                    env.openVeiviser(to: nextStopPoi)
+                }
+                .accessibilityLabel(Text("\(L10n.string("visit.nextStop", lang: uiLang)), \(nextStopPoi.title)"))
+                .accessibilityHint(Text("visit.nextStopHint"))
+            }
         }
     }
 

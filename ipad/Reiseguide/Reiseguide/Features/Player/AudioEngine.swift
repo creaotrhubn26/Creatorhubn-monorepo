@@ -13,6 +13,10 @@
 //     fremdrift og kapittelbytte kan prøves før lyden finnes.
 // Låseskjerm og Kontrollsenter får de samme kontrollene via
 // MPRemoteCommandCenter / MPNowPlayingInfoCenter (8.4, punkt 8).
+//
+// pause(fade:) (pakke 3-oppfølging): et gjettespørsmål toner ekte lyd ned
+// over ~0,4 s i stedet for å kutte den brått; volumet er tilbake på 1 ved
+// neste play()/seek(). Opplesning trenger ingen nedtoning.
 
 import AVFoundation
 import Foundation
@@ -36,6 +40,12 @@ final class AudioEngine {
     private(set) var isPlaying = false
     private var durationS: Double = 60
     private var interruptionObserver: NSObjectProtocol?
+    /// Kort nedtoning før pause ved gjettespørsmål (pakke 3-oppfølging), så
+    /// ekte lyd ikke kuttes brått. Kansellert av `play()`/`stopInternal()`.
+    private var fadeTask: Task<Void, Never>?
+    private static let fadeSteps = 8
+    /// 8 × 50 ms ≈ 0,4 s nedtoning.
+    private static let fadeStepDuration: Duration = .milliseconds(50)
 
     /// Kalles av PlayerViewModel når låseskjermen ber om noe.
     var onRemotePlay: (() -> Void)?
@@ -84,8 +94,11 @@ final class AudioEngine {
 
     func play() {
         Self.activatePlaybackSession()
+        fadeTask?.cancel()
+        fadeTask = nil
         isPlaying = true
         if let player {
+            player.volume = 1
             player.rate = Float(rate)
         } else if usesSpeech {
             narrator?.play()
@@ -95,9 +108,20 @@ final class AudioEngine {
         updatePlaybackState()
     }
 
-    func pause() {
+    /// `fade`: kort nedtoning (~0,4 s) før faktisk pause, brukt ved
+    /// gjettespørsmål (pakke 3-oppfølging) så ekte lyd ikke kuttes brått.
+    /// Opplesning på telefonen trenger ikke dette — den pauses ved et
+    /// ordskille uansett (SpeechNarrator.pause).
+    func pause(fade: Bool = false) {
         isPlaying = false
-        player?.pause()
+        if fade, let player {
+            fadeOutThenPause(player)
+        } else {
+            fadeTask?.cancel()
+            fadeTask = nil
+            player?.pause()
+            player?.volume = 1
+        }
         if usesSpeech { narrator?.pause() }
         lastTickAt = nil
         updatePlaybackState()
@@ -111,8 +135,13 @@ final class AudioEngine {
     }
 
     func seek(to seconds: Double) {
+        // En spoling avbryter en eventuell pågående nedtoning: den hørte til
+        // stedet brukeren nettopp forlot.
+        fadeTask?.cancel()
+        fadeTask = nil
         let clamped = min(max(0, seconds), durationS)
         if let player {
+            player.volume = 1
             player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
         } else if usesSpeech, let narrator {
             narrator.seek(to: clamped)
@@ -147,6 +176,8 @@ final class AudioEngine {
     // MARK: - Privat
 
     private func stopInternal() {
+        fadeTask?.cancel()
+        fadeTask = nil
         isPlaying = false
         player?.pause()
         player = nil
@@ -154,6 +185,35 @@ final class AudioEngine {
         usesSpeech = false
         lastTickAt = nil
         simulatedPositionS = 0
+    }
+
+    /// Toner `player.volume` lineært ned mot 0 over `fadeSteps × fadeStepDuration`
+    /// og pauser deretter. Volumet settes tilbake til 1 med det samme (til
+    /// neste `play()`), så et nytt kapittel eller gjenopptagelse ikke arver
+    /// den nedtonede verdien. Fanger bare `self` (og Sendable verdier), så
+    /// `player` alltid leses via `self.player` — trygt om et nytt kapittel
+    /// bytter spilleren ut mens nedtoningen pågår (identiteten sjekkes).
+    private func fadeOutThenPause(_ player: AVPlayer) {
+        fadeTask?.cancel()
+        let startVolume = player.volume
+        guard startVolume > 0 else {
+            player.pause()
+            return
+        }
+        let playerId = ObjectIdentifier(player)
+        fadeTask = Task { [weak self] in
+            for step in 1 ... Self.fadeSteps {
+                guard !Task.isCancelled, let self, let current = self.player,
+                      ObjectIdentifier(current) == playerId else { return }
+                current.volume = startVolume * Float(Self.fadeSteps - step) / Float(Self.fadeSteps)
+                try? await Task.sleep(for: Self.fadeStepDuration)
+            }
+            guard !Task.isCancelled, let self, let current = self.player,
+                  ObjectIdentifier(current) == playerId else { return }
+            current.pause()
+            current.volume = 1
+            self.fadeTask = nil
+        }
     }
 
     /// .playback + .spokenAudio: lyden (og opplesningen) høres selv med

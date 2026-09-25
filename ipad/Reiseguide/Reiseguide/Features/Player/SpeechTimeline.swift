@@ -128,6 +128,7 @@ enum SpeechVoicePicker {
         switch base {
         case "nb", "no", "nn": result += ["nb-NO", "no-NO", "nn-NO"]
         case "en": result += ["en-US", "en-GB"]
+        case "da": result += ["da-DK"]
         default: break
         }
         return result.reduce(into: [String]()) { list, code in

@@ -146,15 +146,16 @@ final class ChapterPromptTests: XCTestCase {
             prompts: [look("l", at: 0.2), guess("g", at: 0.6)]
         )
         controller.load(chapter: chapter)
-        XCTAssertFalse(controller.advance(to: 0.25, enabled: true))
+        XCTAssertFalse(controller.advance(to: 0.25, segments: [], enabled: true))
         XCTAssertNil(controller.active)
         controller.seek(to: 19.9)
-        XCTAssertFalse(controller.advance(to: 20.1, enabled: true), "look pauser ikke")
+        XCTAssertFalse(controller.advance(to: 20.1, segments: [], enabled: true), "look pauser ikke")
         XCTAssertEqual(controller.active?.id, "l")
-        XCTAssertFalse(controller.advance(to: 20.4, enabled: true))
+        XCTAssertFalse(controller.advance(to: 20.4, segments: [], enabled: true))
         XCTAssertEqual(controller.active?.id, "l", "kortet står til det lukkes")
         controller.seek(to: 59.9)
-        XCTAssertTrue(controller.advance(to: 60.2, enabled: true), "guess pauser")
+        // Uten tekstingssegmenter er det ikke noe å vente på: pauser med det samme.
+        XCTAssertTrue(controller.advance(to: 60.2, segments: [], enabled: true), "guess pauser")
         XCTAssertEqual(controller.active?.id, "g")
         XCTAssertEqual(controller.presentationCount, 2)
 
@@ -177,9 +178,9 @@ final class ChapterPromptTests: XCTestCase {
         )
         controller.load(chapter: chapter)
         controller.seek(to: 4.9)
-        XCTAssertFalse(controller.advance(to: 5.1, enabled: false))
+        XCTAssertFalse(controller.advance(to: 5.1, segments: [], enabled: false))
         XCTAssertNil(controller.active)
-        XCTAssertFalse(controller.advance(to: 5.3, enabled: true), "passert mens av: vises ikke i ettertid")
+        XCTAssertFalse(controller.advance(to: 5.3, segments: [], enabled: true), "passert mens av: vises ikke i ettertid")
     }
 
     @MainActor
@@ -191,9 +192,64 @@ final class ChapterPromptTests: XCTestCase {
             prompts: [look("l", at: 0)]
         )
         controller.load(chapter: chapter)
-        _ = controller.advance(to: 0.25, enabled: true)
+        _ = controller.advance(to: 0.25, segments: [], enabled: true)
         XCTAssertNotNil(controller.active)
         controller.load(chapter: nil)
+        XCTAssertNil(controller.active)
+    }
+
+    // MARK: - Utsatt pause ved gjettespørsmål (eieren: «lyden stoppes brått»)
+
+    func testPauseTimingWaitsForTheCaptionSegmentInProgress() {
+        let segments = [CaptionSegment(startS: 58, endS: 61, text: "Setning som er i gang.")]
+        XCTAssertEqual(ChapterPromptPauseTiming.pauseTimeS(triggeredAtS: 60, segments: segments), 61)
+    }
+
+    func testPauseTimingCapsWaitAtMaxWaitS() {
+        let segments = [CaptionSegment(startS: 58, endS: 90, text: "Uvanlig lang setning.")]
+        let pauseAt = ChapterPromptPauseTiming.pauseTimeS(triggeredAtS: 60, segments: segments)
+        XCTAssertEqual(pauseAt, 60 + ChapterPromptPauseTiming.maxWaitS, accuracy: 0.0001)
+    }
+
+    func testPauseTimingFiresRightAwayWithoutACoveringSegment() {
+        XCTAssertEqual(ChapterPromptPauseTiming.pauseTimeS(triggeredAtS: 60, segments: []), 60)
+        let segments = [CaptionSegment(startS: 0, endS: 40, text: "Tidligere setning.")]
+        XCTAssertEqual(ChapterPromptPauseTiming.pauseTimeS(triggeredAtS: 60, segments: segments), 60)
+    }
+
+    @MainActor
+    func testGuessDefersPauseUntilCaptionSegmentEndsThenShowsTheCard() {
+        let controller = ChapterPromptController()
+        let chapter = GuideChapter(
+            no: 1, title: nil, scriptText: "Tekst.", imageUrl: nil, imageAlt: nil, version: 1,
+            editorialStatus: "draft", estimatedDurationS: 100, audio: nil, captions: nil,
+            prompts: [guess("g", at: 0.6)]
+        )
+        controller.load(chapter: chapter)
+        let segments = [CaptionSegment(startS: 58, endS: 62, text: "Setning som er i gang.")]
+        controller.seek(to: 59.9)
+        XCTAssertFalse(controller.advance(to: 60.2, segments: segments, enabled: true), "venter til setningen er ferdig")
+        XCTAssertNil(controller.active, "kortet vises ikke før pausen")
+        XCTAssertFalse(controller.advance(to: 61.9, segments: segments, enabled: true), "fortsatt i setningen")
+        XCTAssertNil(controller.active)
+        XCTAssertTrue(controller.advance(to: 62.1, segments: segments, enabled: true), "pauser når setningen er ferdig")
+        XCTAssertEqual(controller.active?.id, "g", "kortet vises samtidig som pausen")
+    }
+
+    @MainActor
+    func testSeekCancelsAPendingGuessPause() {
+        let controller = ChapterPromptController()
+        let chapter = GuideChapter(
+            no: 1, title: nil, scriptText: "Tekst.", imageUrl: nil, imageAlt: nil, version: 1,
+            editorialStatus: "draft", estimatedDurationS: 100, audio: nil, captions: nil,
+            prompts: [guess("g", at: 0.6)]
+        )
+        controller.load(chapter: chapter)
+        let segments = [CaptionSegment(startS: 58, endS: 61, text: "Setning.")]
+        controller.seek(to: 59.9)
+        XCTAssertFalse(controller.advance(to: 60.2, segments: segments, enabled: true), "venter til setningen er ferdig")
+        controller.seek(to: 40)
+        XCTAssertFalse(controller.advance(to: 65, segments: segments, enabled: true), "spoling kansellerer den utsatte pausen")
         XCTAssertNil(controller.active)
     }
 }

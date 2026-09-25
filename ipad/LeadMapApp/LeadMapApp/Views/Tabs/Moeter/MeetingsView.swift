@@ -2474,7 +2474,7 @@ struct MeetingDetailSidebar: View {
                             leadId: DemoModeManager.isActiveNonisolated
                                 ? nil : meeting.id.uuidString.lowercased())
                     } label: {
-                        Label("Tegn i Canvas", systemImage: "pencil.and.outline")
+                        Label("Tegn i Nexus", systemImage: "pencil.and.outline")
                     }
                 }
             }

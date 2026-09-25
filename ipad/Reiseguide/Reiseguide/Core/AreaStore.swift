@@ -40,6 +40,10 @@ final class AreaStore {
 
     private(set) var state: State = .idle
     private(set) var loadedLang: String?
+    /// Fortellerstemmen brukeren har valgt (AppSettings.narratorVoiceId);
+    /// nil = språkets standardstemme. Settes av AppEnvironment og stemmevalget.
+    @ObservationIgnored var narratorVoice: String?
+    @ObservationIgnored private var loadedVoice: String?
     /// Området som vises (eller lastes) nå.
     private(set) var slug: String
     private(set) var areas: [GuideArea] = []
@@ -48,6 +52,12 @@ final class AreaStore {
     @ObservationIgnored private let api: GuideAPIClient
     @ObservationIgnored private let cacheDirectory: URL
     @ObservationIgnored private var loadedSlug: String?
+    /// Når området sist ble hentet fra backend (ikke fra cache).
+    @ObservationIgnored private var loadedAt: Date?
+
+    /// Hvor gammelt innholdet kan være før det hentes på nytt når appen
+    /// kommer tilbake i forgrunnen.
+    nonisolated static let foregroundRefreshAge: TimeInterval = 5 * 60
 
     init(api: GuideAPIClient = GuideAPIClient(), areaSlug: String = AreaStore.demoAreaSlug, cacheDirectory: URL? = nil) {
         self.api = api
@@ -68,22 +78,33 @@ final class AreaStore {
 
     func poi(id: String) -> GuidePOI? { pois.first { $0.id == id } }
 
-    /// Henter området på nytt hvis språket eller området har endret seg, eller vi ikke har noe.
+    /// Henter området på nytt hvis språket, stemmen eller området har endret seg, eller vi ikke har noe.
     func loadIfNeeded(lang: String) async {
-        if loadedLang == lang, loadedSlug == slug, response != nil { return }
+        if loadedLang == lang, loadedSlug == slug, loadedVoice == narratorVoice, response != nil { return }
+        await load(lang: lang)
+    }
+
+    /// Når appen kommer tilbake i forgrunnen: henter området på nytt hvis det
+    /// er eldre enn `maxAge`, så ny lyd og nye steder kommer uten at appen må
+    /// startes på nytt. Innholdet som vises, byttes først når svaret er her.
+    func refreshIfStale(lang: String, maxAge: TimeInterval = AreaStore.foregroundRefreshAge, now: Date = .now) async {
+        guard response != nil, let loadedAt, now.timeIntervalSince(loadedAt) >= maxAge else { return }
         await load(lang: lang)
     }
 
     func load(lang: String) async {
         let requested = slug
+        let voice = narratorVoice
         if response == nil { state = .loading }
         do {
-            let fresh = try await api.area(idOrSlug: requested, lang: lang)
+            let fresh = try await api.area(idOrSlug: requested, lang: lang, voice: voice)
             // Brukeren byttet område mens vi ventet: ikke overskriv det nye.
             guard requested == slug else { return }
             state = .loaded(fresh, fromCache: false)
             loadedLang = lang
             loadedSlug = requested
+            loadedVoice = voice
+            loadedAt = .now
             writeCache(fresh, slug: requested, lang: lang)
         } catch {
             guard requested == slug else { return }
