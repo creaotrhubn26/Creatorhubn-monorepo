@@ -1,14 +1,19 @@
-Leadgrid 2.3
+Leadgrid 2.4
 
-• Logg inn med LinkedIn rett fra innloggingsskjermen. Ny bruker opprettes automatisk, og navn og profilbilde fylles inn.
-• Har du allerede en Leadgrid-konto på samme e-postadresse, kobles LinkedIn til den. Det du selv har skrevet i profilen, overskrives aldri.
-• Innlogging med e-post og Google fungerer som før.
-• MedSide kommer nå i gang med Discovery på det eksisterende prosjektet, der kjøringen tidligere stoppet før første kandidat.
-• Nytt MedSide-segment for fastlegekontor via Brønnøysundregistrene, uten at Fastlegeregisteret må settes opp først.
-• Automatisk pausede profiler forklarer hvorfor de er pauset. En pause du selv har valgt, står uten forklaring som før.
-• Profiler som mangler oppsett vises dempet med en kort merknad, og kan ikke lenger velges inn i en blindvei.
-• «Kjør alle aktive profiler» hopper over blokkerte profiler i stedet for å feile underveis.
-• Profilkort vokser med teksten, så lange profilnavn ikke kuttes.
-• Discovery holder seg stabil mens tilganger lastes.
+Nexus — nytt navn, og notatene dine kommer endelig fram
+• Canvas heter nå Nexus, og ligger under Arbeid i sidepanelet i stedet for bak «Flere funksjoner».
+• Notatene lastes igjen. De har blitt lagret hele tiden, men aldri hentet fram — derfor så Nexus tomt ut uansett hva du hadde skrevet.
+• Et notat viser nå hva som henger sammen med det: tidligere møter med samme kunde, møteloggen fra besøket, notater skrevet på samme adresse, og notater om samme selskap fra før leadet fantes. Du trenger ikke lenke noe selv.
+• Notatet viser også hvem du sannsynligvis sitter overfor — daglig leder og styret, hentet fra Foretaksregisteret.
 
-Å teste: logg inn med LinkedIn på innloggingsskjermen, og sjekk at navn og bilde kommer inn i profilen din.
+Kartet vet hvilken vei du ser
+• Ny lyskjegle rundt avataren din viser hvilken vei iPaden peker. Den virker når du står stille, så den hjelper når du skal finne riktig inngang.
+• Kjeglen blir bredere når kompasset er forstyrret, for eksempel av en bilholder. Bredden er kjeglens måte å si at den er usikker.
+• «Sentrer på meg» følger deg nå: ett trykk sentrerer, to følger posisjonen din, tre roterer kartet med retningen din.
+• Under navigasjon vises kjeglen til fots, der den sier noe ruta ikke vet. I bil er den borte — der peker kjøretøyet allerede riktig vei, og GPS-kursen er mer presis enn kompasset.
+
+Leads
+• Discovery henter nå regnskapstall fra Brønnøysundregistrene på nye leads, ikke bare selskapsinfo.
+• Salgsmanus i Leadbook fyller inn kundens egne tall, og hopper over steg som ikke passer selskapet.
+
+Å teste: åpne et notat i Nexus på en kunde du har besøkt før, og se om koblingene og personene stemmer. Gå deretter ut på kartet og sjekk at lyskjeglen peker dit du faktisk ser — både stillestående og mens du går.
