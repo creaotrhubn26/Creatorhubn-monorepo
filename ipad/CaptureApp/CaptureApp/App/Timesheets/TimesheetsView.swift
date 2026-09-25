@@ -257,8 +257,11 @@ struct TimesheetsView: View {
                     if let notice = model.notice { statusBanner(notice, color: CHTheme.success, icon: "checkmark.circle") }
 
                     projectPicker
-                    if let timer = model.activeTimer { activeTimerCard(timer) }
-                    else if let period = model.period { startCard(period) }
+                    if let timer = model.activeTimer {
+                        activeTimerCard(timer)
+                    } else if let period = model.period {
+                        startCard(period)
+                    }
                     summary
                     entriesCard
                 }
@@ -422,10 +425,24 @@ struct TimesheetsView: View {
     }
 
     private func syncIcon(_ state: TimesheetSyncState) -> String {
-        switch state { case .synced: return "checkmark.icloud.fill"; case .pending: return "arrow.triangle.2.circlepath"; case .failed: return "exclamationmark.icloud.fill" }
+        switch state {
+        case .synced:
+            return "checkmark.icloud.fill"
+        case .pending:
+            return "arrow.triangle.2.circlepath"
+        case .failed:
+            return "exclamationmark.icloud.fill"
+        }
     }
     private func syncColor(_ state: TimesheetSyncState) -> Color {
-        switch state { case .synced: return CHTheme.success; case .pending: return CHTheme.warning; case .failed: return CHTheme.danger }
+        switch state {
+        case .synced:
+            return CHTheme.success
+        case .pending:
+            return CHTheme.warning
+        case .failed:
+            return CHTheme.danger
+        }
     }
     private static func hours(_ minutes: Int) -> String { String(format: "%.1f t", Double(minutes) / 60) }
     private static func clock(_ seconds: Int) -> String { String(format: "%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60) }
@@ -448,10 +465,32 @@ private struct TimesheetStatusPill: View {
             .foregroundStyle(color).background(color.opacity(0.14), in: Capsule())
     }
     private var label: String {
-        switch status { case "draft": return "Utkast"; case "submitted": return "Sendt inn"; case "approved": return "Godkjent"; case "rejected": return "Sendt tilbake"; case "locked": return "Låst"; default: return status }
+        switch status {
+        case "draft":
+            return "Utkast"
+        case "submitted":
+            return "Sendt inn"
+        case "approved":
+            return "Godkjent"
+        case "rejected":
+            return "Sendt tilbake"
+        case "locked":
+            return "Låst"
+        default:
+            return status
+        }
     }
     private var color: Color {
-        switch status { case "approved", "locked": return CHTheme.success; case "rejected": return CHTheme.danger; case "submitted": return CHTheme.info; default: return CHTheme.warning }
+        switch status {
+        case "approved", "locked":
+            return CHTheme.success
+        case "rejected":
+            return CHTheme.danger
+        case "submitted":
+            return CHTheme.info
+        default:
+            return CHTheme.warning
+        }
     }
 }
 
