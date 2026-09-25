@@ -208,8 +208,11 @@ final class PlayerViewModel {
         startOrUpdateLiveActivity(isPlaying: true)
     }
 
-    func pause() {
-        engine.pause()
+    /// `fade`: gjettespørsmål (pakke 3-oppfølging) toner ekte lydfil kort ut i
+    /// stedet for å kutte den brått; opplesning pauses som vanlig (den er
+    /// allerede ved et ordskille når det kalles, se ChapterPromptPauseTiming).
+    func pause(fade: Bool = false) {
+        engine.pause(fade: fade)
         isPlaying = false
         stopTicker()
         startOrUpdateLiveActivity(isPlaying: false)
@@ -331,8 +334,8 @@ final class PlayerViewModel {
         let finished = engine.tick()
         positionS = min(engine.currentPositionS, durationS)
         updateLiveActivityDistanceIfNeeded()
-        if prompts.advance(to: positionS, enabled: settings.inNarrationPromptsEnabled) {
-            pause()
+        if prompts.advance(to: positionS, segments: captionSegments, enabled: settings.inNarrationPromptsEnabled) {
+            pause(fade: true)
             return
         }
         if finished { nextChapter() }
