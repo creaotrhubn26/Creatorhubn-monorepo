@@ -16,7 +16,11 @@ export const SENSEAID_ENV = {
    * fortelling og synstolking (tts-rt-v2) og ordtider/teksting.
    */
   sonioxApiKey: "SENSEAID_SONIOX_API_KEY",
-  /** Valgfri: Soniox-stemmenavn (standard i reiseguide-soniox-tts.ts). */
+  /**
+   * Valgfri: Soniox-stemmenavn for alle språk (standard i
+   * reiseguide-soniox-tts.ts). Et språk kan få egen stemme med
+   * SENSEAID_SONIOX_VOICE_<SPRÅK>, se sonioxVoiceEnvForLang.
+   */
   sonioxVoice: "SENSEAID_SONIOX_VOICE",
   /** Valgfri: Soniox-region (eu, jp, us); standard er US (Daniel 24.09.2026). */
   sonioxRegion: "SENSEAID_SONIOX_REGION",
@@ -46,6 +50,24 @@ export function requireSenseAidEnv(
   const value = read(env, name);
   if (!value) throw new MissingSenseAidEnvError(name);
   return value;
+}
+
+/**
+ * Navnet på stemmevariabelen for ett språk: nb → SENSEAID_SONIOX_VOICE_NB.
+ * Hver Soniox-stemme snakker alle språk, men med sin egen aksent, så norsk
+ * trenger en stemme med norsk aksent (Daniel 25.09.2026: «Adrian» låt dansk).
+ */
+export function sonioxVoiceEnvForLang(lang: string): string {
+  const base = lang.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  return `${SENSEAID_ENV.sonioxVoice}_${base.toUpperCase()}`;
+}
+
+/**
+ * Stemmen for ett språk: SENSEAID_SONIOX_VOICE_<SPRÅK>, ellers
+ * SENSEAID_SONIOX_VOICE, ellers `fallback`.
+ */
+export function sonioxVoiceForLang(lang: string, fallback: string, env: NodeJS.ProcessEnv = process.env): string {
+  return read(env, sonioxVoiceEnvForLang(lang)) ?? read(env, SENSEAID_ENV.sonioxVoice) ?? fallback;
 }
 
 /** Statusoversikt uten verdier, til admin-/helsesjekk og feilsøking. */

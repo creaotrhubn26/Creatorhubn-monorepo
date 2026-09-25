@@ -7,7 +7,10 @@
  * Nyttige flagg:
  *   --area all                alle områdene i databasen, ett etter ett
  *   --poi akershus-festning   bare én severdighet
- *   --voice <navn>            Soniox-stemme (ellers SENSEAID_SONIOX_VOICE / standard)
+ *   --voice <navn>            Soniox-stemme for alle språk (ellers
+ *                             SENSEAID_SONIOX_VOICE_<SPRÅK>, SENSEAID_SONIOX_VOICE
+ *                             eller standard). Byttes stemmen for et språk, lages
+ *                             bare det språket på nytt.
  *   --force                   lag ny lyd selv om versjonen allerede har lyd
  *   --dry-run                 vis hva som ville blitt laget, uten Soniox/S3/DB
  *   --out <mappe>             lyttetest: skriv mp3 + cues.json lokalt, ingen S3/DB
@@ -26,10 +29,11 @@ import { parseArgs } from "node:util";
 import pg from "pg";
 import { deleteCreatorHubObject, putCreatorHubObject } from "../server/creatorhub-object-storage.js";
 import { buildCaptionCues } from "../server/reiseguide-captions.js";
-import { SENSEAID_ENV, requireSenseAidEnv } from "../server/reiseguide-config.js";
+import { SENSEAID_ENV, requireSenseAidEnv, sonioxVoiceForLang } from "../server/reiseguide-config.js";
 import {
   createCreatorHubMediaStore,
   generateAreaAudio,
+  isAudioUpToDate,
   listScriptAudioJobs,
   type GenerateResult,
   type JobFilter,
@@ -104,7 +108,8 @@ async function main(): Promise<void> {
       void client.query("SET search_path TO public, pg_temp");
     });
   }
-  const voice = values.voice?.trim() || process.env[SENSEAID_ENV.sonioxVoice]?.trim() || SONIOX_TTS_DEFAULT_VOICE;
+  const cliVoice = values.voice?.trim();
+  const voice = (lang: string): string => cliVoice || sonioxVoiceForLang(lang, SONIOX_TTS_DEFAULT_VOICE);
 
   try {
     if (!values["dry-run"] && !values.out) await assertMediaStoreWritable();
@@ -127,14 +132,16 @@ async function main(): Promise<void> {
 type CliValues = { force: boolean; "dry-run": boolean; out?: string };
 
 /** Lager (eller viser) lyd for ett område; returnerer antall som feilet. */
-async function runArea(pool: pg.Pool, filter: JobFilter, values: CliValues, voice: string): Promise<number> {
+async function runArea(pool: pg.Pool, filter: JobFilter, values: CliValues, voice: (lang: string) => string): Promise<number> {
   if (values["dry-run"]) {
     const jobs = await listScriptAudioJobs(pool, filter);
     for (const job of jobs) {
-      const state = job.activeAudioVersion === job.version && !values.force ? "har lyd" : "ville laget lyd";
-      console.log(`– ${job.poiSlug} ${job.kind} #${job.chapterNo} (${job.lang}, v${job.version}): ${state}, ${job.text.length} tegn`);
+      const state = isAudioUpToDate(job, voice(job.lang)) && !values.force ? "har lyd" : "ville laget lyd";
+      console.log(
+        `– ${job.poiSlug} ${job.kind} #${job.chapterNo} (${job.lang}, v${job.version}, stemme «${voice(job.lang)}»): ${state}, ${job.text.length} tegn`,
+      );
     }
-    console.log(`${jobs.length} manus, stemme «${voice}».`);
+    console.log(`${jobs.length} manus.`);
     return 0;
   }
 
@@ -149,7 +156,7 @@ async function runArea(pool: pg.Pool, filter: JobFilter, values: CliValues, voic
     const jobs = await listScriptAudioJobs(pool, filter);
     for (const job of jobs) {
       const base = path.join(dir, `${job.poiSlug}-${job.kind}-${job.chapterNo}-${job.lang}`);
-      const synthesis = await tts.synthesize({ text: job.text, lang: job.lang, voice });
+      const synthesis = await tts.synthesize({ text: job.text, lang: job.lang, voice: voice(job.lang) });
       const cues = buildCaptionCues(job.text, synthesis.characters);
       writeFileSync(`${base}.mp3`, synthesis.audio);
       writeFileSync(`${base}.cues.json`, JSON.stringify(cues, null, 2));

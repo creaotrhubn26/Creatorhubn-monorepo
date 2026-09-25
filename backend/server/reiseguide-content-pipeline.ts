@@ -6,7 +6,9 @@
  * Kjøres av backend/scripts/reiseguide-generate-audio.ts. Ett manus
  * (guide_poi_scripts-rad) gir én aktiv guide_poi_audio-rad og én
  * guide_poi_captions-rad; eldre lyd for samme manus deaktiveres, aldri
- * slettes. Manus med aktiv lyd for samme versjon hoppes over uten --force.
+ * slettes. Manus med aktiv lyd for samme versjon og samme stemme hoppes
+ * over uten --force; byttes stemmen for et språk, lages bare det språket på
+ * nytt.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -31,6 +33,8 @@ export interface ScriptAudioJob {
   text: string;
   /** Versjonen den aktive lyden ble laget fra, eller null uten lyd. */
   activeAudioVersion: number | null;
+  /** Stemmen den aktive lyden ble laget med, eller null (ukjent/ingen lyd). */
+  activeAudioVoice?: string | null;
 }
 
 export type GenerateResult =
@@ -55,7 +59,7 @@ export async function listScriptAudioJobs(db: Pick<Pool, "query">, filter: JobFi
   const { rows } = await db.query(
     `SELECT s.id, s.lang, s.kind, s.chapter_no, s.version, s.script_text,
             p.slug AS poi_slug, a.slug AS area_slug,
-            act.script_version AS active_audio_version
+            act.script_version AS active_audio_version, act.voice_id AS active_audio_voice
        FROM guide_poi_scripts s
        JOIN guide_pois p ON p.id = s.poi_id
        JOIN guide_areas a ON a.id = p.area_id
@@ -77,6 +81,7 @@ export async function listScriptAudioJobs(db: Pick<Pool, "query">, filter: JobFi
     version: Number(r.version),
     text: String(r.script_text),
     activeAudioVersion: r.active_audio_version == null ? null : Number(r.active_audio_version),
+    activeAudioVoice: r.active_audio_voice == null ? null : String(r.active_audio_voice),
   }));
 }
 
@@ -84,18 +89,30 @@ export interface GenerateOptions {
   db: Db;
   tts: SpeechSynthesizer;
   store: MediaStore;
-  voice: string;
+  /** Én stemme for alle språk, eller en stemme per språk. */
+  voice: string | ((lang: string) => string);
   force?: boolean;
   dryRun?: boolean;
 }
 
+export function voiceForJob(job: Pick<ScriptAudioJob, "lang">, voice: GenerateOptions["voice"]): string {
+  return typeof voice === "function" ? voice(job.lang) : voice;
+}
+
+/** Aktiv lyd finnes for samme manusversjon og (når den er kjent) samme stemme. */
+export function isAudioUpToDate(job: ScriptAudioJob, voice: string): boolean {
+  if (job.activeAudioVersion !== job.version) return false;
+  return job.activeAudioVoice == null || job.activeAudioVoice === voice;
+}
+
 export async function generateScriptAudio(job: ScriptAudioJob, options: GenerateOptions): Promise<GenerateResult> {
-  if (!options.force && job.activeAudioVersion === job.version) {
+  const voice = voiceForJob(job, options.voice);
+  if (!options.force && isAudioUpToDate(job, voice)) {
     return { status: "skipped", job, reason: "up_to_date" };
   }
   if (options.dryRun) return { status: "skipped", job, reason: "dry_run" };
 
-  const synthesis = await options.tts.synthesize({ text: job.text, lang: job.lang, voice: options.voice });
+  const synthesis = await options.tts.synthesize({ text: job.text, lang: job.lang, voice });
   const cues: CaptionCue[] = buildCaptionCues(job.text, synthesis.characters);
   if (cues.length === 0) throw new Error("Ingen tekstingscues kunne bygges fra tidsstemplene.");
 

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MissingSenseAidEnvError, SENSEAID_ENV, requireSenseAidEnv, senseAidEnvStatus } from "./reiseguide-config.js";
+import {
+  MissingSenseAidEnvError,
+  SENSEAID_ENV,
+  requireSenseAidEnv,
+  senseAidEnvStatus,
+  sonioxVoiceEnvForLang,
+  sonioxVoiceForLang,
+} from "./reiseguide-config.js";
 
 describe("reiseguide-config", () => {
   it("bruker SenseAid-spesifikke variabelnavn", () => {
@@ -27,5 +34,17 @@ describe("reiseguide-config", () => {
       REISEGUIDE_MEDIA_URL_BASE: false,
     });
     expect(JSON.stringify(status)).not.toContain("hemmelig");
+  });
+
+  it("gir hvert språk sin egen stemmevariabel", () => {
+    expect(sonioxVoiceEnvForLang("nb")).toBe("SENSEAID_SONIOX_VOICE_NB");
+    expect(sonioxVoiceEnvForLang("da-DK")).toBe("SENSEAID_SONIOX_VOICE_DA");
+  });
+
+  it("velger språkstemme, så felles stemme, så standard", () => {
+    const env = { SENSEAID_SONIOX_VOICE_NB: " Nora ", SENSEAID_SONIOX_VOICE: "Adrian" };
+    expect(sonioxVoiceForLang("nb", "Standard", env)).toBe("Nora");
+    expect(sonioxVoiceForLang("en", "Standard", env)).toBe("Adrian");
+    expect(sonioxVoiceForLang("da", "Standard", {})).toBe("Standard");
   });
 });

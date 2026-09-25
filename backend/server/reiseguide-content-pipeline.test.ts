@@ -3,6 +3,7 @@ import {
   audioStorageKey,
   generateAreaAudio,
   generateScriptAudio,
+  isAudioUpToDate,
   listScriptAudioJobs,
   type MediaStore,
   type ScriptAudioJob,
@@ -119,6 +120,23 @@ describe("generateScriptAudio", () => {
     expect(connect).not.toHaveBeenCalled();
 
     expect(await generateScriptAudio(current, { db, tts, store, voice: "Adrian", force: true })).toMatchObject({ status: "generated" });
+  });
+
+  it("lager lyd på nytt når stemmen for språket er byttet", async () => {
+    const tts = fakeTts();
+    const { db } = fakeDb();
+    const sameVoice = { ...job, activeAudioVersion: job.version, activeAudioVoice: "Adrian" };
+    const voiceFor = (lang: string) => (lang === "nb" ? "Nora" : "Adrian");
+
+    expect(await generateScriptAudio(sameVoice, { db, tts, store: fakeStore(), voice: "Adrian" })).toMatchObject({ status: "skipped" });
+    expect(await generateScriptAudio(sameVoice, { db, tts, store: fakeStore(), voice: voiceFor })).toMatchObject({ status: "generated" });
+    expect(tts.calls).toEqual([{ text: job.text, lang: "nb", voice: "Nora" }]);
+  });
+
+  it("regner eldre lyd uten lagret stemme som oppdatert", () => {
+    expect(isAudioUpToDate({ ...job, activeAudioVersion: job.version, activeAudioVoice: null }, "Nora")).toBe(true);
+    expect(isAudioUpToDate({ ...job, activeAudioVersion: job.version, activeAudioVoice: "Adrian" }, "Nora")).toBe(false);
+    expect(isAudioUpToDate(job, "Adrian")).toBe(false);
   });
 
   it("rører verken Soniox, R2 eller DB ved tørrkjøring", async () => {
