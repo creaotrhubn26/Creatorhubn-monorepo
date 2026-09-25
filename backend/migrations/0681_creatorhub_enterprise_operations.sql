@@ -31,7 +31,7 @@ ON CONFLICT (organization_id) DO NOTHING;
 INSERT INTO enterprise_feature_permissions
   (organization_id, feature_id, permission_level, allowed_roles, created_by)
 SELECT entitlement.organization_id, feature.feature_id,
-       feature.permission_level, feature.allowed_roles, 'migration-0680'
+       feature.permission_level, feature.allowed_roles, 'migration-0681'
   FROM creatorhub_enterprise_entitlements entitlement
  CROSS JOIN (VALUES
    ('native-timesheets-approvals', 'custom', ARRAY['admin','member']::TEXT[]),
