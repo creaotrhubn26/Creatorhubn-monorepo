@@ -87,6 +87,11 @@ struct CanvasView: View {
     /// Transkripsjon på enheten. Hovedsporet: teksten lagres, lyden ikke.
     @State private var referatMotor = LiveTranscriptionEngine()
     @State private var referatStartet: Date?
+    /// §4: samtykke må være logget FØR mikrofonen starter i lyd-modus.
+    /// Hard gate, ikke advarsel — dokumentet er eksplisitt på det.
+    @State private var samtykkeArkAapent = false
+    /// ID-en på det loggede samtykket, lagret på opptaket så det kan spores.
+    @State private var sisteSamtykkeId: String?
     /// Hvilket lydobjekt spiller nå. Bare ett om gangen på en flate.
     @State private var aktivtLydObjekt: String?
     @State private var videoVelgerAapen = false
@@ -1410,6 +1415,22 @@ struct CanvasView: View {
                 await koblinger.last(notatId: id, projectId: prosjekt,
                                      api: appState.api)
             }
+        }
+        // §4: samtykke-kortet leses opp for kunden før mikrofonen starter.
+        .sheet(isPresented: $samtykkeArkAapent) {
+            RecordingConsentGateSheet(
+                onConfirmed: { samtykke, _, _, _ in
+                    sisteSamtykkeId = samtykke.id
+                    samtykkeArkAapent = false
+                    Task { await startReferat(medLyd: true) }
+                },
+                tekst: RecordingConsentGate.nexusLydText(),
+                versjon: RecordingConsentGate.nexusLydVersion,
+                lagringsforklaring:
+                    "Uten bekreftelse kan opptak ikke startes. Lydopptaket "
+                    + "slettes automatisk etter 90 dager. Teksten kan bli "
+                    + "liggende lenger hvis den brukes som læringseksempel, "
+                    + "og da anonymisert.")
         }
         .sheet(item: $nettsideSomVises) { url in
             NexusSafari(url: url).ignoresSafeArea()
@@ -3819,6 +3840,8 @@ struct CanvasView: View {
             if !kanLagreLyd { lydOpptaker.forkast() }
 
             let dokId = lyd != nil ? UUID().uuidString : nil
+            let samtykkeId = sisteSamtykkeId
+            sisteSamtykkeId = nil
             let navn = "Opptak \(Date().formatted(date: .omitted, time: .shortened))"
             objekter.append(CanvasObjekt(
                 type: CanvasObjektType.lyd.rawValue,
@@ -3827,7 +3850,8 @@ struct CanvasView: View {
                 dokId: dokId,
                 varighet: lyd?.varighet ?? varighet,
                 opptakStartet: lyd?.startet ?? startet,
-                referat: referat.isEmpty ? nil : referat))
+                referat: referat.isEmpty ? nil : referat,
+                samtykkeId: samtykkeId))
             objektModus = true
             markerUlagret()
             if let lyd, let dokId {
@@ -3836,15 +3860,25 @@ struct CanvasView: View {
             }
             return
         }
-        // Ikke i gang: start transkripsjonen.
+        // Ikke i gang.
         //
-        // Den krever ikke GDPR-nøkkelen: ingen rå lyd lagres, og
-        // tekstbaserte notater er allerede i drift (fase 1 i pakken).
+        // Lyd-modus krever samtykke per samtale (§4 punkt 3: «uten
+        // bekreftelse kan opptak ikke startes — hard gate, ikke advarsel»).
+        // Referat-modus gjør ikke: ingen rå lyd lagres, og tekstbaserte
+        // notater er allerede i drift som fase 1.
+        if kanLagreLyd {
+            samtykkeArkAapent = true
+            return
+        }
+        await startReferat()
+    }
+
+    /// Starter transkripsjonen, og lyden når samtykket er på plass.
+    private func startReferat(medLyd: Bool = false) async {
         referatMotor.tillatSkyfallback = false
         referatStartet = Date()
         referatMotor.start()
-        // Lydfilen tas bare opp når den faktisk får lov til å bli lagret.
-        if kanLagreLyd {
+        if medLyd {
             let ok = await lydOpptaker.start()
             if !ok { feilVedImport = "Mikrofonen er ikke tilgjengelig." }
         }

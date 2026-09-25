@@ -305,6 +305,13 @@ struct CanvasObjekt: Codable, Identifiable, Hashable, Sendable {
     /// Et referat-objekt UTEN `dokId` er et opptak som aldri ble lagret —
     /// bare hørt, skrevet ned og kastet.
     var referat: [Referatsegment]? = nil
+
+    /// Samtykket som ble logget før opptaket startet (§4).
+    ///
+    /// Bare satt i lyd-modus. Referat-modus lagrer ingen rå lyd og krever
+    /// derfor ikke samtykke per samtale — men et lydobjekt MED dokId og
+    /// UTEN samtykke-ID er et opptak som aldri skulle vært tatt.
+    var samtykkeId: String? = nil
 }
 
 /// Én ytring fra transkripsjonen, med tidspunkt.
