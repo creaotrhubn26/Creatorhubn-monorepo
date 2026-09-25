@@ -19,10 +19,10 @@ import UserNotifications
 
 @MainActor
 final class ArrivalNotificationService {
-    static let categoryId = "reiseguide.arrival"
-    static let playActionId = "reiseguide.arrival.play"
+    nonisolated static let categoryId = "reiseguide.arrival"
+    nonisolated static let playActionId = "reiseguide.arrival.play"
     /// Nøkkelen i varselets `userInfo` som peker til stedet «Spill av» skal starte.
-    static let poiIdUserInfoKey = "poiId"
+    nonisolated static let poiIdUserInfoKey = "poiId"
 
     private let center: UNUserNotificationCenter
 
@@ -34,7 +34,13 @@ final class ArrivalNotificationService {
     /// flyten (etter at brukeren har sagt ja til forklaringsarket), før
     /// `LocationService.requestAlwaysAuthorization()`.
     func requestAuthorization() async -> Bool {
-        (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        // Completion-varianten (som LeadMapApp/TerritoryMonitor): kalles
+        // synkront herfra, så `center` aldri må sendes ut av hovedaktøren.
+        await withCheckedContinuation { continuation in
+            center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                continuation.resume(returning: granted)
+            }
+        }
     }
 
     /// Registrerer «Spill av»-handlingen. Trygt å kalle flere ganger (f.eks.

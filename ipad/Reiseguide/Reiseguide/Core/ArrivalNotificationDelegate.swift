@@ -35,13 +35,13 @@ final class ArrivalNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
         let isPlayAction = response.actionIdentifier == ArrivalNotificationService.playActionId
             || response.actionIdentifier == UNNotificationDefaultActionIdentifier
         let poiId = response.notification.request.content.userInfo[ArrivalNotificationService.poiIdUserInfoKey] as? String
-        guard isPlayAction, let poiId else {
-            completionHandler()
-            return
-        }
+        // Kvitteres med en gang: completion-handleren er ikke Sendable og kan
+        // ikke tas med inn på hovedaktøren i Swift 6. Avspillingen starter
+        // rett etterpå på hovedaktøren.
+        completionHandler()
+        guard isPlayAction, let poiId else { return }
         Task { @MainActor in
             ReiseguideIntentBridge.shared.environment?.playFromNotification(poiId: poiId)
-            completionHandler()
         }
     }
 }

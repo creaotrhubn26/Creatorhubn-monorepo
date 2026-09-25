@@ -48,7 +48,7 @@ struct PlayNearestPOIIntent: AppIntent {
             ))
         }
 
-        guard let nearest = NearestUnlockedPOI.find(pois: env.store.pois, from: fix.coordinate, isLocked: env.isLocked) else {
+        guard let nearest = NearestUnlockedPOI.find(pois: env.store.pois, from: fix.coordinate, isLocked: { env.isLocked($0) }) else {
             return .result(dialog: dialog(
                 nb: "Fant ingen severdighet du har tilgang til i nærheten.",
                 en: "Couldn't find a nearby place you have access to."
