@@ -2782,7 +2782,10 @@ struct KartView: View {
                                               || navFollowSpeed > 0.5,
                                           // Rute-tangent − kamera-heading:
                                           // bilen peker alltid LANGS VEIEN.
-                                          screenCourse: navTangent.map { $0 - navCamHeading })
+                                          screenCourse: navTangent.map { $0 - navCamHeading },
+                                          konusGrader: navKonusGrader,
+                                          konusUsikkerhet: KartLocationManager.shared
+                                              .retning?.usikkerhet ?? -1)
                         } else {
                             MeMapPin(initials: appState.initials,
                                      profileImageURL: appState.profileImageURL,
@@ -4920,6 +4923,22 @@ struct KartView: View {
         let la = CLLocation(latitude: a.latitude, longitude: a.longitude)
         let lb = CLLocation(latitude: b.latitude, longitude: b.longitude)
         return la.distance(from: lb) / 1000
+    }
+
+    /// Lyskjeglen i nav-modus, i skjermgrader — eller `nil` når den ikke
+    /// ville sagt noe nytt.
+    ///
+    /// Regelen er kilden, ikke reisemåten. Kommer retningen fra GPS-kursen,
+    /// peker den per definisjon samme vei som figuren allerede gjør: en bil
+    /// som kjører, peker dit den kjører. Da er kjeglen bare ekstra lys på et
+    /// kart du styrer etter i 60 km/t.
+    ///
+    /// Kommer den fra kompasset, vet den noe ruta ikke vet — at du har snudd
+    /// deg. Det er nettopp det som skjer når du står i et kryss til fots, og
+    /// det er da kjeglen er verdt å tegne.
+    private var navKonusGrader: Double? {
+        guard let r = KartLocationManager.shared.retning, r.kilde == .kompass else { return nil }
+        return r.grader - navCamHeading
     }
 
     /// Hvor mye kartet selv er rotert akkurat nå.
@@ -7533,12 +7552,25 @@ fileprivate struct NavAvatarPuck: View {
     /// Kjøreretning i SKJERM-grader (kurs minus kamera-heading) — pilen
     /// peker dit du faktisk beveger deg, uansett kamera-modus.
     var screenCourse: Double?
+    /// Lyskjeglen i SKJERM-grader. `nil` når den ikke ville sagt noe nytt.
+    var konusGrader: Double?
+    /// Kompassets usikkerhet, som styrer hvor bred kjeglen blir.
+    var konusUsikkerhet: Double = -1
 
     private let purple = Color(red: 0.66, green: 0.32, blue: 0.99)
     private let purpleLight = Color(red: 0.75, green: 0.45, blue: 1.0)
 
     var body: some View {
         ZStack {
+            // Lyskjegle bakerst — hvilken vei du SER, mot figuren som viser
+            // hvilken vei du BEVEGER deg. Står du stille i et kryss under
+            // gange-navigasjon, er dette det eneste som fortsatt svarer.
+            if let konusGrader {
+                HeadingCone(skjermgrader: konusGrader,
+                            usikkerhet: konusUsikkerhet,
+                            farge: purpleLight)
+            }
+
             // Tett bakke-skygge RETT UNDER — grunner figuren på veien (ingen
             // stråle/sveve-effekt som får den til å se «flyvende» ut).
             Ellipse()
