@@ -407,7 +407,16 @@ function safeErrorMessage(error) {
     error && typeof error === "object" && "code" in error
       ? String(error.code || "")
       : "";
-  return code ? code + ": " + error.message : error.message;
+  const metadata = [];
+  for (const key of ["position", "schema", "table", "column", "constraint"]) {
+    const value =
+      error && typeof error === "object" && key in error
+        ? String(error[key] || "").trim()
+        : "";
+    if (value) metadata.push(key + "=" + value);
+  }
+  const suffix = metadata.length > 0 ? " [" + metadata.join(", ") + "]" : "";
+  return (code ? code + ": " : "") + error.message + suffix;
 }
 
 export function requireDatabaseUrl(value = process.env.DATABASE_URL) {
