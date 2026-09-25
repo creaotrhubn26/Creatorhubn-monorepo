@@ -314,17 +314,23 @@ export async function koblingerFor(
   //    du har notater på, er det den samme personen du skal snakke med to
   //    ganger — og han husker hva du sa forrige gang.
   //
-  //    Vi matcher på navn, ikke fødselsnummer, fordi BRREG ikke gir oss
-  //    fødselsnummer. To personer med samme navn blir derfor slått sammen.
-  //    Derfor er styrken lavere enn «samme kunde», og begrunnelsen sier
-  //    navnet, så selgeren kan se selv om det er samme menneske.
+  //    Identiteten avgjøres av et fingeravtrykk: BRREG oppgir fødselsdato
+  //    for rolleinnehavere, og navn pluss dato er entydig. Fingeravtrykket
+  //    er hashet, så vi kan sammenligne uten å lagre datoen.
+  //
+  //    Finnes fingeravtrykket på begge sider, ER det samme menneske, og
+  //    koblingen er like sterk som «samme kunde». Mangler det — eldre
+  //    berikelser, eller en rolle uten oppgitt dato — faller vi tilbake til
+  //    navnematching, som kan slå sammen to personer som deler navn. Da er
+  //    styrken lavere og begrunnelsen sier at det er navnet vi går på.
   if (notat.lead_id) {
     const r = await pool.query<{
       id: string; tittel: string; created_at: Date;
-      navn: string; selskap: string | null;
+      navn: string; selskap: string | null; bekreftet: boolean | null;
     }>(
       `WITH mine AS (
-         SELECT DISTINCT TRIM(k->>'name') AS navn
+         SELECT DISTINCT TRIM(k->>'name') AS navn,
+                NULLIF(TRIM(COALESCE(k->>'pid', '')), '') AS pid
            FROM crm_customers c,
                 LATERAL jsonb_array_elements(
                   COALESCE(c.enrichment_data->'contacts', '[]'::jsonb)) k
@@ -338,12 +344,19 @@ export async function koblingerFor(
           WHERE id = $1 AND organization_id = $2::uuid AND project_id = $3
        ),
        andre AS (
-         SELECT DISTINCT c.id AS lead_id, c.name AS selskap, m.navn
+         SELECT DISTINCT c.id AS lead_id, c.name AS selskap, m.navn,
+                -- Bekreftet når begge sider har samme fingeravtrykk.
+                (m.pid IS NOT NULL
+                 AND m.pid = NULLIF(TRIM(COALESCE(k->>'pid', '')), ''))
+                  AS bekreftet
            FROM crm_customers c
            JOIN LATERAL jsonb_array_elements(
                   COALESCE(c.enrichment_data->'contacts', '[]'::jsonb)) k
                 ON TRUE
-           JOIN mine m ON m.navn = TRIM(k->>'name')
+           JOIN mine m
+             ON (m.pid IS NOT NULL
+                 AND m.pid = NULLIF(TRIM(COALESCE(k->>'pid', '')), ''))
+             OR (m.pid IS NULL AND m.navn = TRIM(k->>'name'))
            CROSS JOIN meg
           WHERE c.organization_id = $2::uuid AND c.project_id = $3
             AND c.id <> $1
@@ -357,7 +370,7 @@ export async function koblingerFor(
                  OR c.enrichment_org_nr <> meg.enrichment_org_nr)
             AND LOWER(TRIM(c.name)) <> meg.navnenokkel
        )
-       SELECT n.id::text, n.tittel, n.created_at, a.navn, a.selskap
+       SELECT n.id::text, n.tittel, n.created_at, a.navn, a.selskap, a.bekreftet
          FROM leadgrid_canvas_notater n
          JOIN andre a ON a.lead_id = n.lead_id
         WHERE n.id <> $4::uuid AND n.organization_id = $2
@@ -367,13 +380,20 @@ export async function koblingerFor(
       [notat.lead_id, input.organizationId, input.projectId, notat.id, grense],
     );
     for (const rad of r.rows) {
+      const bekreftet = rad.bekreftet === true;
       ut.push({
         type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
         kilde: "person",
-        begrunnelse: rad.selskap
-          ? `${rad.navn} sitter også i ${rad.selskap}`
-          : `Samme person: ${rad.navn}`,
-        tidspunkt: dato(rad.created_at), styrke: 70,
+        begrunnelse: bekreftet
+          ? (rad.selskap
+              ? `${rad.navn} sitter også i ${rad.selskap}`
+              : `Samme person: ${rad.navn}`)
+          // Sier at vi går på navnet, så selgeren vet at han må se etter.
+          : (rad.selskap
+              ? `Samme navn som i ${rad.selskap}: ${rad.navn}`
+              : `Samme navn: ${rad.navn}`),
+        tidspunkt: dato(rad.created_at),
+        styrke: bekreftet ? 100 : 55,
       });
     }
   }
