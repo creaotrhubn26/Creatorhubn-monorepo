@@ -1375,7 +1375,7 @@ struct FullInsiktReportSheet: View {
 
     // MARK: - PDF export (native ImageRenderer → PDF-context, WWDC22-mønster)
     //
-    // «Åpne i Canvas» (ikke bygget ennå — Daniel ba om at veien holdes åpen):
+    // «Åpne i Nexus» (ikke bygget ennå — Daniel ba om at veien holdes åpen):
     // `exportedPDFURL` sin Data kan sendes rett til `CanvasView.importerPDFData`
     // (nå internal med vilje). Mangler: navigere til `Destination.canvas`
     // (entitlement-gatet, egen NavigationStack et hakk unna Leadbook) FØR

@@ -4683,7 +4683,7 @@ struct LeadbookAIUsageSheet: View {
         switch feature {
         case "mote_brief": return "Møtebrief"
         case "mote_etterarbeid": return "Møte-etterarbeid"
-        case "canvas_analyse": return "Canvas-analyse (håndskrift)"
+        case "canvas_analyse": return "Nexus-analyse (håndskrift)"
         case "anbud_score": return "Anbud «passer oss»-score"
         case "anbud_lesehjelp": return "Anbud-lesehjelp"
         case "anbud_tilbud": return "Tilbuds-assistent"
