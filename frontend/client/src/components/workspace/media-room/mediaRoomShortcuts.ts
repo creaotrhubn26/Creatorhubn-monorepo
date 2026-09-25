@@ -62,7 +62,20 @@ export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return true;
   if (target.isContentEditable) return true;
-  return Boolean(target.closest('[contenteditable="true"], [role="textbox"], [role="combobox"]'));
+  return Boolean(target.closest([
+    '[contenteditable="true"]',
+    '[role="textbox"]',
+    '[role="combobox"]',
+    'button',
+    'a[href]',
+    '[role="button"]',
+    '[role="tab"]',
+    '[role="menuitem"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[role="switch"]',
+    '[role="slider"]',
+  ].join(', ')));
 }
 
 export function resolveMediaRoomShortcut(event: KeyboardEvent): MediaRoomShortcutId | null {
