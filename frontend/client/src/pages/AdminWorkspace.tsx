@@ -105,6 +105,8 @@ import ContentCalendarTab from './admin-room/ContentCalendarTab';
 import { SakerTab } from './admin-workspace/SakerTab';
 import { LeadgridAppWaitlistTab } from './admin-workspace/LeadgridAppWaitlistTab';
 import { FundingDeadlineRadar } from './admin-workspace/FundingDeadlineRadar';
+import { TasksTab } from './admin-workspace/TasksTab';
+import { CalendarTab } from './admin-workspace/CalendarTab';
 
 import {
   activityLogApi,
@@ -1697,12 +1699,7 @@ function resolveContent(
         title: 'Oppgaver',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Oppgaver'],
         render: () => (
-          <EmptyState
-            title="Oppgaver"
-            description="Workspace-bred oppgave-feed er ikke implementert ennå. CRM-task-inbox finnes per kunde."
-            icon={<TaskAltOutlinedIcon />}
-            todo="Aggregér crm_tasks + role_room_tasks + leadgrid_tasks i én feed."
-          />
+          <TasksTab parentProduct={product} />
         ),
       };
     case 'calendar':
@@ -1710,12 +1707,7 @@ function resolveContent(
         title: 'Kalender',
         breadcrumbs: ['Creatorhub AS', 'Workspace', 'Kalender'],
         render: () => (
-          <EmptyState
-            title="Kalender"
-            description="Workspace-bred kalender (møter + frister + opptaksdager) er ikke implementert ennå. Bruk Google Calendar via integrasjons-fane i mellomtiden."
-            icon={<EventOutlinedIcon />}
-            todo="Aggregér role_room_meetings + funding_apps.deadline + showcase deadline-feed."
-          />
+          <CalendarTab parentProduct={product} />
         ),
       };
     case 'files':
