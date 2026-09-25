@@ -90,6 +90,18 @@ struct ExploreView: View {
                                 .padding(.top, AppSpacing.m)
                         }
 
+                        // Tur-modus (pakke 2, item 3): «Start tur»/«Fortsett
+                        // turen» — bare når ruta har mer enn ett sted.
+                        if tourProgress.total > 1, !tourProgress.isComplete {
+                            TourModeButton(
+                                isActive: env.tourMode.isActive,
+                                action: {
+                                    if env.tourMode.isActive { env.resumeTour() } else { env.startTour() }
+                                }
+                            )
+                            .padding(.top, AppSpacing.m)
+                        }
+
                         SearchField(placeholder: "explore.searchPlaceholder", text: $searchText) {
                             path.append(Route.map)
                         }

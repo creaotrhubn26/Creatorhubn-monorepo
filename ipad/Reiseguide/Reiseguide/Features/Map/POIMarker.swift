@@ -15,6 +15,10 @@ struct POIMarker: View {
     var status = MapMarkerStatus(isVisited: false, isNextStop: false)
     /// UI-språket for «besøkt»/«neste stopp» (kan avvike fra fortellingens).
     var uiLanguage = "nb"
+    /// Gangtid (pakke 2, item 4): vist som liten pill under den fremhevede
+    /// markøren (plass er for trang på de vanlige 56 pt-markørene); sagt i
+    /// accessibilityLabel for alle markører uavhengig av fremhevet.
+    var eta: WalkingETA?
     let action: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -51,6 +55,9 @@ struct POIMarker: View {
                     .font(.system(size: 12))
                     .foregroundStyle(AppColor.accent)
                     .rotationEffect(.degrees(180))
+                if isHighlighted, let eta {
+                    etaPill(eta)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -84,6 +91,20 @@ struct POIMarker: View {
             .accessibilityHidden(true)
     }
 
+    /// Liten «6 min»-pill under den fremhevede markøren (pakke 2, item 4).
+    /// Kun tallet — «å gå»/«anslag» ligger i accessibilityLabel i stedet, så
+    /// den lille pillen ikke må klemme inn en hel setning.
+    private func etaPill(_ eta: WalkingETA) -> some View {
+        Text(L10n.shortDuration(seconds: Double(eta.minutes * 60), locale: locale))
+            .font(AppFont.meta)
+            .foregroundStyle(AppColor.textPrimary)
+            .padding(.horizontal, AppSpacing.xs)
+            .padding(.vertical, 2)
+            .background(AppColor.bgElevated, in: Capsule())
+            .overlay(Capsule().strokeBorder(AppColor.accent.opacity(0.6), lineWidth: 1))
+            .accessibilityHidden(true)
+    }
+
     private func startPulseIfNeeded() {
         guard isHighlighted, !reduceMotion else {
             pulse = false
@@ -96,10 +117,17 @@ struct POIMarker: View {
     }
 
     private var markerLabel: String {
-        status.accessibilityLabel(
+        let base = status.accessibilityLabel(
             title: poi.title,
             distanceText: distanceM.map { L10n.distance(meters: $0, locale: locale) },
             localize: { L10n.string($0, lang: uiLanguage) }
         )
+        guard let eta else { return base }
+        let etaText = WalkingETAText.spoken(
+            eta,
+            localize: { L10n.string($0, lang: uiLanguage) },
+            formatMinutesSpoken: { L10n.spokenDuration(seconds: Double($0 * 60), locale: locale) }
+        )
+        return base + ", " + etaText
     }
 }

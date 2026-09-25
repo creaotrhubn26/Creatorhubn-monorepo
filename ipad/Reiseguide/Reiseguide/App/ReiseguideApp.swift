@@ -6,11 +6,26 @@
 // til mørkt tema, og UI-språket følger språkvelgeren.
 
 import SwiftUI
+import UserNotifications
 
 @main
 struct ReiseguideApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var environment = AppEnvironment()
+    @State private var environment: AppEnvironment
+
+    // AppEnvironment lages i init, ikke som en ren @State-standardverdi, for
+    // å garantere at ReiseguideIntentBridge (pakke 2, item 6) er registrert
+    // FØR et App Intent med `openAppWhenRun: true` kan kjøre `perform()` —
+    // samme rekkefølge-garanti som AppStateBridge i LeadMapApp.
+    init() {
+        let env = AppEnvironment()
+        self._environment = State(wrappedValue: env)
+        MainActor.assumeIsolated {
+            ReiseguideIntentBridge.shared.register(env)
+            // Bakgrunnsvarsel (pakke 2, item 2): «Spill av»-handlingen.
+            UNUserNotificationCenter.current().delegate = ArrivalNotificationDelegate.shared
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -33,6 +48,12 @@ struct ReiseguideApp: App {
                     // Besøk som ikke kom fram (uten nett) sendes når appen er i forgrunnen igjen.
                     if phase == .active {
                         Task { await environment.visitSync.flush() }
+                        // Ny lyd og nye steder uten å starte appen på nytt.
+                        Task { await environment.store.refreshIfStale(lang: environment.settings.guideLanguage) }
+                    } else {
+                        // «Fortsett der du slapp» (item 3): appen kan bli drept i
+                        // bakgrunnen uten en eksplisitt pause eller lukking av spilleren.
+                        environment.player.persistPlaybackPositionForBackground()
                     }
                 }
         }
@@ -53,6 +74,9 @@ struct RootTabView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var explorePath = NavigationPath()
     @State private var selectedTab: AppTab = .explore
+    /// «Færre trykk til lyd» (item 5): framme-kortets «Spill av» respekterer
+    /// låsen akkurat som detaljsiden, i stedet for å starte avspilling direkte.
+    @State private var lockedArrivalPoi: GuidePOI?
 
     init() {
         // Tab bar: bgBase med 0,5 pt topplinje i border (5.9).
@@ -104,6 +128,19 @@ struct RootTabView: View {
         .fullScreenCover(isPresented: Bindable(env.player).isPresented) {
             PlayerView()
         }
+        // Låst sted i framme-kortet (item 5): paywall i stedet for å starte
+        // avspilling direkte, akkurat som detaljsiden.
+        .sheet(item: $lockedArrivalPoi) { poi in
+            MockPaywallSheet(areaId: poi.areaId)
+        }
+        // «Gå til neste stopp» (avspiller-redesignet, punkt 2): spilleren er
+        // allerede lukket av `env.openVeiviser(to:)`; bare naviger hit.
+        .onChange(of: env.pendingVeiviserTarget) { _, target in
+            guard let target else { return }
+            env.pendingVeiviserTarget = nil
+            selectedTab = .explore
+            explorePath.append(Route.veiviser(target))
+        }
         // «Du er framme» (pakke 1, punkt 1): ren logikk i
         // Core/ProximityMonitor.swift og Core/ArrivalCoordinator.swift, bare
         // en liten hook her som driver den fra posisjonsoppdateringer.
@@ -112,7 +149,7 @@ struct RootTabView: View {
                 ArrivalCardView(
                     card: card,
                     locale: env.settings.locale,
-                    onPlay: { env.arrival.playCardPoi() },
+                    onPlay: { playArrivalCardPoi(card.poi) },
                     onDismiss: { env.arrival.dismissCard() }
                 )
                 .padding(.bottom, env.player.hasContent && !env.player.isPresented ? 64 : AppSpacing.s)
@@ -121,6 +158,7 @@ struct RootTabView: View {
         .onChange(of: env.location.fix) { _, _ in
             env.reconcileArea()
             env.evaluateArrival()
+            env.updateArrivalRegions()
         }
         // Nytt område: stedene i Utforsk-stacken hører til det gamle området.
         .onChange(of: env.store.slug) { _, _ in explorePath = NavigationPath() }
@@ -138,7 +176,10 @@ struct RootTabView: View {
             newValue != nil ? AppHaptics.feedback(.impact(weight: .heavy), enabled: env.settings.hapticsEnabled) : nil
         }
         // Turprogresjon (pakke 1, punkt 3): feiringen når siste sted er fullført.
-        .onChange(of: env.visits.entries) { _, _ in env.evaluateTourProgress() }
+        .onChange(of: env.visits.entries) { _, _ in
+            env.evaluateTourProgress()
+            env.evaluateTourMode()
+        }
         .onChange(of: env.tourProgress.celebration) { _, newValue in
             guard newValue != nil else { return }
             let message = L10n.string("tour.celebration.title", lang: env.settings.uiLanguage)
@@ -160,5 +201,15 @@ struct RootTabView: View {
         env.pendingPoi = nil
         selectedTab = .explore
         explorePath = NavigationPath([Route.poi(poi.id)])
+    }
+
+    /// «Spill av»/«Bytt til …» på framme-kortet (item 5): respekter låsen
+    /// akkurat som detaljsiden, i stedet for å starte avspilling direkte.
+    private func playArrivalCardPoi(_ poi: GuidePOI) {
+        if env.isLocked(poi) {
+            lockedArrivalPoi = poi
+        } else {
+            env.arrival.playCardPoi()
+        }
     }
 }

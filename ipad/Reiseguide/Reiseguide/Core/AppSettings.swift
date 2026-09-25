@@ -49,6 +49,9 @@ final class AppSettings {
         static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
         static let mapShowsList = "reiseguide.mapShowsList"
         static let selectedAreaSlug = "reiseguide.selectedAreaSlug"
+        static let activeTourAreaSlug = "reiseguide.activeTourAreaSlug"
+        static let tourModeAutoPlayOnArrival = "reiseguide.tourModeAutoPlayOnArrival"
+        static let arrivalNotificationsEnabled = "reiseguide.arrivalNotificationsEnabled"
     }
 
     private let defaults: UserDefaults
@@ -122,6 +125,33 @@ final class AppSettings {
         }
     }
 
+    /// Tur-modus (pakke 2, item 3): området en aktiv tur gjelder, så
+    /// «Fortsett turen» overlever at appen dør i bakgrunnen. Nil = ingen
+    /// aktiv tur (TourModeController.isActive).
+    var activeTourAreaSlug: String? {
+        didSet {
+            if let activeTourAreaSlug {
+                defaults.set(activeTourAreaSlug, forKey: Key.activeTourAreaSlug)
+            } else {
+                defaults.removeObject(forKey: Key.activeTourAreaSlug)
+            }
+        }
+    }
+
+    /// «Spill av automatisk ved ankomst under en tur» — av som standard,
+    /// egen bryter fra `autoStartOnArrival` fordi den bare gjelder når
+    /// brukeren aktivt har startet en tur (mer forventet automatikk der).
+    var tourModeAutoPlayOnArrival: Bool {
+        didSet { defaults.set(tourModeAutoPlayOnArrival, forKey: Key.tourModeAutoPlayOnArrival) }
+    }
+
+    /// Bakgrunnsvarsel ved ankomst (pakke 2, item 2) — av som standard,
+    /// krever eksplisitt samtykke før «Alltid»-posisjon bes om (to-stegs
+    /// samtykke, se Features/Settings/ArrivalNotificationsSettingsSection.swift).
+    var arrivalNotificationsEnabled: Bool {
+        didSet { defaults.set(arrivalNotificationsEnabled, forKey: Key.arrivalNotificationsEnabled) }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -142,6 +172,9 @@ final class AppSettings {
         inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         mapShowsList = defaults.object(forKey: Key.mapShowsList) as? Bool
         selectedAreaSlug = defaults.string(forKey: Key.selectedAreaSlug).flatMap { $0.isEmpty ? nil : $0 }
+        activeTourAreaSlug = defaults.string(forKey: Key.activeTourAreaSlug).flatMap { $0.isEmpty ? nil : $0 }
+        tourModeAutoPlayOnArrival = defaults.bool(forKey: Key.tourModeAutoPlayOnArrival)
+        arrivalNotificationsEnabled = defaults.bool(forKey: Key.arrivalNotificationsEnabled)
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {
