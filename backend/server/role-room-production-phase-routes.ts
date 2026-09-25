@@ -219,13 +219,24 @@ export function setupRoleRoomProductionPhaseRoutes(
     if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
 
     try {
+      // Egen interesse hentes i samme spørring: uten den måtte flaten gjette,
+      // og en knapp som ikke vet om du alt har trykket er en knapp folk trykker
+      // to ganger.
+      const talentId = await egetTalentId(req);
       const r = await pool.query(
-        `SELECT id, name, description, project_type, genre, phase, phase_changed_at, announced_at
-           FROM casting_projects
-          WHERE announced_at IS NOT NULL
-            AND phase IN ('pre_produksjon', 'opptak')
-          ORDER BY phase_changed_at DESC NULLS LAST, announced_at DESC
+        `SELECT p.id, p.name, p.description, p.project_type, p.genre, p.phase,
+                p.phase_changed_at, p.announced_at,
+                i.created_at AS interesse_meldt, i.melding AS interesse_melding,
+                (SELECT count(*)::int FROM production_interests x
+                  WHERE x.project_id = p.id AND x.withdrawn_at IS NULL) AS interesserte
+           FROM casting_projects p
+           LEFT JOIN production_interests i
+                  ON i.project_id = p.id AND i.talent_id = $1 AND i.withdrawn_at IS NULL
+          WHERE p.announced_at IS NOT NULL
+            AND p.phase IN ('pre_produksjon', 'opptak')
+          ORDER BY p.phase_changed_at DESC NULLS LAST, p.announced_at DESC
           LIMIT 100`,
+        [talentId],
       );
       return res.json({
         produksjoner: r.rows.map((rad) => ({
@@ -254,6 +265,90 @@ export function setupRoleRoomProductionPhaseRoutes(
     } catch (err) {
       console.error("[produksjonsvarsel GET] failed", err);
       return res.status(500).json({ error: "Klarte ikke å hente varselvalget" });
+    }
+  });
+
+  // ── POST/DELETE /produksjoner/:projectId/interesse ──────────────────
+  //
+  // Veien videre fra varselet. Uten denne fikk skuespilleren beskjed om at noe
+  // skjer, og kunne ikke gjøre noe med det.
+  app.post("/api/role-room/produksjoner/:projectId/interesse", async (req, res) => {
+    const talentId = await egetTalentId(req);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+    const { projectId } = req.params;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const melding = typeof body.melding === "string" ? body.melding.trim().slice(0, 1000) || null : null;
+
+    try {
+      // Bare annonserte produksjoner. En uannonsert produksjon skal ikke kunne
+      // bekreftes ved å melde interesse på en gjettet id.
+      const prosjekt = await pool.query(
+        `SELECT id FROM casting_projects
+          WHERE id = $1 AND announced_at IS NOT NULL AND phase IN ('pre_produksjon', 'opptak')
+          LIMIT 1`,
+        [projectId],
+      );
+      if (prosjekt.rowCount === 0) return res.status(404).json({ error: "Produksjon ikke funnet" });
+
+      // Melder du deg på nytt etter å ha trukket deg, skal raden gjenbrukes —
+      // produsenten trenger ikke to rader for samme person.
+      const r = await pool.query(
+        `INSERT INTO production_interests (project_id, talent_id, melding)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (project_id, talent_id)
+         DO UPDATE SET melding = EXCLUDED.melding, withdrawn_at = NULL, created_at = NOW()
+         RETURNING created_at, melding`,
+        [projectId, talentId, melding],
+      );
+      return res.status(201).json({ interesse: r.rows[0] });
+    } catch (err) {
+      console.error("[produksjon interesse POST] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å melde interesse" });
+    }
+  });
+
+  app.delete("/api/role-room/produksjoner/:projectId/interesse", async (req, res) => {
+    const talentId = await egetTalentId(req);
+    if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+    try {
+      // Raden blir stående med withdrawn_at: produsenten skal se at noen meldte
+      // seg og ombestemte seg, ikke at den bare forsvant.
+      await pool.query(
+        `UPDATE production_interests SET withdrawn_at = NOW()
+          WHERE project_id = $1 AND talent_id = $2 AND withdrawn_at IS NULL`,
+        [req.params.projectId, talentId],
+      );
+      return res.json({ trukket: true });
+    } catch (err) {
+      console.error("[produksjon interesse DELETE] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å trekke interessen" });
+    }
+  });
+
+  // ── GET /projects/:projectId/interesse — produsentens side ──────────
+  app.get("/api/role-room/projects/:projectId/interesse", async (req, res) => {
+    const { projectId } = req.params;
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+    if (!(await userCanAccessCastingProject(pool, projectId, session.userId))) {
+      return res.status(404).json({ error: "Prosjekt ikke funnet" });
+    }
+
+    try {
+      const r = await pool.query(
+        `SELECT i.id, i.melding, i.created_at, i.withdrawn_at,
+                t.id AS talent_id, t.display_name, t.city, t.headshot_url,
+                t.playing_age_min, t.playing_age_max, t.showreel_url
+           FROM production_interests i
+           JOIN talents t ON t.id = i.talent_id
+          WHERE i.project_id = $1
+          ORDER BY i.withdrawn_at IS NOT NULL, i.created_at DESC`,
+        [projectId],
+      );
+      return res.json({ interesserte: r.rows });
+    } catch (err) {
+      console.error("[produksjon interesse GET] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente de interesserte" });
     }
   });
 
