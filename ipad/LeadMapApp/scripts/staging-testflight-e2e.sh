@@ -1392,6 +1392,48 @@ if [[ "$run_simulator_e2e" == "1" ]]; then
           ([.children[]? | select(.nodeType? == "Failure Message") | .name] | join("\n"))
         ' >&2 || true
         echo "STAGING_E2E_SIMULATOR_FAILURES_END" >&2
+
+        # Twelve consecutive red runs were debugged by guesswork because the
+        # evidence died with the runner: no xcresult, no crash report, no
+        # simulator log was ever kept. Three fixes in a row treated the wrong
+        # layer. Collect what a person would actually need before exiting.
+        diagnostics_dir="$derived_data/diagnostics"
+        mkdir -p "$diagnostics_dir"
+        echo "$test_summary" > "$diagnostics_dir/${test_index}-${test_name}-summary.json"
+
+        # Did the app crash, or did it merely never render? These two look
+        # identical from the test's side and need opposite fixes.
+        simulator_crashes="$HOME/Library/Developer/CoreSimulator/Devices/$simulator_udid/data/Library/Logs/CrashReporter"
+        if [[ -d "$simulator_crashes" ]]; then
+          find "$simulator_crashes" -name '*LeadMapApp*' -maxdepth 3 \
+            -exec cp {} "$diagnostics_dir/" \; 2>/dev/null || true
+        fi
+        find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 \
+          \( -name '*LeadMapApp*' -o -name '*XCTRunner*' \) -mmin -30 \
+          -exec cp {} "$diagnostics_dir/" \; 2>/dev/null || true
+        crash_count="$(find "$diagnostics_dir" -name '*.ips' -o -name '*.crash' 2>/dev/null | wc -l | tr -d ' ')"
+        echo "STAGING_E2E_SIMULATOR_CRASH_REPORTS=$crash_count" >&2
+
+        # The app's own log lines say how far startup got. Scoped to the two
+        # processes involved, so this stays small enough to upload.
+        xcrun simctl spawn "$simulator_udid" log show \
+          --predicate 'process == "LeadMapApp" OR process == "XCTRunner"' \
+          --last 15m --style compact \
+          > "$diagnostics_dir/${test_index}-${test_name}-app.log" 2>/dev/null || true
+
+        # Simulator health at the moment of failure: was the device even booted,
+        # and was anything else running on it?
+        {
+          echo "== simctl list devices (probe device) =="
+          xcrun simctl list devices | grep -F "$simulator_udid" || true
+          echo "== booted devices =="
+          xcrun simctl list devices booted || true
+          echo "== runner load =="
+          uptime || true
+          df -h / || true
+        } > "$diagnostics_dir/${test_index}-${test_name}-host.txt" 2>&1 || true
+
+        echo "STAGING_E2E_SIMULATOR_DIAGNOSTICS=$diagnostics_dir" >&2
         exit "$simulator_test_status"
       fi
       jq -e '
