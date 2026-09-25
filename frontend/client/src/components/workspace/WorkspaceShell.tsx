@@ -53,6 +53,7 @@ import HexagonOutlined from '@mui/icons-material/HexagonOutlined';
 import Add from '@mui/icons-material/Add';
 import WorkOutline from '@mui/icons-material/WorkOutline';
 import EventAvailable from '@mui/icons-material/EventAvailable';
+import AccessTime from '@mui/icons-material/AccessTime';
 import { ws, workspaceDarkTheme, WS_NAV, type WsNavItem } from './workspaceTheme';
 import { useWsLocale, makeT } from './wsLocale';
 
@@ -83,6 +84,7 @@ const ICONS: Record<string, React.ElementType> = {
   CheckCircleOutline, Group, Groups2, ChatBubbleOutline, PhotoCamera, Videocam, Movie, GraphicEq,
   Visibility, EventNote, Album, LibraryMusic, School, MoveToInbox, Forum, Inventory2,
   WorkOutline, EventAvailable,
+  AccessTime,
 };
 
 const GROUP_KEY: Record<string, string> = {
@@ -126,6 +128,7 @@ interface ShellProps {
   badges?: Record<string, number>; // dynamiske nav-badges (key → antall), overstyrer item.badge
   onlineNow?: Record<string, boolean>; // Smart Room-key → minst én aktiv bruker i rommet
   readOnly?: boolean;
+  showMediaAccessBanner?: boolean;
   children: React.ReactNode;
 }
 
@@ -227,7 +230,7 @@ function useWorkspaceDesign(): { copy: Record<string, string> } {
   return { copy };
 }
 
-const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onlineNow, onNewProject, onLogout, headerActions, adminAction, onClientView, onInvite, navItems = WS_NAV, badges, readOnly = false, children }) => {
+const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab, online, onlineNow, onNewProject, onLogout, headerActions, adminAction, onClientView, onInvite, navItems = WS_NAV, badges, readOnly = false, showMediaAccessBanner = true, children }) => {
   const groups: Array<'hoved' | 'rom' | 'klient'> = ['hoved', 'rom', 'klient'];
   const baseT = makeT(SHELL_T, useWsLocale());
   const { copy: copyOv } = useWorkspaceDesign(); // CreatorHub Design: accent (:root) + copy
@@ -425,7 +428,7 @@ const WorkspaceShell: React.FC<ShellProps> = ({ project, user, activeTab, onTab,
           {/* Aktivt tab */}
           <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
             <GoogleReauthBanner />
-            <CreatorHubMediaAccessBanner projectId={project.id} />
+            {showMediaAccessBanner !== false && <CreatorHubMediaAccessBanner projectId={project.id} />}
             {children}
           </Box>
         </Box>

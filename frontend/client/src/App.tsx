@@ -131,7 +131,6 @@ import VendorTypeManagementPage from '@/pages/VendorTypeManagementPage';
 import WireMockDashboard from '@/pages/WireMockDashboard';
 import VisualCMSAdminDashboard from '@/components/admin/VisualCMSAdminDashboard';
 import BringShippingDashboard from '@/components/shipping/BringShippingDashboard';
-import UniversalVendorDashboard from '@/components/vendor/UniversalVendorDashboard';
 import NorthtoneVendorShowcase from '@/components/vendor/NorthtoneVendorShowcase';
 import CompleteDeploymentManager from '@/components/admin/CompleteDeploymentManager';
 import VisualEditorWithPageSelection from '@/components/visual-editor/VisualEditorWithPageSelection';
@@ -242,6 +241,9 @@ const AdminRoomPage = React.lazy(() => import('./pages/AdminRoom'));
 const AdminWorkspacePage = React.lazy(() => import('./pages/AdminWorkspace'));
 const TeamWorkspacePage = React.lazy(() => import('./components/workspace/TeamWorkspacePage'));
 const WorkspaceHome = React.lazy(() => import('./components/workspace/WorkspaceHome'));
+const BookingAdminPage = React.lazy(() => import('./pages/BookingAdminPage'));
+const PublicBookingPage = React.lazy(() => import('./pages/PublicBookingPage'));
+const VendorWorkspacePage = React.lazy(() => import('./pages/VendorWorkspacePage'));
 const DeckEditorPage = React.lazy(() => import('./pages/DeckEditor'));
 const DemoAnimaticPage = React.lazy(() => import('@/components/role-room/demo/DemoAnimaticPage'));
 const PostAgentLinkPage = React.lazy(() => import('@/components/role-room/PostAgentLinkPage'));
@@ -834,6 +836,10 @@ function App() {
                   {/* Per-prosjekt Team Workspace (dark) */}
                   <Route path="/workspace/:projectId/:tab" component={TeamWorkspaceRouteWrapper} />
                   <Route path="/workspace/:projectId" component={TeamWorkspaceRouteWrapper} />
+                  <Route path="/booking">
+                    {() => <AuthenticatedCreatorHubRoute><React.Suspense fallback={<Box sx={{ minHeight: '70vh', display: 'grid', placeItems: 'center' }}><CircularProgress /></Box>}><BookingAdminPage /></React.Suspense></AuthenticatedCreatorHubRoute>}
+                  </Route>
+                  <Route path="/book/:slug" component={PublicBookingPage} />
                   {/* Dans tester-invite landing */}
                   <Route path="/lead-map/accept">
                     {() => {
@@ -1029,7 +1035,7 @@ function App() {
                   />
                   <Route
                     path="/vendor-dashboard-material"
-                    component={() => <SmartDashboardRoute profession="vendor" />}
+                    component={VendorWorkspacePage}
                   />
                   {/* Partner Program — offentlig søknad + gated portal (selv-gater via magic-link/session) */}
                   <Route path="/partner" component={PartnerLanding as React.ComponentType<any>} />
@@ -1106,7 +1112,7 @@ function App() {
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route
                     path="/vendor-dashboard"
-                    component={() => <SmartDashboardRoute profession="vendor" />}
+                    component={VendorWorkspacePage}
                   />
                   <Route
                     path="/northtone-showcase"
@@ -1242,9 +1248,8 @@ function App() {
                   <Route path="/bring-shipping" component={BringShippingDashboard} />
                   
                   {/* Vendor Dashboard Routes */}
-                  <Route path="/vendor-dashboard" component={() => <UniversalVendorDashboard vendorType="general" vendorName="default" userId="current-user" />} />
-                  <Route path="/vendor-dashboard/:vendorType" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName="default" userId="current-user" />} />
-                  <Route path="/vendor-dashboard/:vendorType/:vendorName" component={({ params }) => <UniversalVendorDashboard vendorType={params.vendorType} vendorName={params.vendorName} userId="current-user" />} />
+                  <Route path="/vendor-dashboard/:vendorType" component={VendorWorkspacePage} />
+                  <Route path="/vendor-dashboard/:vendorType/:vendorName" component={VendorWorkspacePage} />
                   <Route path="/visual-editor-advanced" component={VisualEditorWithPageSelection as React.ComponentType<any>} />
                   <Route path="/visual-editor-unified" component={() => <CreatorhubVisualEditorRefactored />} />
                   <Route path="/visual-editor-enhanced" component={() => <VisualEditorEnhancedGuard><EnhancedVisualEditorPage /></VisualEditorEnhancedGuard>} />

@@ -70,6 +70,7 @@ export type WorkspaceTab =
   | 'media'
   | 'leveranser'
   | 'oppgaver'
+  | 'timer'
   | 'team'
   | 'medvirkende'
   | 'chat';
@@ -141,6 +142,7 @@ export const WS_NAV: WsNavItem[] = [
   { key: 'utstyr', label: 'Utstyr', labelEn: 'Inventory', icon: 'Inventory2', group: 'hoved', route: true, labelByCategory: { vendor: 'Lager' } },
   { key: 'leveranser', label: 'Leveranser', labelEn: 'Deliverables', icon: 'LocalShipping', group: 'hoved', route: true },
   { key: 'oppgaver', label: 'Oppgaver', labelEn: 'Tasks', icon: 'CheckCircleOutline', group: 'hoved', route: true },
+  { key: 'timer', label: 'Timer & godkjenning', labelEn: 'Timesheets & approvals', icon: 'AccessTime', group: 'hoved', route: true },
   { key: 'team', label: 'Team', labelEn: 'Team', icon: 'Group', group: 'hoved', route: true },
   {
     key: 'medvirkende',

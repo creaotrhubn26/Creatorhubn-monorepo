@@ -73,7 +73,8 @@ import {
   fetchProjectDetail,
   linkCaptureSessionToProject,
   setShotCompletion,
-  listProjectsForPhotographer,
+  listProjectsForCaptureUser,
+  resolveCaptureProjectOwner,
 } from './capture-projects-service.js';
 import {
   createCaptureRevision,
@@ -537,7 +538,7 @@ export function createCaptureRouter(
   router.get('/projects', auth, async (req, res) => {
     const { userId } = req as AuthedRequest;
     const limit = Math.min(Number(req.query.limit ?? 50), 200);
-    const rows = await listProjectsForPhotographer(db, userId, limit);
+    const rows = await listProjectsForCaptureUser(pool, userId, limit);
     res.json({ projects: rows });
   });
 
@@ -558,7 +559,8 @@ export function createCaptureRouter(
 
   router.get('/projects/:id', auth, async (req, res) => {
     const { userId } = req as AuthedRequest;
-    const detail = await fetchProjectDetail(db, userId, req.params.id);
+    const ownerUserId = await resolveCaptureProjectOwner(pool, userId, req.params.id);
+    const detail = ownerUserId ? await fetchProjectDetail(db, ownerUserId, req.params.id) : null;
     if (!detail) {
       res.status(404).json({ error: 'project_not_found' });
       return;
@@ -566,7 +568,7 @@ export function createCaptureRouter(
     const shotList = await Promise.all(detail.shotList.map(async (shot) => {
       const assetId = shot.capturedAssetBackendId;
       if (!assetId) return shot;
-      const ownedAsset = await fetchAsset(db, userId, assetId);
+      const ownedAsset = await fetchAsset(db, ownerUserId!, assetId);
       return ownedAsset
         ? { ...shot, capturedAssetPreviewToken: signCapturePreviewToken(assetId) }
         : shot;
