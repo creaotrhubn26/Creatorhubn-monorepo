@@ -1,0 +1,101 @@
+claim: >
+  DaVinci Resolve 21.1 (released ~2026-09-07/09) removes Python 2 scripting
+  support entirely and restricts external scripting access, the native
+  UIManager, Workflow Integrations, and the bundled MCP (Model Context
+  Protocol) AI-assistant server to Resolve Studio — the free edition keeps
+  only console scripting. It adds new scripting surface (native multicam
+  create/flatten + SmartSwitch trigger, timeline clip auto-align, add
+  transitions, clip speed change, media-pool clip transcription, plus a
+  bundled MCP server) and ships an official AI-assistant MCP integration.
+source_type: release_coverage
+source: >
+  WebSearch corroboration across sportsvideo.org, newsshooter.com,
+  provideocoalition.com, cined.com, pugetsystems.com, digitalproduction.com,
+  alternativeto.net (2026-09-07 to 2026-09-10) — official
+  blackmagicdesign.com domain blocked by this session's network egress
+  policy both this run and the prior one (2026-08-09), so no live Tier 1
+  fetch was possible. Exact new-API symbol names are NOT independently
+  confirmed against the local Scripting README (only available inside an
+  installed Resolve app bundle, per sources/vendors.yaml) — see caveat below.
+authority_tier: 3
+vendor: Blackmagic Design
+product: DaVinci Resolve (scripting API + bundled MCP server)
+version_scope: "21.1"
+publication_date: "2026-09-14"
+evidence_summary: >
+  repo-intelligence found apps/resolve-script-manager already targets 21.1,
+  merged via PR #2213 ("feat(post-agent): Resolve 21.1 MCP workflows
+  (v0.3.97)", commit 80493637, author daniel@creatorhubn.com), opened and
+  merged 2026-09-09T23:33-23:40Z — the same day as (or within ~2 days of)
+  the vendor release itself, and 5 days before this run's formal detection
+  on 2026-09-14. CORRECTION (post-review): the original version of this
+  file cited PR #2257 (2026-09-12, an unrelated Leadgrid Tidum merge) —
+  `git log -- <path>` on this session's clone only surfaced the last merge
+  commit touching main for these files, not the originating PR; the GitHub
+  API (list_commits with path filter) gave the correct PR/commit/author/date.
+  Flagged by chatgpt-codex-connector's review of this PR (2026-09-14).
+  - python/bridge.py: version-gated feature detection
+    (`is_21_1_or_newer = version_parts >= (21, 1)`), capability flags for
+    nativeMulticam/timelineAutoAlign/multicamSmartSwitch/mediaTranscription/
+    timelineItemAudioProperties/builtInMcpPackage.
+  - python/tests/test_resolve_21_1.py (265 lines) — dedicated test suite
+    exercising AutoAlignClips, PerformMulticamSmartSwitch,
+    CreateMulticamClip.
+  - python/scripts/timeline/place_clips_on_beat_grid.py:593-635 — calls
+    `item.AddTransition(...)` with an explicit "Resolve 21.1-native
+    treatment" comment.
+  - src-tauri/src/resolve_mcp.rs + resolve_mcp_gateway.rs — a controlled
+    workflow gateway built specifically on top of "Blackmagic's bundled
+    Resolve MCP" (21.1's native MCP server), exposing 8 allowlisted skills
+    (resolve-multicam-director, resolve-transcript-editor,
+    resolve-audio-post, resolve-color-guardian, resolve-review-notes,
+    resolve-batch-render-planner, resolve-project-organizer,
+    resolve-v1-clip-renamer) with plan/confirm/rollback semantics — raw MCP
+    tool names and Python never cross the frontend trust boundary.
+  - src/components/StudioVsFreeDialog.tsx — already explains Free vs Studio
+    feature gating to users (color/audio/AI/render/automation categories),
+    so the Studio-only restriction on external scripting access in 21.1
+    lands on an already-informed user, not a surprise breakage.
+  - Python 2: no impact — bridge.py and all scripts already use
+    `from __future__ import annotations` / type hints (Python 3-only).
+interpretation: >
+  This is an unusually favorable case: implementation preceded formal
+  version-tracking. No breaking intersection — every Python-2-removal and
+  Studio-gating concern was already designed for. Confidence is
+  strong_evidence rather than Verified only because the official Blackmagic
+  source remains network-blocked; the *adoption* itself is Verified against
+  the repo (git-log-confirmed, tests present), it is only the *vendor claim
+  detail* (exact symbol list, Python 2 removal wording) that rests on
+  WebSearch corroboration.
+project_impact: >
+  No migration work required. Two genuinely UNUSED new-in-21.1 capabilities
+  remain (per repo-wide symbol grep, 2026-09-14): timeline item fade
+  get/set and audio render format get/set — described in WebSearch coverage
+  but exact method names NOT confirmed against a version-matched API
+  reference, so NOT proposed as ready-to-implement work this run (see
+  2026-09-14-impact.md Produktmuligheter — flagged Probable, needs
+  symbol-verification step before implementation, per hallucination guard).
+confidence: strong_evidence
+decision: >
+  GO — no action needed for the existing surface; already adopted. Update
+  docs/impact-reports/latest-versions.yaml to 21.1. Before the two
+  unconfirmed-symbol proposals (fade get/set, audio render format get/set)
+  are implemented, run api-validator against a real Resolve 21.1 install's
+  Developer/Scripting/README.txt to confirm exact method names — do not
+  guess from release coverage alone.
+affected:
+  - apps/resolve-script-manager/python (bridge.py, tests/test_resolve_21_1.py, scripts/timeline/place_clips_on_beat_grid.py)
+  - apps/resolve-script-manager/src-tauri/src/resolve_mcp.rs
+  - apps/resolve-script-manager/src-tauri/src/resolve_mcp_gateway.rs
+  - apps/resolve-script-manager/src/components/StudioVsFreeDialog.tsx
+lesson: >
+  The weekly tracker is not the only detection path for this vendor —
+  engineering can and does ship against an unreleased/just-released Resolve
+  version ahead of the cron-driven release-monitor. Treat "no diff in
+  latest-versions.yaml" as "no NEW version announced", never as "no new
+  code targets it" — repo-intelligence should stay in the loop even on
+  weeks where release-monitor itself sees no version bump, to catch
+  proactive adoption early. Also: blackmagicdesign.com has now been
+  network-blocked on two consecutive runs (2026-08-09, 2026-09-14) —
+  this is a standing constraint, not a one-off; treat it as the default
+  rather than re-discovering it each run.

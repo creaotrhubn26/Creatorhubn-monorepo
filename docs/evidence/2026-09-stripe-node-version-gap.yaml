@@ -1,0 +1,108 @@
+claim: >
+  backend/package.json pins "stripe": "^19.3.0", three major versions
+  behind the SDK's tracked-latest v22.6.2. stripe-node v20-v22 carry real
+  breaking changes (v20: indexed array param serialization; v21: decimal
+  fields become Stripe.Decimal, Node 16 dropped; v22: ES6-class
+  constructor, callback support removed, per-request host/key overrides
+  removed).
+  CORRECTION (post-review, 2026-09-14): the original version of this claim
+  said our apiVersion pins are "currently what keeps legacy metering
+  working" — that is WRONG and was caught by chatgpt-codex-connector's
+  review of this PR. Verified directly against the installed package:
+  `backend/server/storage-quota-service.ts:390` constructs its Stripe
+  client as `new Stripe(stripeKey)` with NO apiVersion at all — the pins
+  elsewhere in the repo do not govern this call site. Worse: fetching and
+  extracting the actual stripe@19.3.0 tarball from the npm registry
+  (registry.npmjs.org/stripe/-/stripe-19.3.0.tgz) shows
+  `cjs/resources/SubscriptionItems.js` exposes only
+  create/retrieve/update/list/del — `createUsageRecord` does NOT exist on
+  this resource in v19.3.0 at all (confirmed by reading the generated
+  resource file directly, not just types). The call at
+  storage-quota-service.ts:397 (`(stripe as any).subscriptionItems
+  .createUsageRecord(...)`, guarded by a `@ts-ignore` that already
+  signals the author suspected a type mismatch) throws a TypeError at
+  runtime on every invocation, which the surrounding try/catch swallows
+  into `{ pushed: false, reason: "stripe_error: ..." }` — logged via
+  console.error but not raised as a hard failure anywhere else found in
+  this pass. This is a PRESENT, CONFIRMED bug: storage-overage billing has
+  not been pushing usage to Stripe, not a hypothetical future risk from an
+  eventual SDK upgrade.
+source_type: official_changelog
+source: >
+  github.com/stripe/stripe-node/blob/master/CHANGELOG.md (Verified — direct
+  fetch), github.com/stripe/stripe-node/wiki/Migration-guide-for-v22
+  (Verified — direct fetch); docs.stripe.com/api/billing/meter and Stripe
+  blog coverage of the Meters API (strong_evidence — WebSearch, docs.stripe.com
+  blocked by this session's network egress policy).
+authority_tier: 1
+vendor: Stripe
+product: stripe-node SDK + Billing API
+version_scope: "stripe-node v19.3.0 (installed) vs v20-v22.6.2 (tracked latest)"
+publication_date: "2026-09-14"
+evidence_summary: >
+  This week's release-monitor delta (v22.4.0 → v22.6.2) is itself a minor
+  bump within a major line we don't run, so it carries no direct action.
+  Investigating why triggered discovery of the much larger, previously
+  unrecorded v19→v22 gap: no prior evidence file existed for this vendor.
+  grep confirms real usage-based billing today
+  (backend/server/storage-quota-service.ts: "Pushe metered usage til Stripe
+  når brukeren overskrider grensen", stripe_storage_meter_item_id column) —
+  this is exactly the legacy Meter/usage-record surface Stripe is sunsetting.
+interpretation: >
+  URGENT, independent of the SDK-version-gap question: storage overage
+  billing is silently broken right now, on the CURRENT pinned SDK (v19.3.0)
+  — this has nothing to do with whether/when we upgrade stripe-node or bump
+  apiVersion. The SDK-gap analysis (v20-v22 breaking changes, apiVersion
+  interaction) remains valid as a SEPARATE, real concern for any future
+  upgrade, but must not be read as the reason metering is "still working" —
+  it currently is not.
+project_impact: >
+  backend/server/storage-quota-service.ts:390-410 (pushUsageToStripe or
+  equivalent) — every overage-billing sync call for users on metered
+  storage plans fails and is swallowed, meaning affected users' storage
+  overage is not being reported to Stripe and is very likely not being
+  billed. Scope of "how long"/"how many users" NOT established this run —
+  needs a human/finance-visible follow-up, not just a doc-intel note.
+  Separately: backend/server/role-room-affiliate-payouts.ts,
+  leadgrid-billing-service.ts, editing-payments-service.ts,
+  dance-billing-service.ts would all need the v22 migration-guide changes
+  if the SDK is ever bumped — unaffected by the bug above.
+confidence: verified
+decision: >
+  Two separate decisions:
+  (1) The storage-overage billing bug is CONFIRMED and live — this needs a
+  dedicated, tested fix (likely: replace subscriptionItems.createUsageRecord
+  with the current metered-billing call for v19.3.0, or migrate straight to
+  the Billing Meters API) in its own PR, not a speculative fix bundled into
+  this docs-only report. Flagged to the user directly rather than
+  auto-fixed here, given real revenue/billing consequences and the need for
+  someone to check historical impact (how much unbilled overage exists).
+  (2) HOLD on the stripe-node v19→v22 SDK upgrade itself — no forcing
+  function this run, but do the Meters API migration (see
+  2026-09-14-impact.md Produktmuligheter) BEFORE bumping the apiVersion
+  pin past 2025-03-31.basil, once the bug in (1) is fixed on the current
+  SDK first.
+affected:
+  - backend/server/storage-quota-service.ts
+  - backend/server/lead-map-routes.ts (apiVersion pin)
+  - backend/scripts/go-live-provision-stripe.mjs
+  - backend/scripts/sync-role-room-stripe-tax-behavior.mjs
+lesson: >
+  vendors.yaml's stripe drift_watch note ("API version bumps... upgrade is
+  an explicit event") was written for the apiVersion string but the SDK
+  package version drifted silently in parallel for over a year with no
+  evidence record. Track the SDK major version explicitly alongside the
+  apiVersion pin going forward — they are two independent axes that can
+  each break the other's assumptions.
+  SECOND lesson (post-review correction): when a `@ts-ignore` sits directly
+  above a call into a pinned dependency, that is itself a signal worth
+  chasing — it usually means a prior author already suspected the type
+  didn't match the runtime and suppressed the check instead of resolving
+  it. This run initially read the surrounding apiVersion pins and reasoned
+  about compatibility without opening the actual installed package; a
+  wrong-but-plausible claim ("pins keep it working") went into a written
+  evidence record and would have stood as fact if a review bot had not
+  caught it. api-validator-style claims about "does method X exist on
+  version Y" must be checked against the real installed/pinned artifact
+  (npm tarball, in this case) before being recorded as fact, not inferred
+  from adjacent version numbers.
