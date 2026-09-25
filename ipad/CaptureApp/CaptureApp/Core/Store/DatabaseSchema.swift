@@ -405,6 +405,70 @@ extension AppDatabase {
             )
         }
 
+        migrator.registerMigration("v11_native_timesheets") { db in
+            try db.create(table: "timesheetPeriod") { table in
+                table.primaryKey("id", .text)
+                table.column("ownerUserId", .text).notNull()
+                table.column("projectId", .text).notNull()
+                table.column("projectTitle", .text).notNull()
+                table.column("participantId", .text).notNull()
+                table.column("periodStart", .text).notNull()
+                table.column("periodEnd", .text).notNull()
+                table.column("status", .text).notNull()
+                table.column("totalMinutes", .integer).notNull().defaults(to: 0)
+                table.column("billableMinutes", .integer).notNull().defaults(to: 0)
+                table.column("entryCount", .integer).notNull().defaults(to: 0)
+                table.column("reviewerNote", .text)
+                table.column("settlementAmount", .double)
+                table.column("settlementCurrency", .text)
+                table.column("lastSyncedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "timesheetPeriod", columns: ["ownerUserId", "periodStart"])
+            try db.create(indexOn: "timesheetPeriod", columns: ["projectId", "status"])
+
+            // idempotencyKey is the stable local primary key. The backend
+            // returns the same key after sync, so refresh can reconcile a
+            // queued entry without displaying it twice.
+            try db.create(table: "timesheetEntry") { table in
+                table.primaryKey("idempotencyKey", .text)
+                table.column("serverId", .text)
+                table.column("ownerUserId", .text).notNull()
+                table.column("periodId", .text).notNull()
+                    .references("timesheetPeriod", onDelete: .cascade)
+                table.column("projectId", .text).notNull()
+                table.column("workDate", .text).notNull()
+                table.column("activity", .text).notNull()
+                table.column("note", .text)
+                table.column("startedAt", .datetime)
+                table.column("endedAt", .datetime)
+                table.column("durationMinutes", .integer).notNull()
+                table.column("breakMinutes", .integer).notNull().defaults(to: 0)
+                table.column("billable", .boolean).notNull().defaults(to: true)
+                table.column("source", .text).notNull()
+                table.column("version", .integer).notNull().defaults(to: 1)
+                table.column("syncState", .text).notNull().defaults(to: "pending")
+                table.column("lastError", .text)
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+            try db.create(indexOn: "timesheetEntry", columns: ["ownerUserId", "periodId", "workDate"])
+            try db.create(indexOn: "timesheetEntry", columns: ["ownerUserId", "syncState", "updatedAt"])
+
+            // One durable timer per signed-in account. Elapsed time is derived
+            // from startedAt, so no background process has to stay alive.
+            try db.create(table: "activeTimesheetTimer") { table in
+                table.primaryKey("ownerUserId", .text)
+                table.column("projectId", .text).notNull()
+                table.column("projectTitle", .text).notNull()
+                table.column("periodId", .text).notNull()
+                    .references("timesheetPeriod", onDelete: .restrict)
+                table.column("activity", .text).notNull()
+                table.column("note", .text)
+                table.column("startedAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         return migrator
     }()
 }
@@ -484,6 +548,24 @@ extension OutboxMutation: FetchableRecord, MutablePersistableRecord {
 
 extension VideoCaptureAsset: FetchableRecord, PersistableRecord {
     static var databaseTableName: String { "videoCaptureAsset" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+}
+
+extension LocalTimesheetPeriod: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "timesheetPeriod" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+}
+
+extension LocalTimesheetEntry: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "timesheetEntry" }
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
+}
+
+extension ActiveTimesheetTimer: FetchableRecord, PersistableRecord {
+    static var databaseTableName: String { "activeTimesheetTimer" }
     static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .iso8601
     static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .iso8601
 }

@@ -137,4 +137,11 @@ actor CaptureSyncCoordinator {
         worker = nil
         identity = nil
     }
+
+    /// Ask the already-running worker to send pending mutations immediately.
+    /// If sync has not started yet, the durable outbox rows remain untouched and
+    /// will be drained when the signed-in session starts the coordinator.
+    func flushNow() async {
+        _ = await worker?.drainOnce()
+    }
 }

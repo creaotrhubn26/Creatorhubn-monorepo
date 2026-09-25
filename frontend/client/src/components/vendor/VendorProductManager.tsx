@@ -42,6 +42,8 @@ import {
   Schedule,
   PhotoLibrary,
   Image as ImageIcon,
+  Key,
+  ContentCopy,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
@@ -220,6 +222,9 @@ export default function VendorProductManager({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(initialMode === 'add');
+  const [showApiDialog, setShowApiDialog] = useState(false);
+  const [createdApiKey, setCreatedApiKey] = useState('');
+  const [apiKeyName, setApiKeyName] = useState('Nettbutikk');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewImageDialog, setViewImageDialog] = useState<{ open: boolean; imageUrl: string; productName: string }>({ 
     open: false, 
@@ -340,7 +345,7 @@ export default function VendorProductManager({
   };
 
   // Fetch vendor products - filtered by vendorType
-  const { data: products = [], isLoading } = useQuery<Product[]>({
+  const { data: products = [], isLoading, error: productsError } = useQuery<Product[]>({
     queryKey: ['/api/vendor/products', userId, vendorType],
     queryFn: () => apiRequest(`/api/vendor/products/${userId}?vendorType=${vendorType}`)
   });
@@ -349,6 +354,28 @@ export default function VendorProductManager({
   const { data: analytics } = useQuery<ProductAnalytics>({
     queryKey: ['/api/vendor/analytics', userId],
     queryFn: () => apiRequest(`/api/vendor/analytics/${userId}`)
+  });
+
+  const { data: apiKeysData, refetch: refetchApiKeys, error: apiKeysError } = useQuery({
+    queryKey: ['/api/vendor/api-keys'],
+    queryFn: () => apiRequest('/api/vendor/api-keys'),
+    enabled: showApiDialog,
+    retry: false,
+  });
+  const createApiKeyMutation = useMutation({
+    mutationFn: () => apiRequest('/api/vendor/api-keys', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: apiKeyName,
+        scopes: ['products:read', 'products:write', 'inventory:read', 'inventory:write'],
+        rateLimitPerMinute: 120,
+      }),
+    }),
+    onSuccess: (result) => { setCreatedApiKey(result.key); refetchApiKeys(); },
+  });
+  const revokeApiKeyMutation = useMutation({
+    mutationFn: (id: string) => apiRequest(`/api/vendor/api-keys/${id}`, { method: 'DELETE' }),
+    onSuccess: () => refetchApiKeys(),
   });
 
   // Add/Update product mutation - includes vendorType
@@ -493,15 +520,17 @@ export default function VendorProductManager({
   };
 
   const handleSaveProduct = () => {
-    const productData: Product = {
-      ...editingProduct,
-      ...newProduct,
-      vendor: editingProduct?.vendor || userId,
+    // Send only writable contract fields. Product IDs, owner, analytics and
+    // tenant identity are derived and enforced by the backend.
+    const productData = {
+      name: newProduct.name,
+      category: newProduct.category,
+      version: newProduct.version,
+      price: newProduct.price,
+      description: newProduct.description,
+      imageUrl: newProduct.imageUrl || null,
       currency: editingProduct?.currency || 'NOK',
-      downloads: editingProduct?.downloads || 0,
-      rating: editingProduct?.rating || 0,
       status: editingProduct?.status || 'pending',
-      id: editingProduct?.id || `product-${Date.now()}`,
       tags: newProduct.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
     };
     productMutation.mutate(productData);
@@ -666,28 +695,41 @@ export default function VendorProductManager({
       {/* Only show overview when not in add mode */}
       {initialMode !== 'add' && (
         <>
+          {productsError && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {tr(
+                'Produktkatalogen kunne ikke lastes. Kontroller Enterprise-tilgang eller prøv igjen.',
+                'The product catalog could not be loaded. Check Enterprise access or try again.'
+              )}
+            </Alert>
+          )}
           {/* Header */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
             <Typography variant="h5" component="h1" sx={{ fontWeight: 600, color: theming.colors.primary }}>
               {tr('Produkthåndtering', 'Product management')} - {vendorConfig?.name || vendorType}
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<Add aria-hidden="true" />}
-              onClick={handleAddProduct}
-              aria-label={tr('Legg til nytt produkt', 'Add new product')}
-              sx={{ 
-                bgcolor: '#27ae60', 
-                minHeight: 48,
-                '&:hover': { bgcolor: '#229954' },
-                '&:focus-visible': {
-                  outline: '3px solid #27ae60',
-                  outlineOffset: '2px'
-                }
-              }}
-            >
-              {tr('Legg til Produkt', 'Add product')}
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" startIcon={<Key />} onClick={() => setShowApiDialog(true)} sx={{ minHeight: 48 }}>
+                {tr('API-tilgang', 'API access')}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add aria-hidden="true" />}
+                onClick={handleAddProduct}
+                aria-label={tr('Legg til nytt produkt', 'Add new product')}
+                sx={{
+                  bgcolor: '#27ae60',
+                  minHeight: 48,
+                  '&:hover': { bgcolor: '#229954' },
+                  '&:focus-visible': {
+                    outline: '3px solid #27ae60',
+                    outlineOffset: '2px'
+                  }
+                }}
+              >
+                {tr('Legg til Produkt', 'Add product')}
+              </Button>
+            </Stack>
           </Box>
 
           {(onMeetingCreate || onShowcaseCreate || onWorklogCreate) && (
@@ -941,7 +983,7 @@ export default function VendorProductManager({
                           </Avatar>
                           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                             <Chip
-                              label={product.status}
+                              label={product.status === 'active' ? tr('Aktiv', 'Active') : product.status === 'pending' ? tr('Venter', 'Pending') : tr('Inaktiv', 'Inactive')}
                               size="small"
                               color={product.status === 'active' ? 'success' : product.status === 'pending' ? 'warning' : 'default'}
                               aria-label={`Status: ${product.status === 'active' ? 'Aktiv' : product.status === 'pending' ? 'Venter' : 'Inaktiv'}`}
@@ -954,6 +996,11 @@ export default function VendorProductManager({
                               aria-label={product.status === 'active' ? `Avpubliser ${product.name}` : `Publiser ${product.name}`}
                               sx={{
                                 minHeight: 32,
+                                bgcolor: product.status === 'active' ? 'transparent' : '#ff8c00',
+                                borderColor: product.status === 'active' ? '#fbbf24' : '#ff8c00',
+                                color: '#15100a !important',
+                                fontWeight: 800,
+                                '&:hover': { bgcolor: product.status === 'active' ? 'rgba(251,191,36,0.12)' : '#e67e00' },
                                 '&:focus-visible': {
                                   outline: '3px solid',
                                   outlineOffset: '2px'
@@ -1050,6 +1097,7 @@ export default function VendorProductManager({
                           <IconButton
                             size="small"
                             onClick={() => handleSyncProduct(product)}
+                            aria-label={`Synkroniser ${product.name}`}
                             sx={{ color: '#27ae60' }}
                           >
                             <Sync fontSize="small" />
@@ -1059,6 +1107,7 @@ export default function VendorProductManager({
                             <IconButton
                               size="small"
                               onClick={() => handleDownloadProduct(product)}
+                              aria-label={`Last ned ${product.name}`}
                               sx={{ color: '#2c3e50' }}
                             >
                               <CloudDownload fontSize="small" />
@@ -1068,6 +1117,7 @@ export default function VendorProductManager({
                           <IconButton
                             size="small"
                             onClick={() => deleteMutation.mutate(product.id)}
+                            aria-label={`Slett ${product.name}`}
                             sx={{ color: '#e74c3c' }}
                           >
                             <Delete fontSize="small" />
@@ -1095,6 +1145,13 @@ export default function VendorProductManager({
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
+            {productMutation.error && (
+              <Grid item xs={12}>
+                <Alert severity="error">
+                  {tr('Produktet kunne ikke lagres. Kontroller feltene og prøv igjen.', 'The product could not be saved. Check the fields and try again.')}
+                </Alert>
+              </Grid>
+            )}
             {/* Product Image Upload */}
             <Grid item xs={12}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1226,7 +1283,7 @@ export default function VendorProductManager({
           <Button
             onClick={handleSaveProduct}
             variant="contained"
-            disabled={productMutation.isPending}
+            disabled={productMutation.isPending || !newProduct.name.trim()}
             sx={{ bgcolor: '#27ae60', '&:hover': { bgcolor: '#229954' } }}
           >
             {productMutation.isPending ? tr('Lagrer...', 'Saving...') : (editingProduct ? tr('Oppdater', 'Update') : tr('Legg til', 'Add'))}
@@ -1316,6 +1373,43 @@ export default function VendorProductManager({
             }
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={showApiDialog} onClose={() => { setShowApiDialog(false); setCreatedApiKey(''); }} maxWidth="sm" fullWidth>
+        <DialogTitle>{tr('API-tilgang til produktkatalogen', 'Product catalog API access')}</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
+            {tr('API-nøkler gir nettstedet ditt tilgang til CreatorHub-katalogen. Nøkkelen vises bare én gang.', 'API keys let your website access the CreatorHub catalog. The key is shown once.')}
+          </Alert>
+          {(apiKeysError || createApiKeyMutation.error || revokeApiKeyMutation.error) && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {tr('API-tilgangen kunne ikke oppdateres. Kontroller Enterprise-tilgang og prøv igjen.', 'API access could not be updated. Check Enterprise access and try again.')}
+            </Alert>
+          )}
+          {createdApiKey && (
+            <Alert severity="success" sx={{ mb: 2 }} action={<IconButton aria-label={tr('Kopier nøkkel', 'Copy key')} onClick={() => navigator.clipboard.writeText(createdApiKey)}><ContentCopy /></IconButton>}>
+              <Typography component="code" sx={{ wordBreak: 'break-all' }}>{createdApiKey}</Typography>
+            </Alert>
+          )}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 3 }}>
+            <TextField fullWidth label={tr('Navn på integrasjon', 'Integration name')} value={apiKeyName} onChange={(event) => setApiKeyName(event.target.value)} />
+            <Button variant="contained" disabled={!apiKeyName.trim() || createApiKeyMutation.isPending} onClick={() => createApiKeyMutation.mutate()}>
+              {tr('Opprett nøkkel', 'Create key')}
+            </Button>
+          </Stack>
+          <Stack spacing={1}>
+            {(apiKeysData?.keys || []).map((key) => (
+              <Box key={key.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Box><Typography fontWeight={600}>{key.name}</Typography><Typography variant="caption" color="text.secondary">{key.prefix}… · {key.revokedAt ? tr('Tilbakekalt', 'Revoked') : tr('Aktiv', 'Active')}</Typography></Box>
+                {!key.revokedAt && <Button color="error" onClick={() => revokeApiKeyMutation.mutate(key.id)}>{tr('Tilbakekall', 'Revoke')}</Button>}
+              </Box>
+            ))}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
+            REST base: /api/v1/vendor · Bearer chv_live_… · revisjonskontroll via feltet revision
+          </Typography>
+        </DialogContent>
+        <DialogActions><Button onClick={() => { setShowApiDialog(false); setCreatedApiKey(''); }}>{tr('Lukk', 'Close')}</Button></DialogActions>
       </Dialog>
 
       {/* Image Viewer Dialog */}

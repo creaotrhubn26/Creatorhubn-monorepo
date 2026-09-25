@@ -47,6 +47,34 @@ export const CREATORHUB_FEATURES: CreatorHubFeature[] = [
     requiredPlan: 'enterprise',
     isCore: false,
   },
+  {
+    id: 'native-timesheets-approvals',
+    name: 'Timer, godkjenning og Split Sheet',
+    description: 'Prosjektbaserte timelister med attestering, låsing og avregning mot Split Sheet',
+    category: 'Prosjekt Management',
+    professions: ['photographer', 'videographer', 'musicproducer'],
+    requiredPlan: 'enterprise',
+    isCore: false,
+  },
+  {
+    id: 'public-booking-page',
+    name: 'Offentlig bookingside',
+    description: 'Publiser tjenester, tilgjengelighet og kundeforespørsler fra CreatorHub-profilen',
+    category: 'CRM',
+    professions: ['photographer', 'videographer', 'musicproducer', 'vendor'],
+    requiredPlan: 'enterprise',
+    isCore: false,
+  },
+  {
+    id: 'vendor-product-api',
+    name: 'Vendor produkt-API',
+    description: 'Administrer produktkatalog, lagerbeholdning og API-nøkler fra egne nettsider',
+    category: 'Integrasjon',
+    professions: ['vendor', 'admin'],
+    requiredPlan: 'enterprise',
+    isCore: false,
+    metadata: { apiOnly: true },
+  },
 
   // CRM & Customer Management
   {

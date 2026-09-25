@@ -21,6 +21,7 @@ import SwiftUI
 struct CreatorHubOneRootView: View {
     enum Tab: Int, CaseIterable, Identifiable {
         case today
+        case timesheets
         case shoot
         case video
         case gallery
@@ -121,6 +122,10 @@ struct CreatorHubOneRootView: View {
             TodayView(ownerUserId: SignInService.shared.session?.userId ?? "signed-out")
                 .tabItem { Label("I dag", systemImage: "sun.max") }
                 .tag(Tab.today)
+
+            TimesheetsView()
+                .tabItem { Label("Timer", systemImage: "clock.badge.checkmark") }
+                .tag(Tab.timesheets)
 
             // Existing capture flow — reused as-is. Eventually this
             // becomes the shoot-plus-live-cull surface, but wiring

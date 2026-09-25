@@ -47,20 +47,11 @@ final class ProjectHubModel {
         do { try await client.updateProjectStatus(id: projectId, status: status.rawValue); await load() } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
     }
 
-    func logTime(task: String, hours: Double, rate: Double?) async {
-        guard let client = DashboardClient.make() else { return }
-        working = true; defer { working = false }
-        do {
-            try await client.logProjectTime(projectId: projectId, taskDescription: task, hoursSpent: hours, billableHours: hours, rate: rate)
-            await load()
-        } catch { errorMessage = (error as? DashboardError)?.localizedDescription ?? error.localizedDescription }
-    }
 }
 
 struct ProjectDetailView: View {
     @State private var model: ProjectHubModel
     private let fallbackTitle: String?
-    @State private var showLogTime = false
     private let projectId: String
     @State private var deliverables: ProjectDeliverables
     @State private var showSendToEditor = false
@@ -111,11 +102,6 @@ struct ProjectDetailView: View {
             deliverables = ProjectDeliverables(projectId: projectId, template: template)
         }
         .refreshable { await model.load() }
-        .sheet(isPresented: $showLogTime) {
-            LogTimeSheet(phases: template.worklogPhases) { task, hours, rate in
-                Task { await model.logTime(task: task, hours: hours, rate: rate) }
-            }
-        }
         .sheet(isPresented: $showSendToEditor) {
             SendToEditorView(projectId: projectId, projectTitle: model.detail?.title)
         }
@@ -349,14 +335,23 @@ struct ProjectDetailView: View {
         CHCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Worklog").font(.headline).foregroundStyle(CHTheme.textPrimary)
+                    Text("Timer").font(.headline).foregroundStyle(CHTheme.textPrimary)
                     Spacer()
-                    Button { showLogTime = true } label: { Label("Logg timer", systemImage: "plus") }
-                        .font(.caption).buttonStyle(.bordered)
+                    NavigationLink {
+                        TimesheetsView(initialProjectId: projectId)
+                    } label: {
+                        Label("Åpne timeliste", systemImage: "clock.badge.checkmark")
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
                 }
+                Text("Registrer timer i den felles timelisten som synkroniseres med Workspace og godkjenningsflyten.")
+                    .font(.caption)
+                    .foregroundStyle(CHTheme.textMuted)
                 if model.timeEntries.isEmpty {
-                    Text("Ingen timer logget ennå.").font(.caption).foregroundStyle(CHTheme.textMuted)
+                    Text("Ingen eldre arbeidslogg registrert.").font(.caption).foregroundStyle(CHTheme.textMuted)
                 } else {
+                    Text("Eldre arbeidslogg").font(.caption.weight(.semibold)).foregroundStyle(CHTheme.textSecondary)
                     ForEach(model.timeEntries) { t in
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -394,70 +389,6 @@ struct ProjectDetailView: View {
     private func kr(_ v: Double?) -> String {
         guard let v else { return "—" }
         return "kr \(Int(v.rounded()))"
-    }
-}
-
-private struct LogTimeSheet: View {
-    var phases: [String] = []
-    let onSave: (String, Double, Double?) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var task = ""
-    @State private var hours = ""
-    @State private var rate = ""
-
-    private var canSave: Bool {
-        !task.trimmingCharacters(in: .whitespaces).isEmpty && (Double(hours.replacingOccurrences(of: ",", with: ".")) ?? 0) > 0
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                if !phases.isEmpty {
-                    Section("Fase") {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(phases, id: \.self) { p in
-                                    Button { task = p } label: {
-                                        Text(p).font(.caption.weight(.semibold))
-                                            .padding(.horizontal, 12).padding(.vertical, 7)
-                                            .background(task == p ? CHTheme.accent.opacity(0.2) : CHTheme.surfaceElevated, in: Capsule())
-                                            .foregroundStyle(task == p ? CHTheme.accent : CHTheme.textSecondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .listRowBackground(CHTheme.surface)
-                    }
-                }
-                Section("Oppgave") {
-                    TextField("Hva jobbet du med?", text: $task).listRowBackground(CHTheme.surface)
-                }
-                Section("Timer") {
-                    TextField("f.eks. 2.5", text: $hours).keyboardType(.decimalPad).listRowBackground(CHTheme.surface)
-                }
-                Section("Timepris (valgfritt)") {
-                    TextField("kr/time", text: $rate).keyboardType(.numberPad).listRowBackground(CHTheme.surface)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(CHTheme.bg.ignoresSafeArea())
-            .navigationTitle("Logg timer")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Avbryt") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Lagre") {
-                        let h = Double(hours.replacingOccurrences(of: ",", with: ".")) ?? 0
-                        let r = Double(rate.replacingOccurrences(of: ",", with: "."))
-                        onSave(task, h, r)
-                        dismiss()
-                    }
-                    .disabled(!canSave)
-                }
-            }
-        }
-        .chBranded()
     }
 }
 
