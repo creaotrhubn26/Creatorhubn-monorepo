@@ -350,9 +350,29 @@ async function geocodeBrregAddress(
   }
 }
 
+/**
+ * Oppslaget Discovery og manuell registrering bruker når et lead blir til.
+ *
+ * Henter nå også regnskap. Uten det fikk et Discovery-lead org.nr, ansatte,
+ * adresse og roller — men ingen omsetning, og Pondus-maler som åpner med
+ * kundens eget tall sto igjen med et tomt felt. enrichLeadWithBrreg hentet
+ * regnskapet allerede; det manglet bare på veien der leadene faktisk oppstår.
+ *
+ * Regnskapet hentes parallelt med geokodingen, ikke etter. Det er ett
+ * ekstra kall per lead mot et register som er gratis og uten autentisering,
+ * og det koster ingen ekstra ventetid når det kjøres ved siden av.
+ *
+ * Feiler oppslaget, blir financials null og leadet opprettes som før.
+ * Ikke alle HAR regnskap heller: ENK leverer ikke årsregnskap, og et
+ * selskap stiftet i år har ikke levert ennå.
+ */
 export async function lookupCompanyForNewLead(
   rawQuery: string,
-): Promise<{ found: boolean; company?: EnrichmentResult["company"] }> {
+): Promise<{
+  found: boolean;
+  company?: EnrichmentResult["company"];
+  financials?: CompanyFinancials | null;
+}> {
   const query = rawQuery.trim();
   if (!query) return { found: false };
 
@@ -378,10 +398,14 @@ export async function lookupCompanyForNewLead(
   const postalCode = unit.forretningsadresse?.postnummer ?? null;
   const city = unit.forretningsadresse?.poststed ?? null;
   const geocodeQuery = address ? `${address}, ${postalCode ?? ""} ${city ?? ""}`.trim() : null;
-  const geo = geocodeQuery ? await geocodeBrregAddress(geocodeQuery) : null;
+  const [geo, financials] = await Promise.all([
+    geocodeQuery ? geocodeBrregAddress(geocodeQuery) : Promise.resolve(null),
+    getCompanyFinancials(unit.organisasjonsnummer).catch(() => null),
+  ]);
 
   return {
     found: true,
+    financials,
     company: {
       name: unit.navn,
       orgNr: unit.organisasjonsnummer,

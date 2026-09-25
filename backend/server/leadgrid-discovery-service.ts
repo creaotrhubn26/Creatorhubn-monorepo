@@ -32,6 +32,7 @@ import {
 } from "./leadgrid-discovery-scoring.js";
 import { normalizeWebsiteDomain } from "./lead-map-create-contract.js";
 import { startTrialOnFirstDiscovery, trialStatus } from "./leadgrid-trial.js";
+import { enrichLeadWithBrreg } from "./lead-brreg-service.js";
 import type { LeadgridAccessibleProject } from "./leadgrid-project-access.js";
 import type { BackgroundJob, JobHandler } from "./job-queue.js";
 import { broadcastLeadCreated, leadgridRealtime } from "./leadgrid-realtime.js";
@@ -3363,6 +3364,32 @@ export async function decideDiscoveryCandidate(
         organization_id: input.project.organizationId,
         project_id: input.project.id,
         source: "discovery",
+      });
+      // Regnskapstallene hentes HER, ikke i søket og ikke i transaksjonen.
+      //
+      // Ikke i søket: Discovery finner gjerne to hundre kandidater, og bare
+      // de godkjente blir leads. To hundre kall til Regnskapsregisteret for
+      // tjue leads er sløsing med et register vi er gjest hos.
+      //
+      // Ikke i transaksjonen: et BRREG-kall kan bruke ti sekunder, og så
+      // lenge skal ingen holde en databasetilkobling.
+      //
+      // Uten dette fikk et Discovery-lead org.nr, ansatte, adresse og
+      // roller — men ingen omsetning. Pondus-maler som åpner med kundens
+      // eget tall sto igjen med et tomt felt.
+      void enrichLeadWithBrreg(pool, {
+        leadId: outcome.result.lead_id,
+        workspaceOwnerUserId: userId,
+        organizationId: input.project.organizationId,
+        projectId: input.project.id,
+      }).catch((error: unknown) => {
+        // Leadet er opprettet. At regnskapet mangler er en tom rubrikk,
+        // ikke en feilet godkjenning.
+        console.warn(
+          "[discovery] regnskapsberikelse feilet for lead",
+          outcome.result.lead_id,
+          (error as Error).message,
+        );
       });
     }
   }

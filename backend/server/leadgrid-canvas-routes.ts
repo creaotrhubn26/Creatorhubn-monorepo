@@ -17,6 +17,69 @@ import {
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
 import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
+import { koblingerFor, lagKobling } from "./leadgrid-nexus-koblinger.js";
+import {
+  CanvasRateLimitUnavailableError,
+  consumeSharedCanvasRateLimit,
+} from "./leadgrid-canvas-rate-limit.js";
+import {
+  encodeCanvasCursor,
+  parseCanvasPageRequest,
+} from "./leadgrid-canvas-pagination.js";
+import { CanvasServiceError } from "./leadgrid-canvas-errors.js";
+
+/**
+ * Kvoter per bruker og operasjon.
+ *
+ * Nexus er en tegneflate: den lagrer ofte og leser ofte, og et notat kan
+ * være flere megabyte PKDrawing. Uten et tak kan én iPad med en løpsk
+ * autolagring mette basen for hele organisasjonen.
+ *
+ * Lesing er romslig fordi appen poller. Skriving er strammere fordi hver
+ * skriving er stor. Opplasting er strengest — der er det filer.
+ */
+const NEXUS_KVOTER = {
+  les: { limit: 300, windowMs: 60_000, mode: "read" as const },
+  skriv: { limit: 90, windowMs: 60_000, mode: "write" as const },
+  opplasting: { limit: 30, windowMs: 60_000, mode: "write" as const },
+};
+
+/**
+ * Sjekker kvoten og svarer 429 selv hvis den er brukt opp.
+ *
+ * Returnerer true når kallet skal fortsette. Er rate-limit-tabellen borte
+ * (migrasjon 0461 ikke kjørt i et miljø), slipper vi kallet gjennom i stedet
+ * for å stenge Nexus — en manglende kvotetabell er vår feil, ikke kundens.
+ */
+async function innenforKvote(
+  pool: Pool,
+  res: Response,
+  userId: string,
+  operasjon: string,
+  kvote: { limit: number; windowMs: number; mode: "read" | "write" },
+): Promise<boolean> {
+  try {
+    const svar = await consumeSharedCanvasRateLimit(pool, {
+      operation: operasjon,
+      identity: userId,
+      limit: kvote.limit,
+      windowMs: kvote.windowMs,
+      mode: kvote.mode,
+    });
+    if (svar.allowed) return true;
+    res.setHeader("Retry-After", String(svar.retryAfterSeconds));
+    res.status(429).json({
+      error: "for_mange_kall",
+      message: `Vent ${svar.retryAfterSeconds} sekunder og prøv igjen.`,
+      retry_after_seconds: svar.retryAfterSeconds,
+    });
+    return false;
+  } catch (error) {
+    if (error instanceof CanvasRateLimitUnavailableError) return true;
+    console.warn("[nexus] kvotesjekk feilet:", (error as Error).message);
+    return true;
+  }
+}
 
 // Strukturen (Daniel 2026-08-05): Møte/Lead/Befaring/Salgsplan/Prosjekt/
 // Rute — gamle verdier beholdes så eksisterende notater dekoder.
@@ -257,9 +320,20 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-liste", NEXUS_KVOTER.les))) return;
       await ensureSchema(pool);
       await tomGamleFraPapirkurv(pool);
       const visPapirkurv = req.query.papirkurv === "1";
+      // Uten side-parametre oppfører ruten seg som før: 100 nyeste, ingen
+      // markør i svaret. Appen som ikke spør om paginering merker ingenting.
+      const side = parseCanvasPageRequest({
+        limitValue: req.query.limit,
+        cursorValue: req.query.cursor,
+        kind: visPapirkurv ? "trash" : "notes",
+        scope: `${scope.organizationId}:${scope.projectId}:${session.userId}`,
+        defaultLimit: 100,
+        maxLimit: 200,
+      });
       const r = visPapirkurv
         ? await pool.query(
             `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
@@ -271,23 +345,49 @@ export function registerLeadgridCanvasRoutes(deps: {
               WHERE n.organization_id = $1 AND n.project_id = $2
                 AND n.user_id = $3
                 AND n.slettet_at IS NOT NULL
-              ORDER BY n.slettet_at DESC LIMIT 100`,
-            [scope.organizationId, scope.projectId, session.userId])
+                AND ($4::timestamptz IS NULL
+                     OR (n.slettet_at, n.id) < ($4::timestamptz, $5::uuid))
+              ORDER BY n.slettet_at DESC, n.id DESC
+              LIMIT $6`,
+            [scope.organizationId, scope.projectId, session.userId,
+             side.cursor?.timestamp ?? null, side.cursor?.id ?? null, side.limit + 1])
         : await pool.query(
             `SELECT n.id, n.tittel, n.kategori, n.selskap, n.lead_id,
                     n.drawing_base64, n.updated_at, n.delt, n.user_id,
                     n.lat, n.lon, n.stempler, n.tekstbokser, n.figurer, n.papir,
                     n.noder, n.sider, n.objekter, n.sokbar_tekst, n.dokumenter, n.slettet_at,
-                    COALESCE(u.name, u.email, '') AS eier_navn
+                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                             u.username, u.email, '') AS eier_navn
                FROM leadgrid_canvas_notater n
                LEFT JOIN users u ON u.id::text = n.user_id
               WHERE n.organization_id = $1 AND n.project_id = $2
                 AND (n.user_id = $3 OR n.delt)
                 AND n.slettet_at IS NULL
-              ORDER BY n.updated_at DESC LIMIT 100`,
-            [scope.organizationId, scope.projectId, session.userId]);
+                AND ($4::timestamptz IS NULL
+                     OR (n.updated_at, n.id) < ($4::timestamptz, $5::uuid))
+              ORDER BY n.updated_at DESC, n.id DESC
+              LIMIT $6`,
+            [scope.organizationId, scope.projectId, session.userId,
+             side.cursor?.timestamp ?? null, side.cursor?.id ?? null, side.limit + 1]);
+      // Vi hentet én rad ekstra for å vite om det finnes mer. Den skal ikke ut.
+      const harMer = r.rows.length > side.limit;
+      const rader = harMer ? r.rows.slice(0, side.limit) : r.rows;
+      const sisteRad = rader[rader.length - 1];
+      // Feltnavnet er klientens, ikke vårt: APIClient+Canvas.swift dekoder
+      // «nextCursor» og løkker til den er null. Et annet navn her hadde gitt
+      // en app som stille stopper etter første side og tror det var alt.
+      const nextCursor =
+        side.enabled && harMer && sisteRad
+          ? encodeCanvasCursor({
+              kind: visPapirkurv ? "trash" : "notes",
+              scope: `${scope.organizationId}:${scope.projectId}:${session.userId}`,
+              timestamp: (visPapirkurv ? sisteRad.slettet_at : sisteRad.updated_at) as Date,
+              id: String(sisteRad.id),
+            })
+          : null;
       res.json({
-        notater: r.rows.map((row) => ({
+        ...(side.enabled ? { nextCursor } : {}),
+        notater: rader.map((row) => ({
           id: row.id,
           tittel: row.tittel,
           kategori: row.kategori,
@@ -316,7 +416,14 @@ export function registerLeadgridCanvasRoutes(deps: {
         })),
       });
     } catch (e) {
-      console.error("[canvas] GET failed:", e);
+      // En ugyldig markør er appens feil, ikke serverens. Svarer vi 500,
+      // prøver klienten på nytt med samme ødelagte markør i det uendelige;
+      // svarer vi 400 med kode, vet den at den skal begynne forfra.
+      if (e instanceof CanvasServiceError) {
+        res.status(e.status).json({ error: e.code, ...(e.details ?? {}) });
+        return;
+      }
+      console.error("[nexus] GET failed:", e);
       res.status(500).json({ error: "internal_error" });
     }
   });
@@ -329,6 +436,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-opprett", NEXUS_KVOTER.skriv))) return;
       const felter = parseFelter((req.body ?? {}) as Record<string, unknown>);
       if (!felter) { res.status(413).json({ error: "tegning_for_stor" }); return; }
       await ensureSchema(pool);
@@ -364,6 +472,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       await ensureSchema(pool);
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-lagre", NEXUS_KVOTER.skriv))) return;
       // Versjonér forrige tilstand (best effort — velter aldri lagringen).
       try {
         const forrige = await pool.query<{ drawing_base64: string; kategori: string; objekter: string }>(
@@ -420,6 +529,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-versjoner", NEXUS_KVOTER.les))) return;
       await ensureSchema(pool);
       // Tilgang: eier ELLER delt i org-en.
       const eier = await pool.query(
@@ -457,6 +567,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-slett", NEXUS_KVOTER.skriv))) return;
       await ensureSchema(pool);
       if (req.query.permanent === "1") {
         const r = await pool.query(
@@ -493,6 +604,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-opplast", NEXUS_KVOTER.opplasting))) return;
       await ensureSchema(pool);
       const b = (req.body ?? {}) as Record<string, unknown>;
       const dokId = String(b.id ?? "").slice(0, 64);
@@ -683,6 +795,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-dokument", NEXUS_KVOTER.les))) return;
       await ensureSchema(pool);
       const r = await pool.query<{
         id: string;
@@ -739,6 +852,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-dok-slett", NEXUS_KVOTER.skriv))) return;
       await ensureSchema(pool);
       const existing = await pool.query<{
         storage_provider: string;
@@ -800,17 +914,97 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Element-biblioteket: mine + org-delte elementer. */
+  /**
+   * Hva henger sammen med dette notatet?
+   *
+   * Det meste utledes — samme kunde, samme sted, samme møte — så listen er
+   * full uten at noen har lenket noe. Se leadgrid-nexus-koblinger.ts.
+   */
+  app.get("/api/leadgrid/canvas/:id/koblinger", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-koblinger", NEXUS_KVOTER.les))) return;
+      const ut = await koblingerFor(pool, {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        userId: session.userId,
+        notatId: String(req.params.id),
+        perKategori: Number(req.query.per_kategori) || undefined,
+      });
+      if (!ut.notat) {
+        res.status(404).json({ error: "notat_ikke_funnet" });
+        return;
+      }
+      res.json(ut);
+    } catch (e) {
+      console.error("[nexus] koblinger feilet:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
+  /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  app.post("/api/leadgrid/canvas/:id/koblinger", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-lenk", NEXUS_KVOTER.skriv))) return;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const tilType = String(body.til_type ?? "");
+      const tilId = String(body.til_id ?? "").trim();
+      if (!["notat", "lead", "mote"].includes(tilType) || !tilId) {
+        res.status(400).json({ error: "ugyldig_kobling" });
+        return;
+      }
+      // Notatet må tilhøre dette prosjektet. Uten sjekken kunne en kobling
+      // laget på en fremmed notat-ID lekke at den finnes.
+      const eier = await pool.query(
+        `SELECT 1 FROM leadgrid_canvas_notater
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3`,
+        [String(req.params.id), scope.organizationId, scope.projectId]);
+      if (eier.rowCount === 0) {
+        res.status(404).json({ error: "notat_ikke_funnet" });
+        return;
+      }
+      res.status(201).json(await lagKobling(pool, {
+        organizationId: scope.organizationId,
+        fraNotatId: String(req.params.id),
+        tilType: tilType as "notat" | "lead" | "mote",
+        tilId,
+        merknad: body.merknad ? String(body.merknad).slice(0, 500) : null,
+        brukerId: session.userId,
+      }));
+    } catch (e) {
+      if ((e as Error).message === "et_notat_kan_ikke_peke_paa_seg_selv") {
+        res.status(400).json({ error: "peker_paa_seg_selv" });
+        return;
+      }
+      console.error("[nexus] lenking feilet:", e);
+      res.status(500).json({ error: "internal_error" });
+    }
+  });
+
   app.get("/api/leadgrid/canvas/bibliotek", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-bibliotek", NEXUS_KVOTER.les))) return;
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.json({ elementer: [] }); return; }
       await ensureSchema(pool);
       const r = await pool.query(
         `SELECT b.id, b.navn, b.innhold, b.delt, b.user_id,
-                COALESCE(u.name, u.email, '') AS eier_navn
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                             u.username, u.email, '') AS eier_navn
            FROM leadgrid_canvas_bibliotek b
            LEFT JOIN users u ON u.id::text = b.user_id
           WHERE b.organization_id = $1 AND (b.user_id = $2 OR b.delt)
@@ -838,6 +1032,7 @@ export function registerLeadgridCanvasRoutes(deps: {
       const session = await requireUserSession(req, res);
       if (!session) return;
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-bib-ny", NEXUS_KVOTER.skriv))) return;
       const orgId = await resolveOrgIdForUser(pool, session.userId).catch(() => null);
       if (!orgId) { res.status(403).json({ error: "ingen_org" }); return; }
       await ensureSchema(pool);
@@ -893,6 +1088,8 @@ export function registerLeadgridCanvasRoutes(deps: {
       await ensureSchema(pool);
       const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
       if (!scope) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-gjenopprett", NEXUS_KVOTER.skriv))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-bib-slett", NEXUS_KVOTER.skriv))) return;
       const r = await pool.query(
         `UPDATE leadgrid_canvas_notater
             SET slettet_at = NULL, updated_at = now()

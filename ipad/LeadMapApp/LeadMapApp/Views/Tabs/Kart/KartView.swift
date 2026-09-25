@@ -1023,7 +1023,7 @@ struct KartView: View {
         case territories = "Territorier"
         case dataOverlay = "Bedrifts-data"
         case teamMembers = "Team på kartet"
-        case canvasNotater = "Canvas-notater"
+        case canvasNotater = "Nexus-notater"
         var icon: String {
             switch self {
             case .heatmap:        return "flame.circle.fill"
@@ -1043,7 +1043,7 @@ struct KartView: View {
             case .territories:   return "Polygon-soner: din vs kollegas region"
             case .dataOverlay:   return "Pin-radius reflekterer omsetning (Brønnøysund)"
             case .teamMembers:   return "Live-avatar for selgere og promotører m/ destinasjon"
-            case .canvasNotater: return "Stedfestede Canvas-notater — der skissene ble til"
+            case .canvasNotater: return "Stedfestede Nexus-notater — der skissene ble til"
             }
         }
         var color: Color {
@@ -1277,7 +1277,7 @@ struct KartView: View {
         // Canvas-notater: der skissene ble til — tap hopper til Canvas-fanen.
         if activeOverlays.contains(.canvasNotater) {
             ForEach(canvasKartNotater) { n in
-                Annotation(n.tittel.isEmpty ? "Canvas-notat" : n.tittel,
+                Annotation(n.tittel.isEmpty ? "Nexus-notat" : n.tittel,
                            coordinate: CLLocationCoordinate2D(latitude: n.lat, longitude: n.lon)) {
                     Button {
                         appState.selectedSidebarItem = .canvas
