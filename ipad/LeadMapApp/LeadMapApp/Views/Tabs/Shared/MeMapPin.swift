@@ -15,9 +15,78 @@
 
 import SwiftUI
 
+
+/// Lyskjeglen — hvilken vei enheten peker.
+///
+/// Den svarer på et spørsmål kartet ellers ikke svarer på: du står utenfor
+/// et næringsbygg med fire innganger, og prikken din sier bare *hvor* du er.
+/// Kjeglen sier hvilken vei du ser. Apple Maps har den av samme grunn.
+///
+/// To valg er verdt å begrunne:
+///
+/// **Bredden følger kompassets usikkerhet.** Et magnetometer forstyrres av
+/// bilholdere, høyttalere og metallbord. Når `headingAccuracy` er dårlig,
+/// blir kjeglen bredere i stedet for å peke like skarpt som før. En smal
+/// kjegle som peker feil er verre enn en bred som peker omtrent riktig.
+///
+/// **Den tegnes bak avataren.** Kjeglen er kontekst, ikke innhold — den skal
+/// ikke dekke ansiktet til den som ser på kartet.
+struct HeadingCone: View {
+    /// Retning i skjermgrader. 0 = rett opp på skjermen.
+    let skjermgrader: Double
+    /// Kompassets usikkerhet i grader. Negativ = ukjent.
+    let usikkerhet: Double
+    let farge: Color
+
+    private var halvVinkel: Double { Self.halvVinkel(usikkerhet: usikkerhet) }
+
+    /// Halv åpningsvinkel ut fra kompassets egen usikkerhet.
+    ///
+    /// Apple ligger rundt 30 grader når kompasset er godt. Vi følger det, og
+    /// åpner opp mot 60 når det ikke er det — en bred kjegle som stemmer er
+    /// ærligere enn en smal som ikke gjør det. Ukjent usikkerhet (−1, som
+    /// CoreLocation sender før første kalibrering) behandles som middels
+    /// dårlig, ikke som perfekt.
+    static func halvVinkel(usikkerhet: Double) -> Double {
+        guard usikkerhet >= 0 else { return 45 }
+        return min(60, max(24, usikkerhet * 1.5))
+    }
+
+    /// Hvor langt kjeglen rekker. Lang nok til å lese retningen på et
+    /// travelt kart, kort nok til ikke å dekke nabopinnene.
+    private static let rekkevidde: CGFloat = 62
+
+    var body: some View {
+        Canvas { context, size in
+            let senter = CGPoint(x: size.width / 2, y: size.height / 2)
+            let start = Angle(degrees: -90 - halvVinkel)
+            let slutt = Angle(degrees: -90 + halvVinkel)
+            var bane = Path()
+            bane.move(to: senter)
+            bane.addArc(center: senter, radius: Self.rekkevidde,
+                        startAngle: start, endAngle: slutt, clockwise: false)
+            bane.closeSubpath()
+            context.fill(bane, with: .radialGradient(
+                Gradient(colors: [farge.opacity(0.55), farge.opacity(0.0)]),
+                center: senter, startRadius: 6, endRadius: Self.rekkevidde))
+        }
+        .frame(width: Self.rekkevidde * 2, height: Self.rekkevidde * 2)
+        .rotationEffect(.degrees(skjermgrader))
+        .allowsHitTesting(false)
+        // Kompasset oppdaterer ~10 ganger i sekundet. Uten demping sitrer
+        // kjeglen; med for mye henger den etter når du snur deg.
+        .animation(.easeOut(duration: 0.18), value: skjermgrader)
+        .accessibilityHidden(true)
+    }
+}
+
 struct MeMapPin: View {
     let initials: String
     let profileImageURL: URL?
+    /// Hvor mye kartet selv er rotert. I «følg med kompass» roterer MapKit
+    /// kartet slik at retningen din peker opp — da skal kjeglen peke rett
+    /// opp, ikke mot nord. Skjermvinkelen er derfor differansen.
+    var kartHeading: Double = 0
 
     /// Puls-animasjon for outer-ring.
     @State private var pulse: Bool = false
@@ -72,6 +141,15 @@ struct MeMapPin: View {
 
     var body: some View {
         ZStack {
+            // Lyskjegle — bak alt annet, så den aldri dekker avataren.
+            // Retningen er allerede valgt mellom kompass og GPS-kurs etter
+            // reisemåte og fart; her bryr vi oss bare om at den finnes.
+            if let peiling = location.retning {
+                HeadingCone(skjermgrader: peiling.grader - kartHeading,
+                            usikkerhet: peiling.usikkerhet,
+                            farge: accentColor)
+            }
+
             // Ekstra puls-ring — vises kun ved bevegelse ELLER off-route alarm
             if location.isMoving || routeTracker.adherenceStatus == .offRoute {
                 Circle()

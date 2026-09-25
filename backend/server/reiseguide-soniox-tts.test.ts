@@ -30,6 +30,8 @@ function fakeSocket(script: (sent: string[], emit: (event: string, ...args: unkn
 describe("sonioxLanguageCode", () => {
   it("gjør nb/nn til «no» og stripper region", () => {
     expect(sonioxLanguageCode("nb")).toBe("no");
+    expect(sonioxLanguageCode("da")).toBe("da");
+    expect(sonioxLanguageCode("da-DK")).toBe("da");
     expect(sonioxLanguageCode("nn-NO")).toBe("no");
     expect(sonioxLanguageCode("en-GB")).toBe("en");
     expect(() => sonioxLanguageCode("  ")).toThrow(SonioxTtsError);

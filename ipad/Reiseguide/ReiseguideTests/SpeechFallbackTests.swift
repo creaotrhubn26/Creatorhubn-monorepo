@@ -135,4 +135,25 @@ final class SpeechFallbackTests: XCTestCase {
         XCTAssertEqual(SpeechVoicePicker.fallbackLanguageCode(for: "de"), "de")
         XCTAssertEqual(SpeechVoicePicker.pick(from: [voice("de", "de-DE", .standard)], language: "de")?.identifier, "de")
     }
+
+    // MARK: - Dansk (tredje språk)
+
+    func testDanishPicksDanishVoiceAndFallsBackToDaDK() {
+        let voices = [voice("nora", "nb-NO", .premium), voice("sara", "da-DK", .enhanced), voice("sv", "sv-SE", .premium)]
+        XCTAssertEqual(SpeechVoicePicker.pick(from: voices, language: "da")?.identifier, "sara")
+        XCTAssertNil(SpeechVoicePicker.pick(from: [voice("nora", "nb-NO", .premium)], language: "da"))
+        XCTAssertEqual(SpeechVoicePicker.fallbackLanguageCode(for: "da"), "da-DK")
+        XCTAssertEqual(SpeechVoicePicker.preferredLanguages(for: "da"), ["da-DK"])
+    }
+
+    func testDirectionsSpeechFollowsUILanguage() {
+        XCTAssertEqual(L10n.speechLanguageCode(for: "nb"), "nb-NO")
+        XCTAssertEqual(L10n.speechLanguageCode(for: "en"), "en-US")
+        XCTAssertEqual(L10n.speechLanguageCode(for: "da"), "da-DK")
+    }
+
+    @MainActor
+    func testDanishIsAUILanguage() {
+        XCTAssertEqual(AppSettings.uiLanguages, ["nb", "en", "da"])
+    }
 }

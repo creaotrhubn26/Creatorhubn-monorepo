@@ -21,6 +21,9 @@
 //   - mapShowsList: kart eller liste i kartvisningen (UU-krav 8.5). Nil til
 //     brukeren har valgt; da er listen standard når VoiceOver kjører
 //     (Features/Map/MapAccessibility.swift, MapViewMode).
+//   - narratorVoiceId: fortellerstemmen brukeren har valgt (norsk: Hazel
+//     eller Walter, vist som Hedda og Vidar). Nil = språkets standardstemme.
+//     Se Features/Settings/NarratorVoiceSettingsSection.swift.
 //   - selectedAreaSlug: området brukeren selv har valgt (Lørenskog,
 //     Nesoddtangen, Oslo …). Nil til brukeren har valgt; da velges nærmeste
 //     område eller Oslo (Core/AreaSelection.swift).
@@ -32,8 +35,9 @@ import UIKit
 @MainActor
 @Observable
 final class AppSettings {
-    /// Språk appen kan vise UI på. Innholdsspråk styres av hva backend har.
-    static let uiLanguages: [String] = ["nb", "en"]
+    /// Språk appen kan vise UI på (Localizable.xcstrings har alle tre).
+    /// Innholdsspråk styres av hva backend har.
+    static let uiLanguages: [String] = ["nb", "en", "da"]
 
     private enum Key {
         static let guideLanguage = "reiseguide.guideLanguage"
@@ -49,6 +53,7 @@ final class AppSettings {
         static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
         static let mapShowsList = "reiseguide.mapShowsList"
         static let selectedAreaSlug = "reiseguide.selectedAreaSlug"
+        static let narratorVoiceId = "reiseguide.narratorVoiceId"
         static let activeTourAreaSlug = "reiseguide.activeTourAreaSlug"
         static let tourModeAutoPlayOnArrival = "reiseguide.tourModeAutoPlayOnArrival"
         static let arrivalNotificationsEnabled = "reiseguide.arrivalNotificationsEnabled"
@@ -114,6 +119,17 @@ final class AppSettings {
         }
     }
 
+    /// Fortellerstemmen (GuideVoice.id); nil = språkets standardstemme.
+    var narratorVoiceId: String? {
+        didSet {
+            if let narratorVoiceId {
+                defaults.set(narratorVoiceId, forKey: Key.narratorVoiceId)
+            } else {
+                defaults.removeObject(forKey: Key.narratorVoiceId)
+            }
+        }
+    }
+
     /// Området brukeren selv har valgt; nil = ikke valgt ennå (AreaSelection).
     var selectedAreaSlug: String? {
         didSet {
@@ -172,6 +188,7 @@ final class AppSettings {
         inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         mapShowsList = defaults.object(forKey: Key.mapShowsList) as? Bool
         selectedAreaSlug = defaults.string(forKey: Key.selectedAreaSlug).flatMap { $0.isEmpty ? nil : $0 }
+        narratorVoiceId = defaults.string(forKey: Key.narratorVoiceId).flatMap { $0.isEmpty ? nil : $0 }
         activeTourAreaSlug = defaults.string(forKey: Key.activeTourAreaSlug).flatMap { $0.isEmpty ? nil : $0 }
         tourModeAutoPlayOnArrival = defaults.bool(forKey: Key.tourModeAutoPlayOnArrival)
         arrivalNotificationsEnabled = defaults.bool(forKey: Key.arrivalNotificationsEnabled)

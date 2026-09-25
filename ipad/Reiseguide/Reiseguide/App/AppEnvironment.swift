@@ -63,10 +63,12 @@ final class AppEnvironment {
     ) {
         self.settings = settings
         self.api = api
-        self.store = store ?? AreaStore(
+        let areaStore = store ?? AreaStore(
             api: api,
             areaSlug: AreaSelection.resolveSlug(storedSlug: settings.selectedAreaSlug, areas: [], location: nil)
         )
+        areaStore.narratorVoice = settings.narratorVoiceId
+        self.store = areaStore
         self.location = location
         self.visits = visits
         self.visitSync = VisitSync(settings: settings, visits: visits, transport: api)

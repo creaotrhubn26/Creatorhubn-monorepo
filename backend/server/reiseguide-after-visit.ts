@@ -183,15 +183,40 @@ export interface SharePageInput {
  * får tittel, ingress og bilde i meldinger, pluss knapp som åpner appen.
  * Ingen eksterne ressurser; farger fra Konsept 2.
  */
+/** Faste tekster på delingssiden per språk; engelsk for alt annet. */
+const SHARE_PAGE_COPY = {
+  nb: {
+    openApp: "Åpne i SenseAid Explore",
+    tagline: "Lydguide med fortelling, synstolking og teksting.",
+    noApp: "Har du ikke appen ennå? SenseAid Explore er under utprøving; lenken virker når appen er installert.",
+    photo: "Foto",
+  },
+  da: {
+    openApp: "Åbn i SenseAid Explore",
+    tagline: "Lydguide med fortælling, synstolkning og tekstning.",
+    noApp: "Har du ikke appen endnu? SenseAid Explore er under afprøvning; linket virker, når appen er installeret.",
+    photo: "Foto",
+  },
+  en: {
+    openApp: "Open in SenseAid Explore",
+    tagline: "Audio guide with narration, audio description and captions.",
+    noApp: "Don't have the app yet? SenseAid Explore is in testing; the link works once the app is installed.",
+    photo: "Photo",
+  },
+} as const;
+
+type SharePageCopy = (typeof SHARE_PAGE_COPY)[keyof typeof SHARE_PAGE_COPY];
+
+function sharePageCopy(lang: string): SharePageCopy {
+  const primary = lang.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+  if (primary === "nb" || primary === "no" || primary === "nn") return SHARE_PAGE_COPY.nb;
+  if (primary === "da") return SHARE_PAGE_COPY.da;
+  return SHARE_PAGE_COPY.en;
+}
+
 export function renderSharePage(input: SharePageInput): string {
-  const isNb = input.lang.startsWith("nb") || input.lang.startsWith("no") || input.lang.startsWith("nn");
-  const openApp = isNb ? "Åpne i SenseAid Explore" : "Open in SenseAid Explore";
-  const tagline = isNb
-    ? "Lydguide med fortelling, synstolking og teksting."
-    : "Audio guide with narration, audio description and captions.";
-  const noApp = isNb
-    ? "Har du ikke appen ennå? SenseAid Explore er under utprøving; lenken virker når appen er installert."
-    : "Don't have the app yet? SenseAid Explore is in testing; the link works once the app is installed.";
+  const copy = sharePageCopy(input.lang);
+  const { openApp, tagline, noApp } = copy;
   const title = escapeHtml(input.title);
   const description = escapeHtml(input.summary ?? input.subtitle ?? tagline);
   const image = input.imageUrl
@@ -201,7 +226,7 @@ export function renderSharePage(input: SharePageInput): string {
   const heroImage = input.imageUrl
     ? `<img class="hero" src="${escapeHtml(input.imageUrl)}" alt="${escapeHtml(input.imageAlt ?? input.title)}">`
     : "";
-  const credit = input.imageUrl && input.imageCredit ? renderImageCredit(input.imageCredit, isNb) : "";
+  const credit = input.imageUrl && input.imageCredit ? renderImageCredit(input.imageCredit, copy.photo) : "";
   const location = input.locationLabel ? `<p class="meta">${escapeHtml(input.locationLabel)}</p>` : "";
   const subtitle = input.subtitle ? `<p class="subtitle">${escapeHtml(input.subtitle)}</p>` : "";
   return `<!doctype html>
@@ -254,11 +279,9 @@ export function renderSharePage(input: SharePageInput): string {
 /** «Foto: Navn · CC BY-SA 4.0», lenket til filsiden på Commons når den finnes. */
 function renderImageCredit(
   credit: NonNullable<SharePageInput["imageCredit"]>,
-  isNb: boolean,
+  photoLabel: string,
 ): string {
-  const text = escapeHtml(
-    `${isNb ? "Foto" : "Photo"}: ${credit.author}${credit.license ? ` · ${credit.license}` : ""}`,
-  );
+  const text = escapeHtml(`${photoLabel}: ${credit.author}${credit.license ? ` · ${credit.license}` : ""}`);
   const body = credit.sourceUrl ? `<a href="${escapeHtml(credit.sourceUrl)}">${text}</a>` : text;
   return `<p class="credit">${body}</p>`;
 }

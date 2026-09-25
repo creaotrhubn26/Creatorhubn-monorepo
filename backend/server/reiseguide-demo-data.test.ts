@@ -14,7 +14,7 @@ import {
   DEMO_POIS,
 } from "./reiseguide-demo-data.js";
 
-const LANGS = ["nb", "en"] as const;
+const LANGS = ["nb", "en", "da"] as const;
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const OSLO_SLUG = "oslo-kvadraturen-festningen-operaen";
 /** Områdene skrevet etter Oslo; Oslo-manusene har noen kjente avvik fra varighetsrammene. */
@@ -128,8 +128,8 @@ describe("de nye områdene (Lørenskog, Nesoddtangen)", () => {
     }
   });
 
-  it("har fortelling (60–120 s) og synstolking (35–45 s) på begge språk, med varighet fra ordtall", () => {
-    const wpm = { nb: 145, en: 150 };
+  it("har fortelling (60–120 s) og synstolking (35–45 s) på alle språk, med varighet fra ordtall", () => {
+    const wpm = { nb: 145, en: 150, da: 145 };
     for (const poi of NEW_AREAS.flatMap((a) => a.pois)) {
       for (const lang of LANGS) {
         const scripts = poi.scripts[lang];
@@ -175,6 +175,50 @@ describe("de nye områdene (Lørenskog, Nesoddtangen)", () => {
       expect(DEMO_HERO_IMAGES[poi.id].titleMustIncludeAny?.length ?? 0, poi.id).toBeGreaterThan(0);
       expect(DEMO_HERO_IMAGES[poi.id].titleMustExclude?.length ?? 0, poi.id).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("dansk (da) som tredje språk", () => {
+  it("har dansk oversettelse, manus og quiz for hvert sted i alle områdene", () => {
+    for (const poi of DEMO_POIS) {
+      const t = poi.translations.da;
+      expect(t, poi.id).toBeDefined();
+      for (const field of [t.title, t.subtitle, t.summary, t.locationLabel]) {
+        expect(field.trim(), poi.id).not.toBe("");
+      }
+      expect(t.heroImageAlt, poi.id).toMatch(/^Foto af /);
+      expect(t.practicalInfo.length, poi.id).toBe(poi.translations.nb.practicalInfo.length);
+      expect(poi.quiz.da, poi.id).toHaveLength(poi.quiz.nb.length);
+      for (const [i, q] of poi.quiz.da.entries()) {
+        expect(q.options, `${poi.id} quiz ${i + 1}`).toHaveLength(poi.quiz.nb[i].options.length);
+        expect(q.correctIndex, `${poi.id} quiz ${i + 1}`).toBe(poi.quiz.nb[i].correctIndex);
+      }
+    }
+  });
+
+  it("har samme kapitler og varianter som nb, med omtrent like mange setninger (tekstingen)", () => {
+    const sentences = (text: string) => text.split(/(?<=[.!?»])\s+/).filter((s) => s.trim() !== "").length;
+    for (const poi of DEMO_POIS) {
+      const shape = (lang: "nb" | "da") => poi.scripts[lang].map((s) => `${s.kind}:${s.chapterNo}`);
+      expect(shape("da"), poi.id).toEqual(shape("nb"));
+      for (const [i, da] of poi.scripts.da.entries()) {
+        const nb = poi.scripts.nb[i];
+        expect(da.text.trim(), `${poi.id} ${da.kind} ${da.chapterNo}`).not.toBe("");
+        expect(da.title?.trim(), `${poi.id} ${da.kind} ${da.chapterNo}`).toBeTruthy();
+        expect(Math.abs(sentences(da.text) - sentences(nb.text)), `${poi.id} ${da.kind} ${da.chapterNo}`).toBeLessThanOrEqual(1);
+        expect(da.text.split("\n\n").length, `${poi.id} ${da.kind} ${da.chapterNo}`).toBe(nb.text.split("\n\n").length);
+        // Varighet fra ordtall (145 ord/min), innenfor ±20 % av nb.
+        const fromWords = Math.round((da.text.trim().split(/\s+/).length / 145) * 60);
+        expect(da.estimatedDurationS, `${poi.id} ${da.kind} ${da.chapterNo}`).toBe(fromWords);
+        expect(Math.abs(fromWords - (nb.estimatedDurationS ?? 0)), `${poi.id} ${da.kind} ${da.chapterNo}`).toBeLessThanOrEqual(
+          Math.ceil((nb.estimatedDurationS ?? 0) * 0.2),
+        );
+      }
+    }
+  });
+
+  it("har danske kategorinavn", () => {
+    for (const c of DEMO_CATEGORIES) expect(c.labels.da.trim(), c.id).not.toBe("");
   });
 });
 

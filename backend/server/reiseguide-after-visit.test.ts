@@ -125,6 +125,17 @@ describe("vurdering", () => {
 });
 
 describe("delingsside", () => {
+  const base = () => ({
+    title: "Operaen",
+    subtitle: null,
+    summary: null,
+    locationLabel: null,
+    imageUrl: null,
+    imageAlt: null,
+    shareUrl: "https://api.test/api/guide/share/operaen",
+    appUrl: "senseaidexplore://poi/operaen",
+  });
+
   it("bygger deep link og HTML med Open Graph, escapet tekst og app-knapp", () => {
     expect(appDeepLink("akershus-festning", "nb")).toBe("senseaidexplore://poi/akershus-festning?lang=nb");
     expect(appDeepLink("a b")).toBe("senseaidexplore://poi/a%20b");
@@ -160,6 +171,25 @@ describe("delingsside", () => {
     expect(english).toContain("Open in SenseAid Explore");
     expect(english).toContain('<meta name="twitter:card" content="summary">');
     expect(english).not.toContain("og:image");
+    const danish = renderSharePage({
+      title: "Operaen",
+      subtitle: null,
+      summary: null,
+      locationLabel: "Oslo, Norge",
+      imageUrl: "https://media.test/hero.jpg",
+      imageAlt: null,
+      imageCredit: { author: "Kari", license: "CC BY 2.0", sourceUrl: null },
+      lang: "da",
+      shareUrl: "https://api.test/api/guide/share/operaen?lang=da",
+      appUrl: "senseaidexplore://poi/operaen?lang=da",
+    });
+    expect(danish).toContain('<html lang="da">');
+    expect(danish).toContain(">Åbn i SenseAid Explore</a>");
+    expect(danish).toContain("Lydguide med fortælling, synstolkning og tekstning.");
+    expect(danish).toContain('<p class="credit">Foto: Kari · CC BY 2.0</p>');
+    expect(renderSharePage({ ...base(), lang: "da-DK" })).toContain("Åbn i SenseAid Explore");
+    expect(renderSharePage({ ...base(), lang: "nb-NO" })).toContain("Åpne i SenseAid Explore");
+    expect(renderSharePage({ ...base(), lang: "de" })).toContain("Open in SenseAid Explore");
   });
 
   it("krediterer bildet (escapet), og viser ingen kreditering uten bilde", () => {

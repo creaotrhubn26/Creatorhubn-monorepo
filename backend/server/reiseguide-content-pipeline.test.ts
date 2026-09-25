@@ -3,6 +3,7 @@ import {
   audioStorageKey,
   generateAreaAudio,
   generateScriptAudio,
+  isAudioUpToDate,
   listScriptAudioJobs,
   type MediaStore,
   type ScriptAudioJob,
@@ -18,7 +19,7 @@ const job: ScriptAudioJob = {
   chapterNo: 1,
   version: 2,
   text: "Velkommen til Akershus festning. Borgen ble påbegynt rundt 1300.",
-  activeAudioVersion: 1,
+  activeAudio: [{ voice: "Adrian", version: 1 }],
 };
 
 function timings(spoken: string): CharacterTiming[] {
@@ -66,10 +67,11 @@ function fakeDb(rows: unknown[] = []) {
 }
 
 describe("audioStorageKey", () => {
-  it("er deterministisk og versjonert", () => {
-    expect(audioStorageKey(job)).toBe(
-      "products/senseaid-explore/areas/oslo-kvadraturen-festningen-operaen/pois/akershus-festning/audio/narration-1-nb-v2.mp3",
+  it("er deterministisk, versjonert og egen per stemme", () => {
+    expect(audioStorageKey(job, "Hazel")).toBe(
+      "products/senseaid-explore/areas/oslo-kvadraturen-festningen-operaen/pois/akershus-festning/audio/narration-1-nb-v2-hazel.mp3",
     );
+    expect(audioStorageKey(job, "Walter")).not.toBe(audioStorageKey(job, "Hazel"));
   });
 });
 
@@ -79,24 +81,26 @@ describe("generateScriptAudio", () => {
     const store = fakeStore();
     const { db, clientQuery, release } = fakeDb();
 
-    const result = await generateScriptAudio(job, { db, tts, store, voice: "Adrian" });
+    const result = await generateScriptAudio(job, "Hazel", { db, tts, store, voice: ["Hazel", "Walter"], languageVoices: ["Hazel", "Walter"] });
 
-    expect(tts.calls).toEqual([{ text: job.text, lang: "nb", voice: "Adrian" }]);
-    expect(store.objects).toEqual([{ key: audioStorageKey(job), contentType: "audio/mpeg", size: 9 }]);
+    expect(tts.calls).toEqual([{ text: job.text, lang: "nb", voice: "Hazel" }]);
+    expect(store.objects).toEqual([{ key: audioStorageKey(job, "Hazel"), contentType: "audio/mpeg", size: 9 }]);
     const sql = clientQuery.mock.calls.map((c) => c[0].replace(/\s+/g, " ").trim());
     expect(sql[0]).toBe("BEGIN");
-    expect(sql[1]).toMatch(/UPDATE guide_poi_audio SET is_active = FALSE WHERE script_id = \$1 AND is_active/);
+    // Deaktiverer samme stemme og stemmer språket ikke lenger bruker (Adrian), ikke Walter.
+    expect(sql[1]).toMatch(/UPDATE guide_poi_audio SET is_active = FALSE WHERE script_id = \$1 AND is_active AND \(voice_id = \$2 OR NOT \(voice_id = ANY\(\$3::text\[\]\)\)\)/);
+    expect(clientQuery.mock.calls[1]![1]).toEqual([job.scriptId, "Hazel", ["Hazel", "Walter"]]);
     expect(sql[2]).toMatch(/INSERT INTO guide_poi_audio/);
     expect(sql[3]).toMatch(/INSERT INTO guide_poi_captions/);
     expect(sql[4]).toBe("COMMIT");
     expect(release).toHaveBeenCalledTimes(1);
 
     const audioParams = clientQuery.mock.calls[2]![1]!;
-    expect(audioParams.slice(1, 4)).toEqual([job.scriptId, 2, audioStorageKey(job)]);
+    expect(audioParams.slice(1, 4)).toEqual([job.scriptId, 2, audioStorageKey(job, "Hazel")]);
     expect(audioParams[4]).toBe(96);
     expect(audioParams[5]).toBe(6.4);
     expect(audioParams[6]).toBe("soniox");
-    expect(audioParams[7]).toBe("Adrian");
+    expect(audioParams[7]).toBe("Hazel");
     expect(audioParams[8]).toMatch(/^[0-9a-f]{64}$/);
 
     const captionParams = clientQuery.mock.calls[3]![1]!;
@@ -105,27 +109,56 @@ describe("generateScriptAudio", () => {
     expect(cues.map((c) => c.text)).toEqual(["Velkommen til Akershus festning.", "Borgen ble påbegynt rundt 1300."]);
     expect(captionParams[3]).toBe("soniox");
 
-    expect(result).toMatchObject({ status: "generated", durationS: 6.4, cueCount: 2, storageKey: audioStorageKey(job) });
+    expect(result).toMatchObject({ status: "generated", voice: "Hazel", durationS: 6.4, cueCount: 2, storageKey: audioStorageKey(job, "Hazel") });
   });
 
   it("hopper over manus som allerede har lyd for samme versjon, med mindre force", async () => {
     const tts = fakeTts();
     const store = fakeStore();
     const { db, connect } = fakeDb();
-    const current = { ...job, activeAudioVersion: job.version };
+    const current = { ...job, activeAudio: [{ voice: "Adrian", version: job.version }] };
 
-    expect(await generateScriptAudio(current, { db, tts, store, voice: "Adrian" })).toMatchObject({ status: "skipped", reason: "up_to_date" });
+    expect(await generateScriptAudio(current, "Adrian", { db, tts, store, voice: "Adrian" })).toMatchObject({ status: "skipped", reason: "up_to_date" });
     expect(tts.calls).toHaveLength(0);
     expect(connect).not.toHaveBeenCalled();
 
-    expect(await generateScriptAudio(current, { db, tts, store, voice: "Adrian", force: true })).toMatchObject({ status: "generated" });
+    expect(await generateScriptAudio(current, "Adrian", { db, tts, store, voice: "Adrian", force: true })).toMatchObject({ status: "generated" });
+  });
+
+  it("regner lyd som oppdatert bare for samme stemme og samme versjon", () => {
+    const withHazel = { ...job, activeAudio: [{ voice: "Hazel", version: job.version }, { voice: "Adrian", version: 1 }] };
+    expect(isAudioUpToDate(withHazel, "Hazel")).toBe(true);
+    expect(isAudioUpToDate(withHazel, "Walter")).toBe(false);
+    expect(isAudioUpToDate(withHazel, "Adrian")).toBe(false);
+  });
+
+  it("lager lyd for hver stemme språket har, og hopper over stemmer som alt har lyd", async () => {
+    const tts = fakeTts();
+    const { db } = fakeDb([
+      {
+        id: "scr_1", lang: "nb", kind: "narration", chapter_no: 1, version: 2, script_text: job.text,
+        poi_slug: "akershus-festning", area_slug: "oslo", active_audio: [{ voice: "Hazel", version: 2 }, { voice: "Adrian", version: 2 }],
+      },
+      {
+        id: "scr_2", lang: "en", kind: "narration", chapter_no: 1, version: 1, script_text: job.text,
+        poi_slug: "akershus-festning", area_slug: "oslo", active_audio: "[]",
+      },
+    ]);
+    const voices = (lang: string) => (lang === "nb" ? ["Hazel", "Walter"] : ["Adrian"]);
+    const results = await generateAreaAudio({ areaSlug: "oslo" }, { db, tts, store: fakeStore(), voice: voices });
+    expect(results.map((r) => [r.job.lang, r.voice, r.status])).toEqual([
+      ["nb", "Hazel", "skipped"],
+      ["nb", "Walter", "generated"],
+      ["en", "Adrian", "generated"],
+    ]);
+    expect(tts.calls.map((c) => (c as { voice: string }).voice)).toEqual(["Walter", "Adrian"]);
   });
 
   it("rører verken Soniox, R2 eller DB ved tørrkjøring", async () => {
     const tts = fakeTts();
     const store = fakeStore();
     const { db, connect } = fakeDb();
-    expect(await generateScriptAudio(job, { db, tts, store, voice: "Adrian", dryRun: true })).toMatchObject({ status: "skipped", reason: "dry_run" });
+    expect(await generateScriptAudio(job, "Adrian", { db, tts, store, voice: "Adrian", dryRun: true })).toMatchObject({ status: "skipped", reason: "dry_run" });
     expect(tts.calls).toHaveLength(0);
     expect(store.objects).toHaveLength(0);
     expect(connect).not.toHaveBeenCalled();
@@ -137,7 +170,7 @@ describe("generateScriptAudio", () => {
       if (sql.includes("guide_poi_captions")) throw new Error("captions-feil");
       return { rows: [] as unknown[], rowCount: 0 };
     });
-    await expect(generateScriptAudio(job, { db, tts: fakeTts(), store: fakeStore(), voice: "Adrian" })).rejects.toThrow("captions-feil");
+    await expect(generateScriptAudio(job, "Adrian", { db, tts: fakeTts(), store: fakeStore(), voice: "Adrian" })).rejects.toThrow("captions-feil");
     const sql = clientQuery.mock.calls.map((c) => c[0]);
     expect(sql.at(-1)).toBe("ROLLBACK");
     expect(release).toHaveBeenCalledTimes(1);
@@ -149,16 +182,16 @@ describe("listScriptAudioJobs + generateAreaAudio", () => {
     const { db, query } = fakeDb([
       {
         id: "scr_1", lang: "nb", kind: "narration", chapter_no: 1, version: 2, script_text: "Hei der. Bra.",
-        poi_slug: "akershus-festning", area_slug: "oslo", active_audio_version: null,
+        poi_slug: "akershus-festning", area_slug: "oslo", active_audio: null,
       },
       {
         id: "scr_2", lang: "nb", kind: "audio_description", chapter_no: 1, version: 1, script_text: "Slik ser det ut.",
-        poi_slug: "akershus-festning", area_slug: "oslo", active_audio_version: "1",
+        poi_slug: "akershus-festning", area_slug: "oslo", active_audio: [{ voice: "Adrian", version: 1 }],
       },
     ]);
     const jobs = await listScriptAudioJobs(db, { areaSlug: "oslo", lang: "nb" });
     expect(query.mock.calls[0]?.[1]).toEqual(["oslo", "nb", null, null]);
-    expect(jobs.map((j) => [j.scriptId, j.activeAudioVersion])).toEqual([["scr_1", null], ["scr_2", 1]]);
+    expect(jobs.map((j) => [j.scriptId, j.activeAudio])).toEqual([["scr_1", []], ["scr_2", [{ voice: "Adrian", version: 1 }]]]);
 
     const seen: string[] = [];
     const results = await generateAreaAudio(
@@ -171,7 +204,7 @@ describe("listScriptAudioJobs + generateAreaAudio", () => {
 
   it("fanger feil per manus i stedet for å stoppe hele kjøringen", async () => {
     const { db } = fakeDb([
-      { id: "scr_1", lang: "nb", kind: "narration", chapter_no: 1, version: 1, script_text: "Hei.", poi_slug: "a", area_slug: "oslo", active_audio_version: null },
+      { id: "scr_1", lang: "nb", kind: "narration", chapter_no: 1, version: 1, script_text: "Hei.", poi_slug: "a", area_slug: "oslo", active_audio: [] },
     ]);
     const tts: SpeechSynthesizer = { synthesize: async () => { throw new Error("Soniox nede"); } };
     const results = await generateAreaAudio({ areaSlug: "oslo" }, { db, tts, store: fakeStore(), voice: "Adrian" });
