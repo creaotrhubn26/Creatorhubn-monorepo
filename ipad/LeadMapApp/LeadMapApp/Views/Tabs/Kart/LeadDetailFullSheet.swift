@@ -36,6 +36,14 @@ struct LeadDetailFullSheet: View {
     private var leadPhone: String? {
         DemoModeManager.usesGenericFixtures ? lead.phoneOrDemo : lead.phone
     }
+    /// Sier om det finnes notater fra før, så knappen lover riktig ting:
+    /// «Notat» lager et nytt, «3 notater» åpner det siste.
+    private var notatEtikett: String {
+        let n = appState.nexusNotatAntall[lead.id] ?? 0
+        if n == 0 { return "Notat" }
+        return n == 1 ? "1 notat" : "\(n) notater"
+    }
+
     private var leadEmail: String? {
         DemoModeManager.usesGenericFixtures ? lead.emailOrDemo : lead.email
     }
@@ -266,6 +274,14 @@ struct LeadDetailFullSheet: View {
                     heroAction(icon: "envelope.fill", label: "E-post", color: LdBrand.blue) { mail(email) }
                 }
                 heroAction(icon: "calendar", label: "Møte", color: LdBrand.purple) { showScheduleMeeting = true }
+                // Kartet er der selgeren står når han bestemmer seg for at
+                // noe må skrives ned. Å be ham bytte fane og finne kunden
+                // igjen er å be ham gjøre samme valg to ganger.
+                heroAction(icon: "scribble.variable",
+                           label: notatEtikett,
+                           color: LdBrand.purpleLight) {
+                    appState.aapneNexusFor(leadId: lead.id, selskap: lead.name)
+                }
             }
         }
         .padding(18)

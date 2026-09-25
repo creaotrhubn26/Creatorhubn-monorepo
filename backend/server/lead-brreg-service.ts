@@ -22,6 +22,7 @@
  */
 
 import type { Pool } from "pg";
+import { createHash } from "crypto";
 import { fetchIprProfile, type IprProfile } from "./lead-ip-service.js";
 import { classifyByNace } from "./role-room-agent-nace-profile.js";
 
@@ -54,7 +55,36 @@ interface BrregUnit {
 interface BrregRoleHolder {
   fratraadt?: boolean;
   type?: { beskrivelse?: string; kode?: string };
-  person?: { navn?: { fornavn?: string; etternavn?: string; mellomnavn?: string } };
+  person?: {
+    navn?: { fornavn?: string; etternavn?: string; mellomnavn?: string };
+    /** BRREG oppgir fødselsdato for rolleinnehavere. Vi lagrer den aldri. */
+    fodselsdato?: string;
+    erDoed?: boolean;
+  };
+}
+
+/**
+ * Stabil, ikke-lesbar identitet for en rolleinnehaver.
+ *
+ * Problemet: to leads kan ha «Michael Svensen» i styret. Er det samme
+ * menneske, eller to som deler navn? Navnet alene kan ikke svare.
+ *
+ * BRREG oppgir fødselsdato, og navn pluss fødselsdato avgjør spørsmålet.
+ * Men vi trenger aldri å LESE datoen — bare å sammenligne to personer. Så
+ * vi lagrer et hashet fingeravtrykk i stedet for datoen.
+ *
+ * Det gir to ting på én gang: sikker identitet, og mindre personopplysninger
+ * i basen enn om vi hadde lagret datoen rått. Fingeravtrykket kan ikke
+ * reverseres til en fødselsdato uten å kjenne navnet fra før, og da vet man
+ * det allerede.
+ */
+export function personFingeravtrykk(navn: string, fodselsdato?: string): string | null {
+  const dato = (fodselsdato ?? "").trim();
+  if (!dato || !navn.trim()) return null;
+  return createHash("sha256")
+    .update(`${navn.trim().toLowerCase()}|${dato}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 interface BrregRolesResponse {
@@ -113,6 +143,13 @@ export interface EnrichmentResult {
   contacts?: Array<{
     role: string;
     name: string;
+    /**
+     * Hashet navn + fødselsdato fra BRREG. Gjør det mulig å avgjøre om to
+     * rolleinnehavere i ulike selskaper er samme menneske, uten å lagre
+     * fødselsdatoen. `undefined` for eldre berikelser og for roller uten
+     * oppgitt dato.
+     */
+    pid?: string;
   }>;
   /** null = hentet men ikke funnet (f.eks. ENK leverer ikke årsregnskap). */
   financials?: CompanyFinancials | null;
@@ -238,7 +275,11 @@ async function getCompanyRoles(orgNr: string): Promise<EnrichmentResult["contact
         const name = fullName(role.person?.navn);
         if (!name) continue;
         const desc = role.type?.beskrivelse ?? group.type?.beskrivelse ?? "Rolle";
-        contacts.push({ role: desc, name });
+        contacts.push({
+          role: desc,
+          name,
+          pid: personFingeravtrykk(name, role.person?.fodselsdato) ?? undefined,
+        });
       }
     }
     return contacts;

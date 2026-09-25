@@ -275,6 +275,41 @@ struct CanvasObjekt: Codable, Identifiable, Hashable, Sendable {
     /// rendres vektor-skarpt via PDFKit, aldri som bilde.
     var dokId: String? = nil
     var side: Int? = nil
+
+    // MARK: Medier og notat-i-notat
+    //
+    // `dokId` gjenbrukes for lyd- og videobytes: dokument-endepunktet er
+    // innholdsagnostisk og går allerede til S3. Et eget medie-endepunkt
+    // ville vært den samme koden med et annet navn.
+
+    /// Adressen for nettside-objekter.
+    var url: String? = nil
+    /// Lengde i sekunder for lyd og video. Vises på kortet før avspilling,
+    /// så man vet om det er et klipp eller en hel time.
+    var varighet: Double? = nil
+    /// Når lydopptaket startet.
+    ///
+    /// Dette er nøkkelen til blekk-synkingen. PencilKit tidsstempler hvert
+    /// strøk i `PKStrokePath.creationDate`, så vet vi når opptaket begynte,
+    /// kan vi regne ut nøyaktig hvilke strøk som ble skrevet mens en gitt
+    /// del av lyden spilte — uten å lagre noe ekstra per strøk.
+    var opptakStartet: Date? = nil
+}
+
+/// Objekttypene flata kjenner.
+///
+/// Strengene er wire-format og ligger i notatets `objekter`-JSON, så de kan
+/// ikke endres uten å migrere eksisterende notater.
+enum CanvasObjektType: String {
+    case bilde, pdf, lead, kpi, oppgave, kalender, kart
+    /// Et annet notat, levende. Ikke en kopi — et vindu.
+    case notat
+    case lyd, video, nettside
+
+    /// Typer som bærer bytes i `dokId`.
+    var harMediebytes: Bool {
+        self == .lyd || self == .video
+    }
 }
 
 /// Originaldokument (PDF) lagret tapsfritt i notatet: vektor-rendering

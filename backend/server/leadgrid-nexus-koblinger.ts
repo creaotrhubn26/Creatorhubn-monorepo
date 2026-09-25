@@ -24,7 +24,9 @@
 import type { Pool } from "pg";
 import { getStoredEnrichment } from "./lead-brreg-service.js";
 
-export type KoblingKilde = "lead" | "sted" | "mote" | "selskap" | "manuell";
+export type KoblingKilde =
+  | "lead" | "sted" | "mote" | "selskap" | "manuell" | "person" | "referert"
+  | "samtidig";
 
 export interface Kobling {
   type: "notat" | "lead" | "mote";
@@ -47,6 +49,53 @@ export interface Kobling {
  * knytter vi sammen alt i et bysentrum, og listen blir verdiløs.
  */
 export const SAMME_STED_METER = 100;
+
+/**
+ * Justerer en kildes basisstyrke etter hvor ofte den faktisk blir åpnet.
+ *
+ * Basistallene er gjetninger. «Samme kunde» fikk 100 fordi det hørtes
+ * riktigst ut, ikke fordi noen målte det. Det kan godt vise seg at selgere
+ * åpner «40 m unna» oftere enn «samme selskap» — stedet er et sterkere
+ * minne enn navnet.
+ *
+ * Men en måling på fem visninger er ikke en måling. Derfor skrus effekten
+ * gradvis på med antall observasjoner: `n / (n + MODNING)` er null i
+ * starten og nærmer seg én når tallene er store nok til å bety noe. Uten
+ * den ville den første tilfeldige åpningen kastet om på hele rekkefølgen.
+ *
+ * Utslaget er klemt til ±40 %. Læringen skal finjustere rekkefølgen, ikke
+ * skru «samme kunde» ned under «samme selskap» fordi noen hadde en rar uke.
+ *
+ * @param basis      Utviklerens prior (50–120).
+ * @param visninger  Hvor mange ganger kilden er vist.
+ * @param aapninger  Hvor mange av dem som ble åpnet.
+ * @param snittrate  Åpningsraten på tvers av alle kilder.
+ */
+export const MODNING = 30;
+
+export function justertStyrke(
+  basis: number,
+  visninger: number,
+  aapninger: number,
+  snittrate: number,
+): number {
+  if (visninger <= 0 || snittrate <= 0) return basis;
+  const rate = aapninger / visninger;
+  const modenhet = visninger / (visninger + MODNING);
+  // Relativt til snittet: en kilde som åpnes dobbelt så ofte som normalt
+  // fortjener å stige, uavhengig av om totalnivået er høyt eller lavt.
+  const relativt = rate / snittrate - 1;
+  // Taket på utslaget vokser med modenheten — ikke bare effekten.
+  //
+  // Første forsøk ganget `relativt` med modenheten og klemte resultatet til
+  // ±40 %. Det holdt ikke: tre visninger som alle ble åpnet gir `relativt`
+  // på 4, og 4 × 0,09 er fortsatt 0,36. En kilde steg fra 60 til 82 på tre
+  // observasjoner. Nå kan utslaget aldri overstige 40 % × modenhet, så tre
+  // observasjoner flytter under to prosent uansett hvor ekstreme de er.
+  const maksAvvik = 0.4 * modenhet;
+  const faktor = 1 + Math.max(-maksAvvik, Math.min(maksAvvik, relativt));
+  return Math.round(basis * faktor);
+}
 
 /** Grader breddegrad per meter. Godt nok på norske breddegrader. */
 const METER_I_GRADER = 1 / 111_320;
@@ -258,7 +307,177 @@ export async function koblingerFor(
     });
   }
 
-  // 5. Hvem du snakker med. Ikke en kobling mellom notater, men svaret på
+  // 5. Notater som har DETTE notatet liggende på flata si.
+  //
+  //    Å legge et notat inn i et annet er en påstand om sammenheng, og den
+  //    påstanden gjelder begge veier. Uten dette ser bare den som la det
+  //    inn at koblingen finnes; den som åpner notatet det ble pekt på, aner
+  //    ingenting.
+  //
+  //    `objekter` er TEXT, ikke jsonb, så vi forhåndsfiltrerer på rå tekst
+  //    før vi kaster — en LIKE mot en indeksløs kolonne er billig nok når
+  //    den følges av en presis sjekk, og å caste hver rad til jsonb først
+  //    er det ikke.
+  {
+    const r = await pool.query<{ id: string; tittel: string; created_at: Date }>(
+      `SELECT id::text, tittel, created_at
+         FROM leadgrid_canvas_notater
+        WHERE organization_id = $1 AND project_id = $2
+          AND slettet_at IS NULL
+          AND id <> $3::uuid
+          -- Formsjekk før kastet: én rad med ugyldig JSON ville ellers
+          -- tatt ned hele koblingspanelet, ikke bare sin egen kobling.
+          AND objekter LIKE '[%'
+          AND objekter LIKE '%' || $3::text || '%'
+          AND EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements(objekter::jsonb) o
+             WHERE o->>'type' = 'notat' AND o->>'refId' = $3::text
+          )
+        ORDER BY created_at DESC
+        LIMIT $4`,
+      [input.organizationId, input.projectId, notat.id, grense],
+    );
+    for (const rad of r.rows) {
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "referert", begrunnelse: "Har dette notatet på flata si",
+        tidspunkt: dato(rad.created_at), styrke: 110,
+      });
+    }
+  }
+
+  // 6. Samme person, annet selskap.
+  //
+  //    Dette er den eneste koblingen på lista et menneske ikke kunne funnet
+  //    selv. Roller-API-et gir navn, og folk sitter i flere styrer: sitter
+  //    daglig leder hos kunden du besøker nå også i styret hos et annet lead
+  //    du har notater på, er det den samme personen du skal snakke med to
+  //    ganger — og han husker hva du sa forrige gang.
+  //
+  //    Identiteten avgjøres av et fingeravtrykk: BRREG oppgir fødselsdato
+  //    for rolleinnehavere, og navn pluss dato er entydig. Fingeravtrykket
+  //    er hashet, så vi kan sammenligne uten å lagre datoen.
+  //
+  //    Finnes fingeravtrykket på begge sider, ER det samme menneske, og
+  //    koblingen er like sterk som «samme kunde». Mangler det — eldre
+  //    berikelser, eller en rolle uten oppgitt dato — faller vi tilbake til
+  //    navnematching, som kan slå sammen to personer som deler navn. Da er
+  //    styrken lavere og begrunnelsen sier at det er navnet vi går på.
+  if (notat.lead_id) {
+    const r = await pool.query<{
+      id: string; tittel: string; created_at: Date;
+      navn: string; selskap: string | null; bekreftet: boolean | null;
+    }>(
+      `WITH mine AS (
+         SELECT DISTINCT TRIM(k->>'name') AS navn,
+                NULLIF(TRIM(COALESCE(k->>'pid', '')), '') AS pid
+           FROM crm_customers c,
+                LATERAL jsonb_array_elements(
+                  COALESCE(c.enrichment_data->'contacts', '[]'::jsonb)) k
+          WHERE c.id = $1 AND c.organization_id = $2::uuid
+            AND c.project_id = $3
+            AND COALESCE(TRIM(k->>'name'), '') <> ''
+       ),
+       meg AS (
+         SELECT enrichment_org_nr, LOWER(TRIM(name)) AS navnenokkel
+           FROM crm_customers
+          WHERE id = $1 AND organization_id = $2::uuid AND project_id = $3
+       ),
+       andre AS (
+         SELECT DISTINCT c.id AS lead_id, c.name AS selskap, m.navn,
+                -- Bekreftet når begge sider har samme fingeravtrykk.
+                (m.pid IS NOT NULL
+                 AND m.pid = NULLIF(TRIM(COALESCE(k->>'pid', '')), ''))
+                  AS bekreftet
+           FROM crm_customers c
+           JOIN LATERAL jsonb_array_elements(
+                  COALESCE(c.enrichment_data->'contacts', '[]'::jsonb)) k
+                ON TRUE
+           JOIN mine m
+             ON (m.pid IS NOT NULL
+                 AND m.pid = NULLIF(TRIM(COALESCE(k->>'pid', '')), ''))
+             OR (m.pid IS NULL AND m.navn = TRIM(k->>'name'))
+           CROSS JOIN meg
+          WHERE c.organization_id = $2::uuid AND c.project_id = $3
+            AND c.id <> $1
+            -- Samme selskap duplisert som to leads er ikke en personkobling.
+            -- Produksjon har «Lillestrøm Regnskap Og Økonomi AS» og
+            -- «Lillestrøm regnskap og økonomi AS» som to rader; uten denne
+            -- sjekken ville vi meldt at daglig leder «også sitter i» sitt
+            -- eget selskap.
+            AND (meg.enrichment_org_nr IS NULL
+                 OR c.enrichment_org_nr IS NULL
+                 OR c.enrichment_org_nr <> meg.enrichment_org_nr)
+            AND LOWER(TRIM(c.name)) <> meg.navnenokkel
+       )
+       SELECT n.id::text, n.tittel, n.created_at, a.navn, a.selskap, a.bekreftet
+         FROM leadgrid_canvas_notater n
+         JOIN andre a ON a.lead_id = n.lead_id
+        WHERE n.id <> $4::uuid AND n.organization_id = $2
+          AND n.project_id = $3 AND n.slettet_at IS NULL
+        ORDER BY n.created_at DESC
+        LIMIT $5`,
+      [notat.lead_id, input.organizationId, input.projectId, notat.id, grense],
+    );
+    for (const rad of r.rows) {
+      const bekreftet = rad.bekreftet === true;
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "person",
+        begrunnelse: bekreftet
+          ? (rad.selskap
+              ? `${rad.navn} sitter også i ${rad.selskap}`
+              : `Samme person: ${rad.navn}`)
+          // Sier at vi går på navnet, så selgeren vet at han må se etter.
+          : (rad.selskap
+              ? `Samme navn som i ${rad.selskap}: ${rad.navn}`
+              : `Samme navn: ${rad.navn}`),
+        tidspunkt: dato(rad.created_at),
+        styrke: bekreftet ? 100 : 55,
+      });
+    }
+  }
+
+  // Notater uten lead, skrevet mens et møte pågikk.
+  //
+  //    Den vanligste måten et notat mister sammenhengen sin på er at
+  //    selgeren rakk aldri å koble det til kunden — han skrev mens noen
+  //    snakket. Møteloggen vet når møtet var og hvem det var med.
+  //
+  //    Signalet er svakt alene: tid og bruker, ingen posisjon (møteloggen
+  //    lagrer ikke koordinater). Derfor lav styrke og en begrunnelse som
+  //    sier hva vi bygger på, så selgeren kan avvise den med et blikk.
+  if (!notat.lead_id) {
+    const r = await pool.query<{
+      id: string; notat: string | null; selskap: string | null;
+      meeting_at: Date | null;
+    }>(
+      `SELECT id::text, notat, selskap, meeting_at
+         FROM leadgrid_mote_logg
+        WHERE organization_id = $1 AND project_id = $2
+          AND meeting_at IS NOT NULL
+          AND meeting_at BETWEEN $3::timestamptz - INTERVAL '2 hours'
+                             AND $3::timestamptz + INTERVAL '2 hours'
+        ORDER BY ABS(EXTRACT(EPOCH FROM (meeting_at - $3::timestamptz)))
+        LIMIT $4`,
+      [input.organizationId, input.projectId, notat.created_at, grense],
+    );
+    for (const rad of r.rows) {
+      const hvem = tekst(rad.selskap).trim();
+      ut.push({
+        type: "mote", id: rad.id,
+        tittel: hvem || (tekst(rad.notat).split("\n")[0] || "Møte").slice(0, 90),
+        kilde: "samtidig",
+        begrunnelse: hvem
+          ? `Skrevet mens møtet med ${hvem} pågikk`
+          : "Skrevet mens et møte pågikk",
+        tidspunkt: dato(rad.meeting_at), styrke: 45,
+      });
+    }
+  }
+
+  // 7. Hvem du snakker med. Ikke en kobling mellom notater, men svaret på
   //    det samme spørsmålet: hva henger sammen med dette notatet?
   //    Rollene ligger allerede i enrichment_data fra da leadet ble beriket.
   const personer: Person[] = [];
@@ -285,6 +504,36 @@ export async function koblingerFor(
     }
   }
 
+  // Lær rekkefølgen av hva folk faktisk åpner. Er tabellen tom eller ny,
+  // gjør dette ingenting — basistallene står.
+  try {
+    const bruk = await pool.query<{ kilde: string; visninger: string; aapninger: string }>(
+      `SELECT kilde, visninger::text, aapninger::text
+         FROM leadgrid_nexus_kobling_bruk
+        WHERE organization_id = $1 AND project_id = $2`,
+      [input.organizationId, input.projectId],
+    );
+    if (bruk.rows.length > 0) {
+      let sumV = 0, sumA = 0;
+      const perKilde = new Map<string, { v: number; a: number }>();
+      for (const rad of bruk.rows) {
+        const v = Number(rad.visninger) || 0;
+        const a = Number(rad.aapninger) || 0;
+        perKilde.set(rad.kilde, { v, a });
+        sumV += v; sumA += a;
+      }
+      const snitt = sumV > 0 ? sumA / sumV : 0;
+      for (const k of ut) {
+        const t = perKilde.get(k.kilde);
+        if (t) k.styrke = justertStyrke(k.styrke, t.v, t.a, snitt);
+      }
+    }
+  } catch (e) {
+    // Migrasjonen kan mangle i et miljø. Rekkefølgen skal da være
+    // utviklerens gjetning, ikke en feilmelding.
+    console.warn("[nexus] kunne ikke lese koblingsbruk:", (e as Error).message);
+  }
+
   // Samme mål kan dukke opp fra flere kilder — behold den sterkeste
   // begrunnelsen, ikke fire linjer om samme notat.
   const beste = new Map<string, Kobling>();
@@ -301,6 +550,45 @@ export async function koblingerFor(
       (a, b) => b.styrke - a.styrke || (b.tidspunkt ?? "").localeCompare(a.tidspunkt ?? ""),
     ),
   };
+}
+
+/**
+ * Teller at koblinger ble vist, og eventuelt at én ble åpnet.
+ *
+ * Ingen notat-ID, ingen bruker-ID: bare kilden. Nok til å rangere, for lite
+ * til å lese ut hvem som så på hva.
+ */
+export async function tellKoblingsbruk(
+  pool: Pool,
+  input: {
+    organizationId: string; projectId: string;
+    vist: KoblingKilde[]; aapnet?: KoblingKilde | null;
+  },
+): Promise<void> {
+  const teller = new Map<string, { v: number; a: number }>();
+  for (const k of input.vist) {
+    const t = teller.get(k) ?? { v: 0, a: 0 };
+    t.v += 1;
+    teller.set(k, t);
+  }
+  if (input.aapnet) {
+    const t = teller.get(input.aapnet) ?? { v: 0, a: 0 };
+    t.a += 1;
+    teller.set(input.aapnet, t);
+  }
+  if (teller.size === 0) return;
+  for (const [kilde, t] of teller) {
+    await pool.query(
+      `INSERT INTO leadgrid_nexus_kobling_bruk
+         (organization_id, project_id, kilde, visninger, aapninger)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (organization_id, project_id, kilde) DO UPDATE
+         SET visninger = leadgrid_nexus_kobling_bruk.visninger + EXCLUDED.visninger,
+             aapninger = leadgrid_nexus_kobling_bruk.aapninger + EXCLUDED.aapninger,
+             oppdatert_at = now()`,
+      [input.organizationId, input.projectId, kilde, t.v, t.a],
+    );
+  }
 }
 
 /** Lager en eksplisitt kobling. Idempotent — samme kobling to ganger er én. */
