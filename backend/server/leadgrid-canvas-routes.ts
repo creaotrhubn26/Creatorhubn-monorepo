@@ -68,7 +68,17 @@ async function innenforKvote(
       windowMs: kvote.windowMs,
       mode: kvote.mode,
     });
-    if (svar.allowed) return true;
+    if (svar.allowed) {
+      // Kvoten er ikke en hemmelighet. Appen skal kunne si fra FØR taket,
+      // ikke først når serveren svarer 429 midt i en tegning. Headeren
+      // koster ingenting og gjør 429-en forutsigbar.
+      res.setHeader("X-Nexus-Kvote-Rest", String(svar.remaining));
+      res.setHeader("X-Nexus-Kvote-Tak", String(kvote.limit));
+      if (svar.remaining <= Math.ceil(kvote.limit * 0.2)) {
+        res.setHeader("X-Nexus-Kvote-Advarsel", "1");
+      }
+      return true;
+    }
     res.setHeader("Retry-After", String(svar.retryAfterSeconds));
     res.status(429).json({
       error: "for_mange_kall",
@@ -216,6 +226,29 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
       ADD COLUMN IF NOT EXISTS slettet_at TIMESTAMPTZ`);
+  // Koblingsbruk (0682) og sett-markering (0683): selvhelende her også, så
+  // et miljø uten migrasjonene ikke får 500 på koblingspanelet.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_nexus_kobling_bruk (
+      organization_id TEXT NOT NULL,
+      project_id      TEXT NOT NULL,
+      kilde           TEXT NOT NULL,
+      visninger       BIGINT NOT NULL DEFAULT 0,
+      aapninger       BIGINT NOT NULL DEFAULT 0,
+      oppdatert_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (organization_id, project_id, kilde)
+    )`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_nexus_notat_sett (
+      notat_id        UUID NOT NULL,
+      user_id         TEXT NOT NULL,
+      organization_id TEXT NOT NULL,
+      sist_sett_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (notat_id, user_id)
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_nexus_notat_sett_notat
+      ON leadgrid_nexus_notat_sett (notat_id, sist_sett_at DESC)`);
   schemaReady = true;
 }
 
@@ -950,6 +983,69 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  /**
+   * Marker at notatet er sett, og svar med hvem andre som har sett det.
+   *
+   * Et delt notat er en påstand om at noe angår flere enn deg. I dag kan man
+   * dele, men ikke se om noen faktisk åpnet det — og da vet man ikke om
+   * beskjeden kom fram eller bare ble lagt i en skuff.
+   *
+   * Eieren sin egen åpning telles ikke: at du har sett ditt eget notat er
+   * ikke informasjon.
+   */
+  app.post("/api/leadgrid/canvas/:id/sett", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const notatId = String(req.params.id);
+      const eier = await pool.query<{ user_id: string; delt: boolean }>(
+        `SELECT user_id, delt FROM leadgrid_canvas_notater
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+            AND slettet_at IS NULL`,
+        [notatId, scope.organizationId, scope.projectId]);
+      const rad = eier.rows[0];
+      if (!rad) { res.status(404).json({ error: "notat_ikke_funnet" }); return; }
+      // Bare delte notater har et publikum å spore.
+      if (!rad.delt) { res.json({ sett: [] }); return; }
+
+      if (rad.user_id !== session.userId) {
+        await pool.query(
+          `INSERT INTO leadgrid_nexus_notat_sett
+             (notat_id, user_id, organization_id)
+           VALUES ($1::uuid, $2, $3)
+           ON CONFLICT (notat_id, user_id)
+             DO UPDATE SET sist_sett_at = now()`,
+          [notatId, session.userId, scope.organizationId]);
+      }
+
+      const sett = await pool.query<{ navn: string; sist_sett_at: Date }>(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                         u.username, u.email, 'Ukjent') AS navn,
+                s.sist_sett_at
+           FROM leadgrid_nexus_notat_sett s
+           LEFT JOIN users u ON u.id::text = s.user_id
+          WHERE s.notat_id = $1::uuid AND s.organization_id = $2
+            AND s.user_id <> $3
+          ORDER BY s.sist_sett_at DESC
+          LIMIT 20`,
+        [notatId, scope.organizationId, rad.user_id]);
+
+      res.json({
+        sett: sett.rows.map((r) => ({
+          navn: r.navn,
+          sistSett: r.sist_sett_at?.toISOString?.() ?? null,
+        })),
+      });
+    } catch (e) {
+      console.error("[nexus] sett-markering feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   /**
    * Søk på tvers av alle notater.
    *
