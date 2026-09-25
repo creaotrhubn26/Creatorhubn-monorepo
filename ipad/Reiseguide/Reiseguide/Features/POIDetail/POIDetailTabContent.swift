@@ -44,6 +44,9 @@ struct POIDetailTabContent: View {
             }
         case .practical:
             VStack(alignment: .leading, spacing: AppSpacing.l) {
+                // Look Around (pakke 2, item 7): egen kortkomponent, viser
+                // ingenting mens scenen sjekkes eller når Apple ikke har en.
+                LookAroundPreviewCard(poi: poi)
                 if poi.practicalInfo.isEmpty {
                     Text("detail.noPractical")
                         .font(AppFont.body)

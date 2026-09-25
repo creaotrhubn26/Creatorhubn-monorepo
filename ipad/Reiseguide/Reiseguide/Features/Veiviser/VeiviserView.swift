@@ -94,9 +94,31 @@ struct VeiviserView: View {
                 arrivedBlock
             } else {
                 directionBlock(model)
+                stepBlock(model)
             }
         }
         .padding(.horizontal, AppSpacing.screenMargin)
+    }
+
+    /// Turn-by-turn (pakke 2, item 1): gjeldende manøver og av-rute-varsel,
+    /// under kompassretningen — som en ekstra detalj, ikke en erstatning for
+    /// den (gangrute med steg kan mangle helt, kompasset virker uansett).
+    @ViewBuilder
+    private func stepBlock(_ model: VeiviserViewModel) -> some View {
+        VStack(spacing: AppSpacing.s) {
+            if model.isOffRoute {
+                Label("veiviser.offRoute", systemImage: "arrow.triangle.turn.up.right.diamond")
+                    .font(AppFont.subtitle)
+                    .foregroundStyle(AppColor.error)
+            } else if let instructions = model.currentStepInstructions {
+                Label(instructions, systemImage: "arrow.turn.up.right")
+                    .font(AppFont.subtitle)
+                    .foregroundStyle(contrast.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.top, AppSpacing.s)
+        .accessibilityElement(children: .combine)
     }
 
     private func arrow(_ model: VeiviserViewModel) -> some View {

@@ -35,6 +35,23 @@
         }
       }
     },
+    "action.cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avbryt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
     "action.close": {
       "extractionState": "manual",
       "localizations": {
@@ -65,6 +82,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
+          }
+        }
+      }
+    },
+    "action.playPoi": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play %@"
           }
         }
       }
@@ -1089,6 +1123,57 @@
         }
       }
     },
+    "detail.lookAround.accessibleHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En visuell 360°-forhåndsvisning av stedet. Ikke tilgjengelig med VoiceOver."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A visual 360° preview of the place. Not accessible with VoiceOver."
+          }
+        }
+      }
+    },
+    "detail.lookAround.accessibleLabel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D-forhåndsvisning"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D preview"
+          }
+        }
+      }
+    },
+    "detail.lookAround.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se stedet i 3D"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the place in 3D"
+          }
+        }
+      }
+    },
     "detail.noContentHint": {
       "extractionState": "manual",
       "localizations": {
@@ -1769,6 +1854,74 @@
         }
       }
     },
+    "map.eta.walking": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk"
+          }
+        }
+      }
+    },
+    "map.eta.walkingEstimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå (anslag)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk (estimate)"
+          }
+        }
+      }
+    },
+    "map.eta.walkingEstimateSpoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cirka %@ å gå, anslag"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "about %@ walk, estimate"
+          }
+        }
+      }
+    },
+    "map.eta.walkingSpoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk"
+          }
+        }
+      }
+    },
     "map.listLabel": {
       "extractionState": "manual",
       "localizations": {
@@ -2211,6 +2364,57 @@
         }
       }
     },
+    "notification.action.play": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        }
+      }
+    },
+    "notification.arrival.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ venter på deg. Trykk «Spill av» for å høre fortellingen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is waiting for you. Tap “Play” to hear the story."
+          }
+        }
+      }
+    },
+    "notification.arrival.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er ved en severdighet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're at a place"
+          }
+        }
+      }
+    },
     "paywall.body": {
       "extractionState": "manual",
       "localizations": {
@@ -2292,6 +2496,125 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skip back 15 seconds"
+          }
+        }
+      }
+    },
+    "player.chapter.next": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste kapittel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next chapter"
+          }
+        }
+      }
+    },
+    "player.chapter.previous": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige kapittel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous chapter"
+          }
+        }
+      }
+    },
+    "player.chapters.completed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hørt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listened to"
+          }
+        }
+      }
+    },
+    "player.chapters.current": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spilles nå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now playing"
+          }
+        }
+      }
+    },
+    "player.chapters.progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapittel %1$@ av %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chapter %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "player.chapters.showHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser alle kapitlene, med mulighet til å hoppe."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows all chapters, with the option to jump."
+          }
+        }
+      }
+    },
+    "player.chapters.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapitler"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chapters"
           }
         }
       }
@@ -2517,6 +2840,57 @@
         }
       }
     },
+    "player.resume.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsetter fra %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resuming from %@"
+          }
+        }
+      }
+    },
+    "player.resume.restart": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start på nytt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start over"
+          }
+        }
+      }
+    },
+    "player.resume.restartHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortellingen fra begynnelsen i stedet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starts the narration from the beginning instead."
+          }
+        }
+      }
+    },
     "player.stop": {
       "extractionState": "manual",
       "localizations": {
@@ -2581,6 +2955,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "Narration"
+          }
+        }
+      }
+    },
+    "player.visitEnded.announcement": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@-besøket er ferdig."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The visit to %@ is complete."
+          }
+        }
+      }
+    },
+    "player.visitEnded.quiz": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta quizen og gi stjerner"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take the quiz and rate it"
+          }
+        }
+      }
+    },
+    "player.visitEnded.replay": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av på nytt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play again"
+          }
+        }
+      }
+    },
+    "player.visitEnded.replayHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortellingen fra begynnelsen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starts the narration from the beginning."
+          }
+        }
+      }
+    },
+    "player.visitEnded.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bra jobbet! Ta quizen og gi stjerner, eller fortsett til neste stopp."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Well done! Take the quiz and rate it, or continue to the next stop."
+          }
+        }
+      }
+    },
+    "player.visitEnded.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøket er ferdig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The visit is complete"
           }
         }
       }
@@ -3537,6 +4013,108 @@
         }
       }
     },
+    "settings.arrivalNotifications.allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.explanationBody": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SenseAid Explore kan sende deg et varsel når du er ved en severdighet, selv når appen ikke er åpen. Dette krever at du gir «Alltid»-tilgang til posisjonen din. Du kan skru dette av når som helst i Innstillinger. Varselet starter ikke lyd av seg selv — du velger selv å trykke «Spill av»."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SenseAid Explore can send you a notification when you're at a place, even when the app isn't open. This requires granting “Always” location access. You can turn this off anytime in Settings. The notification doesn't start playback on its own — you choose to tap “Play”."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.explanationTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsle meg ved ankomst?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify me on arrival?"
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever «Alltid»-posisjon. Varsler ikke mens appen er åpen — der vises kortet som vanlig. Åpner appen når du trykker «Spill av»; lyden starter først da."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requires Always location access. Doesn't notify while the app is open — the usual card appears there instead. Opens the app when you tap “Play”; playback starts then."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender et varsel når du er ved en severdighet, selv om appen ikke er åpen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sends a notification when you're at a place, even if the app isn't open."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsle meg ved ankomst"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify me on arrival"
+          }
+        }
+      }
+    },
     "settings.autoStartOnArrival": {
       "extractionState": "manual",
       "localizations": {
@@ -3720,6 +4298,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reset demo purchase"
+          }
+        }
+      }
+    },
+    "settings.tourModeAutoPlayOnArrival": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av automatisk under tur"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-play during tour"
           }
         }
       }
@@ -3958,6 +4553,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "You've completed the tour!"
+          }
+        }
+      }
+    },
+    "tour.resume": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsett turen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume tour"
+          }
+        }
+      }
+    },
+    "tour.resumeHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går videre til stedet turen venter på."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continues to the place the tour is waiting at."
+          }
+        }
+      }
+    },
+    "tour.start": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start tur"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start tour"
+          }
+        }
+      }
+    },
+    "tour.startHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går til det første ikke-besøkte stedet i ruta."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walks to the first place on the route you haven't visited yet."
           }
         }
       }
@@ -4234,6 +4897,23 @@
         }
       }
     },
+    "veiviser.offRoute": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er utenfor ruta. Beregner ny rute."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're off the route. Recalculating."
+          }
+        }
+      }
+    },
     "veiviser.repeat": {
       "extractionState": "manual",
       "localizations": {
@@ -4298,6 +4978,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Speaks direction and distance while you walk. Never talks over the narration."
+          }
+        }
+      }
+    },
+    "visit.nextStop": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gå til neste stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to the next stop"
+          }
+        }
+      }
+    },
+    "visit.nextStop.cardTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next stop"
+          }
+        }
+      }
+    },
+    "visit.nextStopHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner veiviseren til neste ikke-besøkte stopp på ruten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the wayfinder to the next stop on the route you haven't visited yet."
           }
         }
       }

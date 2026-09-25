@@ -48,6 +48,12 @@ final class AreaStore {
     @ObservationIgnored private let api: GuideAPIClient
     @ObservationIgnored private let cacheDirectory: URL
     @ObservationIgnored private var loadedSlug: String?
+    /// Når området sist ble hentet fra backend (ikke fra cache).
+    @ObservationIgnored private var loadedAt: Date?
+
+    /// Hvor gammelt innholdet kan være før det hentes på nytt når appen
+    /// kommer tilbake i forgrunnen.
+    nonisolated static let foregroundRefreshAge: TimeInterval = 5 * 60
 
     init(api: GuideAPIClient = GuideAPIClient(), areaSlug: String = AreaStore.demoAreaSlug, cacheDirectory: URL? = nil) {
         self.api = api
@@ -74,6 +80,14 @@ final class AreaStore {
         await load(lang: lang)
     }
 
+    /// Når appen kommer tilbake i forgrunnen: henter området på nytt hvis det
+    /// er eldre enn `maxAge`, så ny lyd og nye steder kommer uten at appen må
+    /// startes på nytt. Innholdet som vises, byttes først når svaret er her.
+    func refreshIfStale(lang: String, maxAge: TimeInterval = AreaStore.foregroundRefreshAge, now: Date = .now) async {
+        guard response != nil, let loadedAt, now.timeIntervalSince(loadedAt) >= maxAge else { return }
+        await load(lang: lang)
+    }
+
     func load(lang: String) async {
         let requested = slug
         if response == nil { state = .loading }
@@ -84,6 +98,7 @@ final class AreaStore {
             state = .loaded(fresh, fromCache: false)
             loadedLang = lang
             loadedSlug = requested
+            loadedAt = .now
             writeCache(fresh, slug: requested, lang: lang)
         } catch {
             guard requested == slug else { return }

@@ -5,7 +5,10 @@
 //   - look  = «Se opp: …»-kort med haptikk og annonsering; avspillingen fortsetter,
 //             kortet står til brukeren lukker det eller kapittelet byttes.
 //   - guess = gjettespørsmål; fortellingen pauser, brukeren velger et svar, får
-//             fasit og trykker «Fortsett».
+//             fasit og trykker «Fortsett». Pausen skjer IKKE i det atFraction
+//             passeres (det kuttet lyden brått midt i en setning), men ved
+//             slutten av tekstingssegmentet som er i gang, se
+//             ChapterPromptPauseTiming.
 // Backend gir posisjonen som andel av kapittelet (atFraction, 0 ≤ x < 1) fordi
 // ekte lydlengder ikke finnes ennå; tidspunktet er atFraction × varigheten.
 //
@@ -121,6 +124,28 @@ struct ChapterPromptTracker: Equatable, Sendable {
     }
 }
 
+/// Ren tidslogikk for NÅR avspillingen skal pause etter et gjettespørsmål.
+/// Eieren rapporterte at lyden stoppet brått midt i en setning fordi pausen
+/// skjedde nøyaktig på `atFraction × varigheten`. I stedet ventes det til
+/// setningen som er i gang er ferdig (tekstingssegmentet som dekker
+/// tidspunktet innslaget ble passert), med et tak så en unormalt lang eller
+/// manglende tekstingsdata aldri utsetter pausen for lenge.
+enum ChapterPromptPauseTiming {
+    /// Maks ventetid utover trigger-tidspunktet, selv om segmentet er lengre
+    /// (manglende/feil tekstingsdata skal ikke stoppe avspillingen i evigheter).
+    static let maxWaitS: Double = 8
+
+    /// Tidspunktet avspillingen skal pause: slutten på tekstingssegmentet som
+    /// dekker `triggeredAtS`, maks `maxWaitS` unna. Uten et dekkende segment
+    /// pauses det med det samme (`triggeredAtS`).
+    static func pauseTimeS(triggeredAtS: Double, segments: [CaptionSegment]) -> Double {
+        guard let segment = CaptionTimeline.segment(at: triggeredAtS, in: segments) else {
+            return triggeredAtS
+        }
+        return min(segment.endS, triggeredAtS + maxWaitS)
+    }
+}
+
 /// Tilstanden avspilleren viser: hvilket innslag som står fremme og hva
 /// brukeren har svart. Eies av PlayerViewModel (`prompts`).
 @MainActor
@@ -133,34 +158,64 @@ final class ChapterPromptController {
     private(set) var presentationCount = 0
 
     @ObservationIgnored private var tracker = ChapterPromptTracker()
+    /// Et gjettespørsmål som er passert, men venter til setningen som er i
+    /// gang er ferdig, før kortet vises og avspillingen faktisk pauses.
+    @ObservationIgnored private var pendingGuess: ChapterPrompt?
+    @ObservationIgnored private var pendingPauseAtS: Double?
 
     /// Nytt sted i avspilleren.
     func resetSession() {
         tracker.resetSession()
         presentationCount = 0
+        cancelPending()
         dismiss()
     }
 
     /// Nytt kapittel (eller variant): kortet forsvinner og tidslinjen byttes.
     func load(chapter: GuideChapter?) {
         tracker.load(prompts: chapter?.promptList ?? [], durationS: chapter?.playbackDurationS ?? 0)
+        cancelPending()
         dismiss()
     }
 
+    /// Spoling/hopping kansellerer en eventuell utsatt pause: den hørte til
+    /// tidspunktet brukeren nettopp forlot.
     func seek(to positionS: Double) {
         tracker.seek(to: positionS)
+        cancelPending()
     }
 
-    /// Kalles ved hvert tikk. Returnerer true når avspillingen skal pause
-    /// (gjettespørsmål). Med innstillingen av går tidslinjen videre uten å vise
-    /// noe, så ingenting hoper seg opp om den slås på igjen.
-    func advance(to positionS: Double, enabled: Bool) -> Bool {
+    /// Kalles ved hvert tikk. Returnerer true når avspillingen skal pause NÅ.
+    /// Et gjettespørsmål pauser ikke i det øyeblikket det passeres — kortet
+    /// vises og pausen skjer først ved `ChapterPromptPauseTiming.pauseTimeS`,
+    /// så kortet og stillheten kommer samtidig (8.4). Med innstillingen av
+    /// går tidslinjen videre uten å vise noe, så ingenting hoper seg opp om
+    /// den slås på igjen.
+    func advance(to positionS: Double, segments: [CaptionSegment], enabled: Bool) -> Bool {
+        if pendingGuess != nil {
+            // Hold tidslinjen i takt uten å plukke opp nye innslag mens vi
+            // venter på at setningen som var i gang skal bli ferdig.
+            tracker.seek(to: positionS)
+            guard let pendingPauseAtS, positionS >= pendingPauseAtS else { return false }
+            firePendingGuess()
+            return true
+        }
         let hit = tracker.advance(to: positionS)
         guard enabled, let hit else { return false }
-        active = hit
-        chosenIndex = nil
-        presentationCount += 1
-        return hit.promptKind == .guess
+        guard hit.promptKind == .guess else {
+            active = hit
+            chosenIndex = nil
+            presentationCount += 1
+            return false
+        }
+        pendingGuess = hit
+        let pauseAtS = min(ChapterPromptPauseTiming.pauseTimeS(triggeredAtS: positionS, segments: segments), tracker.durationS)
+        guard pauseAtS > positionS else {
+            firePendingGuess()
+            return true
+        }
+        pendingPauseAtS = pauseAtS
+        return false
     }
 
     func choose(_ index: Int) {
@@ -172,5 +227,18 @@ final class ChapterPromptController {
     func dismiss() {
         active = nil
         chosenIndex = nil
+    }
+
+    private func firePendingGuess() {
+        guard let pendingGuess else { return }
+        active = pendingGuess
+        chosenIndex = nil
+        presentationCount += 1
+        cancelPending()
+    }
+
+    private func cancelPending() {
+        pendingGuess = nil
+        pendingPauseAtS = nil
     }
 }

@@ -157,6 +157,76 @@ interface FlrEnvironment {
   LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY?: string;
 }
 
+/**
+ * Alt FLR-oppsettet utenom hemmeligheten, i én variabel.
+ *
+ * Render har et tak på 300 miljøvariabler per tjeneste, og produksjons-
+ * backenden står på 300. Fire separate variabler for det samme oppsettet er
+ * fire plasser vi ikke har. Her er de én:
+ *
+ *     LEADGRID_FLR_CONFIG={"enabled":true,"environment":"production",
+ *                          "clientId":"...","keyId":"leadgrid-flr-2026-09"}
+ *
+ * Privatnøkkelen blir bevisst stående for seg i
+ * `LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY`. En PEM inne i JSON må escapes,
+ * og en feilescapet nøkkel feiler først ved første token-utveksling — lenge
+ * etter at noen trodde de var ferdige. Den holdes også lettere unna logger
+ * når den ikke deler variabel med noe man gjerne skriver ut.
+ */
+const FLR_CONFIG_VAR = "LEADGRID_FLR_CONFIG";
+
+function lesSamletConfig(rå: string | undefined): Partial<{
+  enabled: string;
+  environment: string;
+  clientId: string;
+  keyId: string;
+}> {
+  if (!rå?.trim()) return {};
+  try {
+    const d = JSON.parse(rå) as Record<string, unknown>;
+    const tekst = (v: unknown): string | undefined =>
+      typeof v === "string" && v.trim() ? v.trim() : undefined;
+    return {
+      // `true` og "true" skal begge virke. Den som skriver JSON-en bruker
+      // boolean; den som limer inn fra et gammelt oppsett bruker streng.
+      enabled:
+        typeof d.enabled === "boolean" ? String(d.enabled) : tekst(d.enabled),
+      environment: tekst(d.environment),
+      clientId: tekst(d.clientId),
+      keyId: tekst(d.keyId),
+    };
+  } catch {
+    // Ugyldig JSON skal ikke ta ned Discovery. Provideren er fail-closed:
+    // uten gyldig oppsett svarer isDiscoveryFlrConfigured false, og
+    // produktflatene sier fra om det selv.
+    console.warn(`[flr] ${FLR_CONFIG_VAR} er ikke gyldig JSON — ignoreres.`);
+    return {};
+  }
+}
+
+/**
+ * Bygger FLR-oppsettet fra miljøet.
+ *
+ * Enkeltvariablene vinner over den samlede. Det gjør at man kan overstyre
+ * ett felt lokalt — typisk `LEADGRID_FLR_ENVIRONMENT=test` — uten å skrive
+ * om hele JSON-en, og at eksisterende oppsett og tester virker uendret.
+ */
+export function flrEnvFra(kilde: NodeJS.ProcessEnv = process.env): FlrEnvironment {
+  const samlet = lesSamletConfig(kilde[FLR_CONFIG_VAR]);
+  return {
+    LEADGRID_DISCOVERY_FLR_ENABLED:
+      kilde.LEADGRID_DISCOVERY_FLR_ENABLED ?? samlet.enabled,
+    LEADGRID_FLR_ENVIRONMENT:
+      kilde.LEADGRID_FLR_ENVIRONMENT ?? samlet.environment,
+    LEADGRID_FLR_MASKINPORTEN_CLIENT_ID:
+      kilde.LEADGRID_FLR_MASKINPORTEN_CLIENT_ID ?? samlet.clientId,
+    LEADGRID_FLR_MASKINPORTEN_KEY_ID:
+      kilde.LEADGRID_FLR_MASKINPORTEN_KEY_ID ?? samlet.keyId,
+    LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY:
+      kilde.LEADGRID_FLR_MASKINPORTEN_PRIVATE_KEY,
+  };
+}
+
 export interface DiscoveryFlrProviderDependencies {
   /**
    * Basen. Uten den henter hver kjøring registeret på nytt og stiller seg i
@@ -209,7 +279,7 @@ function normalizedPrivateKey(value: string): string {
  * whether a run can even start instead of only learning it from a failed run.
  */
 export function isDiscoveryFlrConfigured(
-  env: FlrEnvironment = process.env as FlrEnvironment,
+  env: FlrEnvironment = flrEnvFra(process.env),
 ): boolean {
   return (
     env.LEADGRID_DISCOVERY_FLR_ENABLED === "true" &&
@@ -608,7 +678,7 @@ export function createDiscoveryFlrProvider(
 } {
   const fetchImpl = dependencies.fetchImpl ?? fetch;
   const env: FlrEnvironment =
-    dependencies.env ?? (process.env as FlrEnvironment);
+    dependencies.env ?? flrEnvFra(process.env);
   const now = dependencies.now ?? (() => new Date());
   const wait = dependencies.sleep ?? sleep;
   const timeoutMs = dependencies.timeoutMs ?? DEFAULT_TIMEOUT_MS;

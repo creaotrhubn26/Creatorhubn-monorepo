@@ -29,25 +29,23 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getByoCreds } from "./role-room-byo-storage-service";
+import { getRoleRoomObjectStorage } from "./role-room-object-storage.js";
 
 // ─────────────────────────────────────────────────────────────────────
-// Staging-bøtte: Creatorhub-styrt Role Room B2 (samme env som b2-archive)
+// Staging-bøtte: Creatorhub-styrt Role Room-lagring
 // ─────────────────────────────────────────────────────────────────────
-const STAGING_REGION = process.env.B2_REGION || "eu-central-003";
-const STAGING_ENDPOINT = `https://s3.${STAGING_REGION}.backblazeb2.com`;
-
+//
+// Bygget sin egen Backblaze-klient og var dermed det eneste stedet som
+// fortsatt skrev til B2 etter at ROLE_ROOM_STORAGE_PROVIDER ble satt til
+// aws_s3. Bryteren sto altså i produksjon uten å gjelde her, og
+// redigeringsjobbene la filene et annet sted enn resten av Role Room.
+//
+// Går nå gjennom getRoleRoomObjectStorage(), som er den samme bryteren
+// resten av tjenesten bruker: S3 som standard, B2 bare når noen ber om det
+// ved navn.
 function getStagingClient(): { client: S3Client; bucket: string } | null {
-  const keyId = process.env.B2_ROLE_ROOM_APPLICATION_KEY_ID;
-  const appKey = process.env.B2_ROLE_ROOM_APPLICATION_KEY;
-  const bucket = process.env.B2_ROLE_ROOM_BUCKET_NAME;
-  if (!keyId || !appKey || !bucket) return null;
-  const client = new S3Client({
-    region: STAGING_REGION,
-    endpoint: STAGING_ENDPOINT,
-    credentials: { accessKeyId: keyId, secretAccessKey: appKey },
-    forcePathStyle: true,
-  });
-  return { client, bucket };
+  const storage = getRoleRoomObjectStorage();
+  return storage ? { client: storage.client, bucket: storage.bucket } : null;
 }
 
 export function stagingPrefix(jobId: string): string {

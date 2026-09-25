@@ -1404,7 +1404,7 @@ final class QASweepTests: XCTestCase {
                 XCTAssertTrue(
                     app.staticTexts["Majorstuen Tannlegesenter AS"]
                         .firstMatch.waitForExistence(timeout: 4),
-                    "Canvas skal gruppere Dentum-notatet under riktig klinikk"
+                    "Nexus skal gruppere Dentum-notatet under riktig klinikk"
                 )
             case "leadgrid-go":
                 XCTAssertTrue(

@@ -39,4 +39,29 @@ enum Geo {
             .map { ($0, Optional(distanceM(from: origin, to: $0.coordinate))) }
             .sorted { ($0.1 ?? .infinity) < ($1.1 ?? .infinity) }
     }
+
+    /// Flat lokal projeksjon (meter øst/nord) rundt `origin`, god nok på
+    /// fotgjengerskala (noen hundre meter). Brukt av `distanceToSegmentM`
+    /// (turn-by-turn, pakke 2 item 1) — ikke egnet for lange avstander.
+    private static func localOffsetM(from origin: Coordinate, to point: Coordinate) -> (eastM: Double, northM: Double) {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLng = 111_320.0 * cos(origin.lat * .pi / 180)
+        return ((point.lng - origin.lng) * metersPerDegreeLng, (point.lat - origin.lat) * metersPerDegreeLat)
+    }
+
+    /// Korteste avstand fra `point` til linjestykket `segmentStart`–`segmentEnd`,
+    /// i meter. Brukes til av-rute-deteksjon i veiviserens turn-by-turn-modus
+    /// (pakke 2, item 1): stor avstand til nærmeste del av ruta betyr brukeren
+    /// har forlatt den planlagte gangruta.
+    static func distanceToSegmentM(point: Coordinate, segmentStart: Coordinate, segmentEnd: Coordinate) -> Double {
+        let p = localOffsetM(from: segmentStart, to: point)
+        let b = localOffsetM(from: segmentStart, to: segmentEnd)
+        let segmentLengthSq = b.eastM * b.eastM + b.northM * b.northM
+        let t = segmentLengthSq > 0 ? max(0, min(1, (p.eastM * b.eastM + p.northM * b.northM) / segmentLengthSq)) : 0
+        let closestEastM = b.eastM * t
+        let closestNorthM = b.northM * t
+        let dx = p.eastM - closestEastM
+        let dy = p.northM - closestNorthM
+        return sqrt(dx * dx + dy * dy)
+    }
 }

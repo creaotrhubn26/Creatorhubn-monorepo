@@ -40,7 +40,9 @@ struct SettingsView: View {
             Section("settings.interactivity") {
                 Toggle("settings.haptics", isOn: $settings.hapticsEnabled)
                 Toggle("settings.autoStartOnArrival", isOn: $settings.autoStartOnArrival)
+                Toggle("settings.tourModeAutoPlayOnArrival", isOn: $settings.tourModeAutoPlayOnArrival)
             }
+            ArrivalNotificationsSettingsSection()
             Section {
                 Toggle("veiviser.speakToggle", isOn: $settings.speakDirectionsEnabled)
             } footer: {

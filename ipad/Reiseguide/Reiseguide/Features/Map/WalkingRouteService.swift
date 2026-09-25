@@ -71,7 +71,10 @@ final class WalkingRouteService {
                 poiId: poiId,
                 coordinates: coordinates(of: route.polyline),
                 expectedTravelTimeS: route.expectedTravelTime,
-                distanceM: route.distance
+                distanceM: route.distance,
+                steps: route.steps.map { step in
+                    WalkingRouteStep(instructions: step.instructions, distanceM: step.distance, coordinates: coordinates(of: step.polyline))
+                }
             )
         } catch {
             return nil

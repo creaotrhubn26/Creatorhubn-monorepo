@@ -1358,7 +1358,7 @@ struct PhoneMerTab: View {
                            title: "Anbud", subtitle: "Offentlige anskaffelser fra Doffin")
                     if EntitlementStore.shared.canUse(.leadgridCanvas) {
                         merRow(.canvas, icon: "pencil.and.outline", color: .purple,
-                               title: "Canvas", subtitle: "Pencil-notater koblet til leads")
+                               title: "Nexus", subtitle: "Pencil-notater koblet til leads")
                     }
                     // Spesialiserte CRM-flater uten egen hovedfane eller profilplassering.
                     merRow(.hub, icon: "magnifyingglass.circle.fill", color: .pink,
@@ -1396,7 +1396,7 @@ struct PhoneMerTab: View {
                         .navigationBarTitleDisplayMode(.inline)
                 case .canvas:
                     CanvasView()
-                        .navigationTitle("Canvas")
+                        .navigationTitle("Nexus")
                         .navigationBarTitleDisplayMode(.inline)
                 case .hub:
                     // I motsetning til søsknene bruker denne system-navbaren
@@ -1657,7 +1657,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .leadgridGo:   return "Leadgrid Go"
         case .kvalitet:     return "Kvalitet"
         case .anbud:        return "Anbud"
-        case .canvas:       return "Canvas"
+        case .canvas:       return "Nexus"
         case .hub:          return "Verktøy"
         case .agent:        return "Agent"
         }
@@ -1807,9 +1807,24 @@ struct MainSidebarView: View {
                 }
                 return true
             }
-            let workItems: [SidebarItem] = [.oversikt, .kart, .leads, .moter]
+            // «Arbeid» er salgsdagen i rekkefølge: se dagen, finn stedet,
+            // jobb leadet, hold møtet, skriv notatet, kjør videre.
+            //
+            // Nexus og Go lå på hylla med tilleggsmoduler. Begge er noe man
+            // kjøper — men plassering følger bruksfrekvens, ikke betalings-
+            // modell. Nexus brukes i hvert møte; Go er selgerens egen
+            // kjørebok, som fylles hver gang de kjører.
+            //
+            // Kvalitet og Anbud blir liggende: verifiseringskøen er en rolle
+            // få har, og anbudssøk er noe man gjør nå og da — ikke daglig.
+            //
+            // Entitlementet er upåvirket. visibleItems filtrerer fortsatt på
+            // tilgang, så en organisasjon uten modulen ser den ikke her heller.
+            let workItems: [SidebarItem] = [
+                .oversikt, .kart, .leads, .moter, .canvas, .leadgridGo,
+            ]
             let teamItems: [SidebarItem] = [.team, .leadbook, .salgsledelse]
-            let moreItems: [SidebarItem] = [.leadgridGo, .kvalitet, .anbud, .canvas, .hub]
+            let moreItems: [SidebarItem] = [.kvalitet, .anbud, .hub]
 
             Section("Arbeid") {
                 ForEach(workItems.filter(visibleItems.contains)) { item in
