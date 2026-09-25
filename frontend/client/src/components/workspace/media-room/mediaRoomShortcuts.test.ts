@@ -9,14 +9,22 @@ describe('media room shortcuts', () => {
     expect(resolveMediaRoomShortcut(new KeyboardEvent('keydown', { key: '4' }))).toBe('rate4');
   });
 
-  it('recognizes nested editable controls', () => {
+  it('leaves editable and interactive controls to their native keyboard behavior', () => {
     const input = document.createElement('input');
     const combobox = document.createElement('div');
     combobox.setAttribute('role', 'combobox');
     const child = document.createElement('span');
     combobox.appendChild(child);
+    const button = document.createElement('button');
+    const buttonIcon = document.createElement('span');
+    button.appendChild(buttonIcon);
+    const link = document.createElement('a');
+    link.href = '/photo-room';
     expect(isEditableShortcutTarget(input)).toBe(true);
     expect(isEditableShortcutTarget(child)).toBe(true);
-    expect(isEditableShortcutTarget(document.createElement('button'))).toBe(false);
+    expect(isEditableShortcutTarget(button)).toBe(true);
+    expect(isEditableShortcutTarget(buttonIcon)).toBe(true);
+    expect(isEditableShortcutTarget(link)).toBe(true);
+    expect(isEditableShortcutTarget(document.createElement('div'))).toBe(false);
   });
 });

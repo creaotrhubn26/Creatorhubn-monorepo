@@ -23,26 +23,32 @@ struct ScrimOverlay: View {
 
 /// Bilde fra URL med bgSurface som plassholder. Foto får
 /// accessibilityIgnoresInvertColors (Smart Invert, 8.6).
+///
+/// Tar alltid nøyaktig plassen forelderen tilbyr. Et `.fill`-bilde rett i en
+/// ZStack melder ellers bildets egen bredde (et liggende foto blir bredere enn
+/// skjermen) og gjør hele skjermen bredere, så innholdet kuttes på begge sider.
 struct RemoteImage: View {
     let url: String?
     var contentMode: ContentMode = .fill
 
     var body: some View {
-        Group {
-            if let url, let parsed = URL(string: url) {
-                AsyncImage(url: parsed) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image.resizable().aspectRatio(contentMode: contentMode)
-                    default:
-                        placeholder
+        Color.clear
+            .overlay {
+                if let url, let parsed = URL(string: url) {
+                    AsyncImage(url: parsed) { phase in
+                        switch phase {
+                        case let .success(image):
+                            image.resizable().aspectRatio(contentMode: contentMode)
+                        default:
+                            placeholder
+                        }
                     }
+                } else {
+                    placeholder
                 }
-            } else {
-                placeholder
             }
-        }
-        .accessibilityIgnoresInvertColors()
+            .clipped()
+            .accessibilityIgnoresInvertColors()
     }
 
     private var placeholder: some View {
