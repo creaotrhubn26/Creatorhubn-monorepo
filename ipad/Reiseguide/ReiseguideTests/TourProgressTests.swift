@@ -44,6 +44,38 @@ final class TourProgressTests: XCTestCase {
         XCTAssertEqual(TourProgress.orderedRoute(pois).map(\.id), ["a", "b", "c"])
     }
 
+    // MARK: - «Gå til neste stopp» (avspiller-redesignet, punkt 2)
+
+    func testNextStopPicksTheFollowingUncompletedPlaceInRouteOrder() {
+        let route = [makePoi(id: "a", sortOrder: 0), makePoi(id: "b", sortOrder: 1), makePoi(id: "c", sortOrder: 2)]
+        XCTAssertEqual(TourProgress.nextStop(after: "a", in: route, completedPoiIds: ["a"])?.id, "b")
+    }
+
+    func testNextStopSkipsAlreadyCompletedPlacesAfterCurrent() {
+        let route = [makePoi(id: "a", sortOrder: 0), makePoi(id: "b", sortOrder: 1), makePoi(id: "c", sortOrder: 2)]
+        XCTAssertEqual(TourProgress.nextStop(after: "a", in: route, completedPoiIds: ["a", "b"])?.id, "c")
+    }
+
+    func testNextStopFallsBackToFirstUncompletedWhenNothingFollows() {
+        // "a" er sist i ruten og fullført; "b" tidligere i ruten er ikke det ennå.
+        let route = [makePoi(id: "b", sortOrder: 0), makePoi(id: "a", sortOrder: 1)]
+        XCTAssertEqual(TourProgress.nextStop(after: "a", in: route, completedPoiIds: ["a"])?.id, "b")
+    }
+
+    func testNextStopIsNilWhenEverythingIsCompleted() {
+        let route = [makePoi(id: "a", sortOrder: 0), makePoi(id: "b", sortOrder: 1)]
+        XCTAssertNil(TourProgress.nextStop(after: "a", in: route, completedPoiIds: ["a", "b"]))
+    }
+
+    func testNextStopIsNilForAnEmptyRoute() {
+        XCTAssertNil(TourProgress.nextStop(after: "a", in: [], completedPoiIds: []))
+    }
+
+    func testNextStopFallsBackToFirstUncompletedWhenCurrentIsUnknown() {
+        let route = [makePoi(id: "a", sortOrder: 0), makePoi(id: "b", sortOrder: 1)]
+        XCTAssertEqual(TourProgress.nextStop(after: nil, in: route, completedPoiIds: [])?.id, "a")
+    }
+
     @MainActor
     func testTrackerShowsCelebrationOnceWhenTourJustCompleted() {
         let tracker = TourProgressTracker()

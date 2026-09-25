@@ -66,12 +66,19 @@ struct NearbyCard: View {
     let distanceM: Double?
     let isLocked: Bool
     let locale: Locale
+    /// Gangtid (pakke 2, item 4): ekte fra MKDirections eller avstandsestimat
+    /// (WalkingETA.isEstimate), vist under avstanden. Nil før noen av delene finnes.
+    var eta: WalkingETA?
     /// Liten etikett under tittelen, f.eks. «Samme kategori» i tipsene.
     var badge: String?
     /// Veiviseren (pakke 2, item 5): valgfri, egen knapp ved siden av
     /// hovedknappen. Nil (standard) lar de andre kallstedene (listen, Mine
     /// steder, tipsene etter besøket) være helt uendret.
     var onShowDirections: (() -> Void)?
+    /// «Færre trykk til lyd» (avspiller-redesignet, item 5): valgfri
+    /// direkte-avspill-knapp, samme mønster som `onShowDirections`. Nil
+    /// (standard) lar andre kallsteder være uendret.
+    var onPlay: (() -> Void)?
     let action: () -> Void
 
     @Environment(\.contrastColors) private var contrast
@@ -99,6 +106,11 @@ struct NearbyCard: View {
                                 .foregroundStyle(contrast.textSecondary)
                         } else if let location = poi.locationLabel {
                             Label(location, systemImage: "mappin")
+                                .font(AppFont.subtitle)
+                                .foregroundStyle(contrast.textSecondary)
+                        }
+                        if let eta {
+                            Label(walkingEtaText(eta), systemImage: "figure.walk")
                                 .font(AppFont.subtitle)
                                 .foregroundStyle(contrast.textSecondary)
                         }
@@ -131,6 +143,16 @@ struct NearbyCard: View {
             .accessibilityLabel(Text(accessibilityText))
             .accessibilityAddTraits(.isButton)
 
+            if let onPlay {
+                Button(action: onPlay) {
+                    Image(systemName: isLocked ? "lock.fill" : "play.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppColor.accent)
+                        .frame(width: AppSpacing.minTapTarget, height: AppSpacing.minTapTarget)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(Text(L10n.string("action.playPoi", lang: locale.identifier).replacingOccurrences(of: "%@", with: poi.title)))
+            }
             if let onShowDirections {
                 Button(action: onShowDirections) {
                     Image(systemName: "location.north.circle.fill")
@@ -140,11 +162,29 @@ struct NearbyCard: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(Text("map.showDirections"))
-                .padding(.trailing, AppSpacing.s)
             }
         }
+        .padding(.trailing, onPlay != nil || onShowDirections != nil ? AppSpacing.s : 0)
         .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
+    }
+
+    /// «6 min å gå» eller «6 min å gå (anslag)» (pakke 2, item 4).
+    private func walkingEtaText(_ eta: WalkingETA) -> String {
+        WalkingETAText.visible(
+            eta,
+            localize: { L10n.string($0, lang: locale.identifier) },
+            formatMinutes: { L10n.shortDuration(seconds: Double($0 * 60), locale: locale) }
+        )
+    }
+
+    /// «cirka 6 minutter å gå, anslag» for VoiceOver (pakke 2, item 4).
+    private func walkingEtaSpokenText(_ eta: WalkingETA) -> String {
+        WalkingETAText.spoken(
+            eta,
+            localize: { L10n.string($0, lang: locale.identifier) },
+            formatMinutesSpoken: { L10n.spokenDuration(seconds: Double($0 * 60), locale: locale) }
+        )
     }
 
     private var accessibilityText: String {
@@ -154,6 +194,7 @@ struct NearbyCard: View {
             parts.append(L10n.string("distance.away", lang: locale.identifier)
                 .replacingOccurrences(of: "%@", with: L10n.distance(meters: distanceM, locale: locale)))
         }
+        if let eta { parts.append(walkingEtaSpokenText(eta)) }
         if let rating = poi.rating {
             parts.append(L10n.string("rating.spoken", lang: locale.identifier)
                 .replacingOccurrences(of: "%1$@", with: rating.average.formatted(.number.precision(.fractionLength(1)).locale(locale)))
