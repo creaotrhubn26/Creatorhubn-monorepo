@@ -290,10 +290,19 @@ const TeamWorkspacePage: React.FC = () => {
     try { return new URLSearchParams(window.location.search).get('design') === '1'; } catch { return false; }
   });
   const designTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const restoreDesignFocusRef = useRef(false);
   const closeDesignMode = useCallback(() => {
+    restoreDesignFocusRef.current = true;
     setDesignMode(false);
-    window.requestAnimationFrame(() => designTriggerRef.current?.focus());
   }, []);
+  useEffect(() => {
+    if (designMode || !restoreDesignFocusRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      designTriggerRef.current?.focus();
+      restoreDesignFocusRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [designMode]);
   useEffect(() => {
     let live = true;
     fetch('/api/design/tokens?ws=creatorhub', { credentials: 'same-origin' })
