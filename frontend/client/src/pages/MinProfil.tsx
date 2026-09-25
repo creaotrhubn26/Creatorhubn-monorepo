@@ -32,6 +32,7 @@ import Upgrade from '@mui/icons-material/Upgrade';
 import WorkspacePremium from '@mui/icons-material/WorkspacePremium';
 import OpenInNew from '@mui/icons-material/OpenInNew';
 import Science from '@mui/icons-material/Science';
+import EventAvailable from '@mui/icons-material/EventAvailable';
 import { useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -166,9 +167,14 @@ const MinProfil: React.FC = () => {
     <Box sx={{ minHeight: '100vh', bgcolor: BG, color: TEXT, py: 4 }}>
       <Container maxWidth="lg">
         {/* Header */}
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 3 }}>
-          <IconButton onClick={() => navigate('/workspace')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
-          <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>Min profil</Typography>
+        <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" spacing={1.5} sx={{ mb: 3 }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <IconButton onClick={() => navigate('/workspace')} sx={{ color: DIM }} aria-label="Tilbake"><ArrowBack /></IconButton>
+            <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Space Grotesk", sans-serif' }}>Min profil</Typography>
+          </Stack>
+          <Button variant="outlined" startIcon={<EventAvailable />} onClick={() => navigate('/booking')} sx={{ color: ACCENT, borderColor: ws.accentBorder, textTransform: 'none', fontWeight: 700 }}>
+            Administrer bookingside
+          </Button>
         </Stack>
 
         {/* Hero: profilkort + fullføringsgrad */}

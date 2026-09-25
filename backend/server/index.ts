@@ -1096,6 +1096,9 @@ import {
 } from "./workspace-participant-documents-routes";
 import { createWorkspaceParticipantDocumentEmailDeliveryAdapter } from "./workspace-participant-document-delivery";
 import { setupWorkspaceParticipantCompensationRoutes } from "./workspace-participant-compensation-routes";
+import { setupCreatorHubTimesheetsRoutes } from "./creatorhub-timesheets-routes";
+import { setupCreatorHubBookingRoutes } from "./creatorhub-booking-routes";
+import { setupCreatorHubVendorProductsRoutes } from "./creatorhub-vendor-products-routes";
 import { setupWorkspaceParticipantClearanceRoutes } from "./workspace-participant-clearance-routes";
 import { isWorkspaceParticipantCompensationMetadata } from "../../frontend/shared/workspace-participant-compensation.ts";
 import { setupEquipmentValueRoutes } from "./equipment-value-routes";
@@ -68790,6 +68793,21 @@ setupWorkspaceParticipantDocumentRoutes({
   deliveryAdapter: createWorkspaceParticipantDocumentEmailDeliveryAdapter({}),
 });
 setupWorkspaceParticipantCompensationRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupCreatorHubTimesheetsRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupCreatorHubBookingRoutes({
+  app,
+  pool,
+  resolveAuthoritativeSessionFromRequest,
+});
+setupCreatorHubVendorProductsRoutes({
   app,
   pool,
   resolveAuthoritativeSessionFromRequest,
