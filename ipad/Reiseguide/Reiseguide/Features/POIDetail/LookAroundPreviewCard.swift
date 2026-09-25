@@ -58,7 +58,14 @@ struct LookAroundPreviewCard: View {
 
     private func loadScene() async {
         scene = nil
-        let request = MKLookAroundSceneRequest(coordinate: poi.coordinate.clCoordinate)
-        scene = try? await request.scene
+        scene = await Self.fetchScene(at: poi.coordinate.clCoordinate)
+    }
+
+    /// MKLookAroundSceneRequest og -Scene er ikke Sendable, så forespørselen
+    /// lages og kjøres utenfor hovedaktøren, og scenen sendes tilbake som
+    /// `sending` (den deles ikke med noe annet før visningen tar den).
+    private nonisolated static func fetchScene(at coordinate: CLLocationCoordinate2D) async -> sending MKLookAroundScene? {
+        let request = MKLookAroundSceneRequest(coordinate: coordinate)
+        return try? await request.scene
     }
 }
