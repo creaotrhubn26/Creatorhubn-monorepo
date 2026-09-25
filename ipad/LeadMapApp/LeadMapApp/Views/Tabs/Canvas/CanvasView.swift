@@ -4557,6 +4557,32 @@ struct CanvasView: View {
         EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
     }
 
+    /// §4 punkt 4: kunden ber om at opptaket slettes.
+    ///
+    /// Lyden slettes på serveren, og REFERATET fjernes lokalt sammen med
+    /// den. Å beholde teksten ville vært å beholde det samtykket dekket —
+    /// kunden trakk samtykket til opptaket, ikke bare til lydfilen.
+    private func trekkSamtykke(for objekt: CanvasObjekt) async {
+        guard let dokId = objekt.dokId, let api = appState.api,
+              let prosjekt = appState.activeLeadgridProjectId,
+              let notatId = valgtId else { return }
+        do {
+            try await api.trekkCanvasSamtykke(
+                notatId: notatId, dokId: dokId, projectId: prosjekt)
+            if aktivtLydObjekt == objekt.id {
+                lydSpiller.stopp(); aktivtLydObjekt = nil; opplystStrok = []
+            }
+            objekter.removeAll { $0.id == objekt.id }
+            markerUlagret()
+            feilVedImport = "Opptaket og referatet er slettet."
+        } catch {
+            // Sier det rett ut: kunden har bedt om sletting, og den har ikke
+            // skjedd. Det er ikke en feil å skjule.
+            feilVedImport = "Fikk ikke slettet opptaket. Prøv igjen, eller "
+                + "meld fra til en leder — kunden har trukket samtykket."
+        }
+    }
+
     private func materWidget() {
         appState.settSisteNexusNotater(
             notater
@@ -5026,6 +5052,7 @@ struct CanvasView: View {
                     notatUtilgjengelig.contains($0) } ?? false,
                 venterPaaOpplasting: objekt.dokId.map {
                     ventendeOpplasting[$0] != nil } ?? false,
+                onTrekkSamtykke: { Task { await trekkSamtykke(for: objekt) } },
                 onApne: { apneObjekt(objekt) })
         }
     }

@@ -361,6 +361,9 @@ struct NexusLydKort: View {
     let harBlekkSynk: Bool
     /// Opptaket ligger fortsatt bare på iPaden.
     var venterPaaOpplasting: Bool = false
+    /// Lyden er lagret på serveren, og kan trekkes tilbake (§4 punkt 4).
+    var kanTrekkes: Bool = false
+    var trekkSamtykke: (() -> Void)? = nil
     /// Kortet er valgt på flata.
     var valgt: Bool = false
     let startEllerPause: () -> Void
@@ -406,6 +409,18 @@ struct NexusLydKort: View {
                       systemImage: "exclamationmark.icloud")
                     .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(CvBrand.yellow)
+            } else if valgt, kanTrekkes {
+                // §4 punkt 4: kunden skal kunne be om at opptaket slettes.
+                // Knappen står på kortet, ikke i en innstillingsmeny — den
+                // som får forespørselen er selgeren, midt i samtalen.
+                Button { trekkSamtykke?() } label: {
+                    Label("Kunden trekker samtykket", systemImage: "trash")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(CvBrand.red)
+                        .frame(height: 34)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             } else if harBlekkSynk, spiller.spiller {
                 Label("Blekket lyser der du skrev", systemImage: "scribble.variable")
                     .font(.appScaled(size: 10))

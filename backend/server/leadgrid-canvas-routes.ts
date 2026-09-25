@@ -1038,6 +1038,67 @@ export function registerLeadgridCanvasRoutes(deps: {
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
   /**
+   * Trekk samtykket for et opptak (§4 punkt 4).
+   *
+   *   «Trekk av samtykke: enkel flate i appen → opptaket + transkript +
+   *    avledede eksempler slettes innen 30 dager.»
+   *
+   * Vi venter ikke 30 dager. Fristen i dokumentet er en YTTERGRENSE, ikke et
+   * mål, og det finnes ingen grunn til å la lyden ligge når kunden har sagt
+   * fra. Sletting skjer umiddelbart; loggen viser at den skjedde.
+   *
+   * Transkripsjonen fjernes av klienten sammen med objektet — den bor i
+   * notatets JSON, ikke i en egen tabell.
+   */
+  app.post("/api/leadgrid/canvas/:id/trekk-samtykke", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const dokId = String((req.body ?? {}).dok_id ?? "").slice(0, 64);
+      if (!dokId) { res.status(400).json({ error: "mangler_dok_id" }); return; }
+
+      const rad = await pool.query<{
+        id: string; organization_id: string; slag: string;
+        size_bytes: string | null; created_at: Date | null; storage_key: string | null;
+      }>(
+        `SELECT d.id, d.organization_id, d.slag, d.size_bytes::text,
+                d.created_at, d.storage_key
+           FROM leadgrid_canvas_dokumenter d
+           JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
+          WHERE d.id = $1 AND d.notat_id = $2::uuid
+            AND n.organization_id = $3 AND n.project_id = $4
+            AND n.user_id = $5`,
+        [dokId, req.params.id, scope.organizationId, scope.projectId, session.userId]);
+      const dok = rad.rows[0];
+      // Allerede borte er et gyldig utfall, ikke en feil: kunden ba om at
+      // det skulle være slettet, og det er det.
+      if (!dok) { res.json({ slettet: false, alleredeBorte: true }); return; }
+
+      const storage = getLeadgridObjectStorage();
+      if (storage && dok.storage_key) {
+        await storage.deleteObject(dok.storage_key).catch(() => undefined);
+      }
+      await pool.query(`DELETE FROM leadgrid_canvas_dokumenter WHERE id = $1`, [dokId]);
+      await pool.query(
+        `INSERT INTO leadgrid_nexus_sletting_logg
+           (dok_id, notat_id, organization_id, slag, storrelse_bytes,
+            opprettet_at, grunn)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)`,
+        [dokId, req.params.id, dok.organization_id, dok.slag,
+         dok.size_bytes ? Number(dok.size_bytes) : null,
+         dok.created_at, "trukket_samtykke"]);
+      res.json({ slettet: true, alleredeBorte: false });
+    } catch (e) {
+      console.error("[nexus] trekk samtykke feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  /**
    * Kjør slettefristen (§5). Beskyttet av samme cron-token som øvrige jobber.
    *
    * Eksponert som et endepunkt, ikke en intern timer, fordi etterlevelse

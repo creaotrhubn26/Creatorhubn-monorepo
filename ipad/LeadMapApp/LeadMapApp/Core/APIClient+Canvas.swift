@@ -483,6 +483,24 @@ extension APIClient {
 }
 
 extension APIClient {
+    /// Trekk samtykket for et opptak (§4 punkt 4).
+    ///
+    /// Sletter lyden umiddelbart. Dokumentet sier «innen 30 dager», men det
+    /// er en yttergrense, ikke et mål — det finnes ingen grunn til å la
+    /// lyden ligge når kunden har sagt fra.
+    @discardableResult
+    func trekkCanvasSamtykke(
+        notatId: String, dokId: String, projectId: String
+    ) async throws -> Bool {
+        struct Body: Encodable { let dok_id: String }
+        struct Resp: Decodable { let slettet: Bool; let alleredeBorte: Bool }
+        let r: Resp = try await _post(
+            canvasScopedPath("/api/leadgrid/canvas/\(notatId)/trekk-samtykke",
+                             projectId: projectId),
+            body: Body(dok_id: dokId))
+        return r.slettet || r.alleredeBorte
+    }
+
     /// Hvor mange Nexus-notater finnes per lead.
     ///
     /// Tallet vises i leadlista og på kartet. Nexus er usynlig fra flatene
