@@ -98,6 +98,35 @@ export async function ttsProxy(text: string, voiceId?: string): Promise<string |
   }
 }
 
+export interface BrandTacticFinding {
+  tactic: string;
+  evidence: string;
+  targetElementLabel?: string;
+  hotspot?: { x: number; y: number; w: number; h: number };
+  exampleBrand: string;
+  exampleDescription: string;
+}
+
+/** Merkevare/taktikk-analyse via backend-cachen (embedding-treff hopper over Claude-kall). */
+export async function tacticAnalysisProxy(
+  domain: string,
+  pageText: string,
+): Promise<{ findings: BrandTacticFinding[]; cached: boolean } | null> {
+  const bearer = getBearer();
+  if (!bearer) return null;
+  try {
+    const res = await fetch(`${getBaseUrl()}/marketing/tactic-analysis`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ domain, pageText }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { findings: BrandTacticFinding[]; cached: boolean };
+  } catch {
+    return null;
+  }
+}
+
 export const claudeProxyService = {
   async send(opts: {
     systemPrompt: string;

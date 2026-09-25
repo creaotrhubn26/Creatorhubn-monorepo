@@ -1355,6 +1355,13 @@ Svar med KUN ett JSON-objekt: { "beats": [ { "index": 0, "kind": "stat", "phrase
     : [];
 }
 
+export type { BrandTacticFinding } from '../../services/claudeProxyService';
+import { tacticAnalysisProxy } from '../../services/claudeProxyService';
+
+export async function analyzeBrandTactics(params: { domain: string; pageText: string }) {
+  return tacticAnalysisProxy(params.domain, params.pageText);
+}
+
 /** Trekk ut ett <svg>…</svg> fra en modell-respons — robust mot markdown-fence, forklarende
  *  tekst rundt, og AVKUTTET output (maxTokens): reparerer manglende slutt-tag. Ren + testbar. */
 export function extractSvg(raw: string): string | null {
