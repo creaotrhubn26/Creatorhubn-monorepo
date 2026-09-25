@@ -18,7 +18,7 @@
  * forbundene er neste, og da skal ikke listen se annerledes ut.
  */
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography, Button, Switch, FormControlLabel, CircularProgress } from '@mui/material';
+import { Box, Stack, Typography, Button, Switch, FormControlLabel, CircularProgress, Link } from '@mui/material';
 import CampaignIcon from '@mui/icons-material/CampaignOutlined';
 import NotificationsIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import { apiRequest } from '@/lib/queryClient';
@@ -43,6 +43,8 @@ export default function ProduksjonerTab({ projectId, readOnly = false }) {
   const [feil, setFeil] = useState(null);
 
   const [påVei, setPåVei] = useState([]);
+  const [interesserte, setInteresserte] = useState([]);
+  const [melderId, setMelderId] = useState(null);
   const [varsel, setVarsel] = useState({ aktiv: false, prosjekttyper: [] });
   const [laster, setLaster] = useState(true);
 
@@ -50,12 +52,15 @@ export default function ProduksjonerTab({ projectId, readOnly = false }) {
     let avbrutt = false;
     (async () => {
       try {
-        const [liste, mitt] = await Promise.all([
+        const [liste, mitt, meldt] = await Promise.all([
           apiRequest('/api/role-room/produksjoner/pa-vei').catch(() => ({ produksjoner: [] })),
           apiRequest('/api/role-room/talents/me/produksjonsvarsel').catch(() => null),
+          // Produsentsiden: hvem har meldt seg på nettopp dette prosjektet.
+          apiRequest(`/api/role-room/projects/${projectId}/interesse`).catch(() => ({ interesserte: [] })),
         ]);
         if (avbrutt) return;
         setPåVei(liste?.produksjoner ?? []);
+        setInteresserte(meldt?.interesserte ?? []);
         if (mitt) setVarsel(mitt);
         // Fasen til DETTE prosjektet leses fra listen når den er annonsert;
         // ellers står den som «ikke satt» til produsenten velger.
@@ -107,6 +112,26 @@ export default function ProduksjonerTab({ projectId, readOnly = false }) {
       // en som ikke virker.
       setVarsel((v) => ({ ...v, aktiv: !aktiv }));
       setFeil('Klarte ikke å lagre varselvalget. Prøv igjen.');
+    }
+  };
+
+  const meldInteresse = async (p, meld) => {
+    setMelderId(p.id);
+    setFeil(null);
+    try {
+      const sti = `/api/role-room/produksjoner/${p.id}/interesse`;
+      if (meld) await apiRequest(sti, { method: 'POST', body: JSON.stringify({}) });
+      else await apiRequest(sti, { method: 'DELETE' });
+      // Oppdater raden i listen framfor å hente alt på nytt: svaret skal komme
+      // med en gang, ikke etter en ny runde mot serveren.
+      setPåVei((rader) => rader.map((r) => (r.id === p.id
+        ? { ...r, interesse_meldt: meld ? new Date().toISOString() : null,
+            interesserte: Math.max(0, (r.interesserte ?? 0) + (meld ? 1 : -1)) }
+        : r)));
+    } catch (e) {
+      setFeil(e?.message || 'Klarte ikke å lagre interessen');
+    } finally {
+      setMelderId(null);
     }
   };
 
@@ -181,6 +206,63 @@ export default function ProduksjonerTab({ projectId, readOnly = false }) {
         </WsCard>
       )}
 
+      {!readOnly && interesserte.length > 0 && (
+        <WsCard>
+          <Typography sx={{ color: ws.text, fontWeight: 800, fontSize: '1.02rem' }}>
+            Meldt interesse for denne produksjonen
+          </Typography>
+          <Typography sx={{ color: ws.textDim, fontSize: '0.9rem', mt: 0.4, maxWidth: '58ch' }}>
+            Skuespillere som selv har sagt fra at de vil være med. De som har trukket seg står nederst —
+            at noen meldte seg og ombestemte seg er også informasjon.
+          </Typography>
+          <Stack spacing={1.2} sx={{ mt: 1.6 }}>
+            {interesserte.map((i) => (
+              <Box
+                key={i.id}
+                sx={{
+                  border: `1px solid ${ws.border}`,
+                  borderRadius: 2,
+                  p: 1.4,
+                  opacity: i.withdrawn_at ? 0.55 : 1,
+                }}
+              >
+                <Stack direction="row" spacing={1.4} alignItems="center">
+                  {i.headshot_url && (
+                    <Box
+                      component="img"
+                      src={i.headshot_url}
+                      alt=""
+                      sx={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+                    />
+                  )}
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography sx={{ color: ws.text, fontWeight: 700 }}>
+                      {i.display_name}
+                      {i.withdrawn_at ? ' — trakk seg' : ''}
+                    </Typography>
+                    <Typography sx={{ color: ws.textDim, fontSize: '0.84rem' }}>
+                      {[i.city, i.playing_age_min && i.playing_age_max ? `spiller ${i.playing_age_min}–${i.playing_age_max}` : null]
+                        .filter(Boolean)
+                        .join(' · ') || 'Ingen detaljer i profilen ennå'}
+                    </Typography>
+                    {i.melding && (
+                      <Typography sx={{ color: ws.textDim, fontSize: '0.84rem', mt: 0.4 }}>
+                        «{i.melding}»
+                      </Typography>
+                    )}
+                  </Box>
+                  {i.showreel_url && (
+                    <Link href={i.showreel_url} target="_blank" rel="noopener noreferrer" sx={{ color: ws.accent, fontSize: '0.84rem' }}>
+                      Showreel
+                    </Link>
+                  )}
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </WsCard>
+      )}
+
       <WsCard>
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
           <Box>
@@ -215,6 +297,36 @@ export default function ProduksjonerTab({ projectId, readOnly = false }) {
                 <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
                   <Typography sx={{ color: ws.text, fontWeight: 700 }}>{p.name}</Typography>
                   <WsTag tone={p.phase === 'pre_produksjon' ? 'green' : 'neutral'} label={p.fase_navn ?? faseLabel(p.phase)} />
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                  {/* Veien videre fra varselet. Uten den fikk skuespilleren bare
+                      vite at noe skjer. */}
+                  <Button
+                    size="small"
+                    disabled={melderId === p.id}
+                    onClick={() => void meldInteresse(p, !p.interesse_meldt)}
+                    sx={{
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      borderRadius: 2,
+                      px: 1.6,
+                      border: `1px solid ${p.interesse_meldt ? ws.green : ws.border}`,
+                      bgcolor: p.interesse_meldt ? 'rgba(52,211,153,0.14)' : 'transparent',
+                      color: p.interesse_meldt ? ws.green : ws.textDim,
+                    }}
+                  >
+                    {p.interesse_meldt ? 'Du har meldt interesse' : 'Jeg er interessert'}
+                  </Button>
+                  {p.interesse_meldt && (
+                    <Typography sx={{ color: ws.textDim, fontSize: '0.82rem' }}>
+                      Trykk igjen for å trekke deg
+                    </Typography>
+                  )}
+                  {(p.interesserte ?? 0) > 0 && !p.interesse_meldt && (
+                    <Typography sx={{ color: ws.textDim, fontSize: '0.82rem' }}>
+                      {p.interesserte} har meldt seg
+                    </Typography>
+                  )}
                 </Stack>
                 <Stack direction="row" spacing={1.2} sx={{ mt: 0.6, flexWrap: 'wrap' }}>
                   {p.project_type && (

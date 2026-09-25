@@ -11,11 +11,23 @@
 
 import type { RoleRoomTalent } from '../services/roleRoomTalentsService';
 
+/** Hvor i appen steget fylles ut. Uten dette blir manglene en liste å lete etter. */
+export type ProfileStrengthTarget = 'profiles' | 'cv' | 'selftapes';
+
+export interface ProfileStrengthStep {
+  label: string;
+  done: boolean;
+  /** Siden som faktisk lar deg fikse akkurat dette. */
+  target: ProfileStrengthTarget;
+}
+
 export interface ProfileStrength {
   score: number;
   missing: string[];
   /** Alle stegene, i rekkefølge, med status — brukes av sjekklisten. */
-  steps: Array<{ label: string; done: boolean }>;
+  steps: ProfileStrengthStep[];
+  /** De som mangler, med veien videre. */
+  missingSteps: ProfileStrengthStep[];
 }
 
 export function calcProfileStrength(
@@ -26,34 +38,43 @@ export function calcProfileStrength(
     return {
       score: 0,
       missing: ['Opprett profil'],
-      steps: [{ label: 'Opprett profil', done: false }],
+      steps: [{ label: 'Opprett profil', done: false, target: 'profiles' }],
+      missingSteps: [{ label: 'Opprett profil', done: false, target: 'profiles' }],
     };
   }
 
-  const steps = [
-    { label: 'Headshot', done: Boolean(talent.headshot_url) },
-    { label: 'Showreel', done: Boolean(talent.showreel_url) },
-    { label: 'Bio (min 40 tegn)', done: Boolean(talent.bio && talent.bio.length >= 40) },
-    { label: 'By', done: Boolean(talent.city) },
+  // target peker på siden som faktisk fikser steget. Showreel hører til
+  // self-tape-studioet, der du kan gjøre et opptak til showreel med ett trykk;
+  // krediteringer hører til CV-en. Uten dette ble manglene en liste å lete i.
+  const steps: ProfileStrengthStep[] = [
+    { label: 'Headshot', done: Boolean(talent.headshot_url), target: 'profiles' },
+    { label: 'Showreel', done: Boolean(talent.showreel_url), target: 'selftapes' },
+    { label: 'Bio (min 40 tegn)', done: Boolean(talent.bio && talent.bio.length >= 40), target: 'profiles' },
+    { label: 'By', done: Boolean(talent.city), target: 'profiles' },
     {
       label: 'Spille-alder',
       done: Boolean(talent.playing_age_min && talent.playing_age_max),
+      target: 'profiles',
     },
     {
       label: 'Ferdigheter',
       done: Array.isArray(talent.skills) && talent.skills.length > 0,
+      target: 'profiles',
     },
     {
       label: 'Språk',
       done: Array.isArray(talent.languages) && talent.languages.length > 0,
+      target: 'profiles',
     },
-    { label: 'Minst én kreditering', done: creditCount > 0 },
+    { label: 'Minst én kreditering', done: creditCount > 0, target: 'cv' },
   ];
 
   const done = steps.filter((s) => s.done).length;
+  const missingSteps = steps.filter((s) => !s.done);
   return {
     score: Math.round((done / steps.length) * 100),
-    missing: steps.filter((s) => !s.done).map((s) => s.label),
+    missing: missingSteps.map((s) => s.label),
     steps,
+    missingSteps,
   };
 }

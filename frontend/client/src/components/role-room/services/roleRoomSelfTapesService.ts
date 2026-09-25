@@ -299,6 +299,19 @@ export function selectTake(takeId: string): Promise<{ project: { id: string; cur
   return api(`/takes/${takeId}/select`, { method: 'POST' });
 }
 
+/**
+ * Gjør dette opptaket til showreel-en på profilen.
+ *
+ * Casting gjøres på bevegelse og stemme, og et opptak som alt ligger her er
+ * den korteste veien dit for et talent uten showreel. Ruten avviser opptak
+ * uten spillbar video (409) — en død showreel-lenke er verre enn ingen.
+ */
+export function brukSomShowreel(
+  takeId: string,
+): Promise<{ showreel: { showreel_url: string; showreel_updated_at: string } }> {
+  return api(`/takes/${takeId}/bruk-som-showreel`, { method: 'POST' });
+}
+
 export function patchTake(
   takeId: string,
   patch: { notes?: string; metadata?: Record<string, unknown> },

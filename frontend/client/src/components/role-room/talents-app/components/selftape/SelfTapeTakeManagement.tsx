@@ -4,11 +4,13 @@
  * Brukes i høyre kolonne (etter Status-cards). Mockup #15: radio-knapper
  * med "Take N · 00:32" og en pille for "valgt" på den aktive.
  */
-import { Box, Radio, Stack, Typography } from '@mui/material';
+import { Box, Button, Radio, Stack, Typography } from '@mui/material';
+import { useState } from 'react';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 import { palette, radius } from '../../theme';
 import {
+  brukSomShowreel,
   formatDuration,
   selectTake,
   type SelftapeTake,
@@ -18,9 +20,35 @@ interface Props {
   takes: SelftapeTake[];
   currentTakeId: string | null;
   onSelect: () => Promise<void> | void;
+  onShowreelSatt?: () => void;
 }
 
-export default function SelfTapeTakeManagement({ takes, currentTakeId, onSelect }: Props) {
+export default function SelfTapeTakeManagement({
+  takes,
+  currentTakeId,
+  onSelect,
+  onShowreelSatt,
+}: Props) {
+  const [setter, setSetter] = useState<string | null>(null);
+  const [feil, setFeil] = useState<string | null>(null);
+  const [satt, setSatt] = useState(false);
+
+  const gjørTilShowreel = async (takeId: string) => {
+    setSetter(takeId);
+    setFeil(null);
+    try {
+      await brukSomShowreel(takeId);
+      setSatt(true);
+      onShowreelSatt?.();
+    } catch (e) {
+      // Ruten sier 409 når opptaket ikke har spillbar video ennå. Si det med
+      // ord personen kan handle på.
+      setFeil(e instanceof Error ? e.message : 'Klarte ikke å sette showreel');
+    } finally {
+      setSetter(null);
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -103,6 +131,33 @@ export default function SelfTapeTakeManagement({ takes, currentTakeId, onSelect 
           );
         })}
       </Stack>
+
+      {/* Casting gjøres på bevegelse og stemme. Et opptak som alt ligger her er
+          korteste vei til en showreel for en profil uten — alternativet er at
+          den aldri kommer, fordi terskelen for å lage noe nytt er høyere enn
+          terskelen for å gjenbruke noe du alt har spilt inn. */}
+      {currentTakeId && (
+        <Box sx={{ mt: 1.6, pt: 1.4, borderTop: `1px solid ${palette.borderSubtle}` }}>
+          <Button
+            size="small"
+            disabled={setter !== null}
+            onClick={() => void gjørTilShowreel(currentTakeId)}
+            sx={{ textTransform: 'none', fontWeight: 700, color: palette.accentBright, px: 0 }}
+          >
+            {satt ? 'Showreel oppdatert' : 'Bruk dette som showreel'}
+          </Button>
+          <Typography sx={{ color: palette.textMuted, fontSize: '0.78rem' }}>
+            {satt
+              ? 'Profilen viser dette opptaket nå.'
+              : 'Profiler uten showreel blir sjelden valgt — dette tar ett trykk.'}
+          </Typography>
+          {feil && (
+            <Typography sx={{ color: palette.danger, fontSize: '0.78rem', mt: 0.4 }}>
+              {feil}
+            </Typography>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }
