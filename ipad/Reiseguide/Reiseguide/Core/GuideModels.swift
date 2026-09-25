@@ -242,6 +242,18 @@ struct AreaResponse: Codable, Sendable, Equatable {
     let requestedLang: String
     let categories: [GuideCategory]
     let pois: [GuidePOI]
+    /// Stemmene brukeren kan velge for språket (tom eller nil = ingen valg).
+    /// Mangler i eldre svar og cache.
+    var voices: [GuideVoice]?
+}
+
+/// En fortellerstemme (Daniel 25.09.2026): norsk har Hazel og Walter fra
+/// Soniox, vist med norske navn. `id` sendes tilbake som `?voice=`.
+struct GuideVoice: Codable, Sendable, Equatable, Hashable, Identifiable {
+    let id: String
+    let name: String
+    /// "female" eller "male".
+    let gender: String
 }
 
 struct POIResponse: Codable, Sendable {

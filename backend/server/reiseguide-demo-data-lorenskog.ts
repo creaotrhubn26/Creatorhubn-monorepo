@@ -59,6 +59,19 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed" },
         ],
       },
+      da: {
+        title: "Lørenskog kirke",
+        subtitle: "Middelalderkirken ved Langvannet",
+        summary:
+          "Stenkirken blev muret engang mellem 1150 og 1250 og er egnens ældste bygning. Tårnet af træ kom i 1864, prædikestolen er fra 1658, og alteret har en Kristus-mosaik af Borgar Hauglid.",
+        locationLabel: "Lørenskog, Norge",
+        heroImageAlt: "Foto af Lørenskog kirke",
+        practicalInfo: [
+          { label: "Adresse", value: "Hammerveien 1, Lørenskog" },
+          { label: "Adgang", value: "Kirkegården er åben; kirken er kun åben ved gudstjenester og arrangementer" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -95,6 +108,24 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           text:
             "You are standing in the churchyard, between rows of gravestones and narrow paths. Ahead of you is a small, low stone church with thick walls and a steep pitched roof. The longest part is the nave. At its eastern end a lower, narrower chancel is joined to the nave, like a small house against a larger one. To the west a wooden tower rises in front of the entrance, with a pointed roof on top. On the south side of the nave are two windows with rounded arches. Against the chancel on the north side is a small extension, the sacristy. The churchyard surrounds the church on every side.",
           estimatedDurationS: 44,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Kirken fra kalkstensperioden",
+          text:
+            "Du står ved Lørenskog kirke, egnens ældste bygning og det vigtigste kulturminde i kommunen. Ingen ved præcis, hvornår den blev rejst, men den blev bygget engang mellem 1150 og 1250, i det, man kalder kalkstensperioden. Væggene er over en meter tykke. Det meste er kampesten bundet sammen med kalkmørtel, mens dørene, vinduerne og buen mellem skibet og koret blev muret i tilhuggede kalksten.\n\nPlanen er den almindelige for middelalderkirker på landet: et rektangulært skib, hvor menigheden sad, og et smallere og lavere kor mod øst. Oprindeligt havde skibet kun ét vindue, mod syd. I 1860'erne blev det skiftet ud med to rundbuede vinduer, og i 1864 fik kirken tårnet af træ, som står foran indgangen mod vest. Klokkerne deroppe er fra 1874 og 1919.\n\nIndenfor er prædikestolen i renæssancestil fra 1658 blandt det ældste inventar. Den blev overmalet flere gange, men Finn Krafft restaurerede den i 1935. Sakristiet på nordsiden af koret kom til under restaureringen i 1950'erne. Alteret har et Kristus-motiv i glasmosaik, som Borgar Hauglid lavede i 1962, og allerede i 1947 havde han lavet otte glasmalerier af apostlene til to af vinduerne. Kirken er automatisk fredet, og i dag deles den af de to sogne Fjellhamar og Skårer.",
+          estimatedDurationS: 83,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på kirkegården, mellem rækker af gravsten og smalle gangstier. Foran dig ligger en lille, lav stenkirke med tykke mure og et stejlt sadeltag. Den længste del er skibet. I den østlige ende sidder et lavere og smallere kor fast på skibet, som et lille hus op ad et større. Mod vest rejser et tårn af træ sig foran indgangen, med et spidst tag øverst. På sydsiden af skibet sidder to vinduer med runde buer. Op ad koret på nordsiden ligger en lille tilbygning, sakristiet. Kirkegården omgiver kirken på alle sider.",
+          estimatedDurationS: 38,
         },
       ],
     },
@@ -139,6 +170,26 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           explanation: "Borgar Hauglid made the mosaic in 1962 and the apostle windows in 1947.",
         },
       ],
+      da: [
+        {
+          question: "Hvornår blev Lørenskog kirke bygget?",
+          options: ["Mellem 1150 og 1250", "Omkring 1650", "I 1864"],
+          correctIndex: 0,
+          explanation: "Den blev muret i kalkstensperioden; det præcise år kender ingen.",
+        },
+        {
+          question: "Hvad er tårnet foran indgangen mod vest lavet af?",
+          options: ["Sten", "Træ", "Jern"],
+          correctIndex: 1,
+          explanation: "Tårnet af træ kom i 1864, og klokkerne er fra 1874 og 1919.",
+        },
+        {
+          question: "Hvem lavede Kristus-motivet i glasmosaik på alteret?",
+          options: ["Edvard Munch", "Borgar Hauglid", "Gustav Vigeland"],
+          correctIndex: 1,
+          explanation: "Borgar Hauglid lavede mosaikken i 1962 og glasmalerierne af apostlene i 1947.",
+        },
+      ],
     },
   },
   {
@@ -180,6 +231,19 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Step-free gravel path on the west side; accessible toilets at the bathing spots in summer" },
         ],
       },
+      da: {
+        title: "Langvannet",
+        subtitle: "Søen, der drev savværkerne",
+        summary:
+          "En smal sø på 1,3 kilometer midt i Lørenskog, hvor Ellingsrudelva fra Østmarka løber ind. Savværkerne ved vandløbet gav kommunen vandhjulet i våbenet, og i dag går stien hele vejen rundt om søen.",
+        locationLabel: "Lørenskog, Norge",
+        heroImageAlt: "Foto af Langvannet",
+        practicalInfo: [
+          { label: "Adgang", value: "Stien rundt om søen er åben hele døgnet, gratis" },
+          { label: "Badesteder", value: "Langgrunna (badebro, sandstrand, toilet) og Vangen (sandstrand, grillplads, toilet)" },
+          { label: "Niveaufri adgang", value: "Grussti uden trin på vestsiden; handicaptoilet ved badestederne om sommeren" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -216,6 +280,24 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           text:
             "You are standing by Langvannet. The lake is narrow and long, so you only see part of it from here, and the far shore is not far away. A wide gravel path runs along the shore, and between the path and the water grow trees and bushes. Here and there benches and information boards stand beside the path. At the bathing spots, lawns and small sandy beaches open down to the water, and at Langgrunna a jetty reaches out into the lake. Further off, a footbridge carries the path across the water. Behind the trees you can glimpse houses and roads.",
           estimatedDurationS: 40,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Søen, savværkerne og isen",
+          text:
+            "Foran dig ligger Langvannet, en smal sø midt i Lørenskog. Den er omkring 1,3 kilometer lang, men kun fra 30 til 180 meter bred, og den ligger 154 meter over havet. Ellingsrudelva kommer fra Elvåga i Østmarka, danner grænsen mellem Oslo og Lørenskog og løber ud i Langvannet, og ud af søen løber Sagelva forbi Fjellhamar og videre mod Nitelva, Øyeren og til sidst Glomma.\n\nNavnet Sagelva, savelven, siger meget om, hvad søen har betydet for egnen. I 2020 var det 500 år siden, det første savværk kom til vandløbet. Tømmerflådning og savværker var så vigtige for Lørenskog, at kommunevåbenet fra 1957 viser et rødt vandhjul på guldbund. Om vinteren blev der også skåret is på Langvannet, en gammel tradition her ved søen.\n\nI dag er Langvannet først og fremmest et sted for ture og badning. Stien rundt om søen er en populær rute for folk, der går, løber og cykler, og grusstien på vestsiden alene er halvanden kilometer lang. Langs stien står fjorten informationstavler om historie, kultur, natur og aktiviteter. Om sommeren kan du bade ved Langgrunna, hvor der er badebro, sandstrand og græsplæne, eller ved Vangen, med sandstrand, stor græsplæne og grillplads. I Ellingsrudelva lever der ørred, som formerer sig naturligt, og i vandløbet findes også aborre, gedde og skalle.",
+          estimatedDurationS: 88,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står ved Langvannet. Søen er smal og aflang, så du ser kun en del af den herfra, og den anden bred er ikke langt væk. Langs bredden går en bred grussti, og mellem stien og vandet vokser træer og buske. Hist og her står bænke og informationstavler ved stien. Ved badestederne åbner der sig græsplæner og små sandstrande ned mod vandet, og ved Langgrunna stikker en badebro ud i søen. Længere væk fører en bro stien over vandet. Bag træerne skimter du huse og veje.",
+          estimatedDurationS: 36,
         },
       ],
     },
@@ -260,6 +342,26 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           explanation: "Fourteen boards about history, culture, nature and activities.",
         },
       ],
+      da: [
+        {
+          question: "Omtrent hvor lang er Langvannet?",
+          options: ["300 meter", "1,3 kilometer", "13 kilometer"],
+          correctIndex: 1,
+          explanation: "Søen er omkring 1,3 kilometer lang, men kun 30 til 180 meter bred.",
+        },
+        {
+          question: "Hvad viser Lørenskogs kommunevåben fra 1957?",
+          options: ["Et rødt vandhjul", "En hjort", "Et kirketårn"],
+          correctIndex: 0,
+          explanation: "Vandhjulet minder om tømmerflådning og savværker; det første savværk kom til vandløbet for omkring 500 år siden.",
+        },
+        {
+          question: "Hvor mange informationstavler står langs stien rundt om søen?",
+          options: ["Fire", "Fjorten", "Fyrre"],
+          correctIndex: 1,
+          explanation: "Fjorten tavler om historie, kultur, natur og aktiviteter.",
+        },
+      ],
     },
   },
   {
@@ -301,6 +403,19 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed; see lorenskoghus.no" },
         ],
       },
+      da: {
+        title: "Lørenskog hus",
+        subtitle: "Et centrum bliver til",
+        summary:
+          "Kulturhuset åbnede den 30. april 2011 som slutstenen i Lørenskogs nye centrum. L2 Arkitekter lod sig inspirere af Colosseum: en buet bygning med marmor mod vejen og glas mod Festplassen.",
+        locationLabel: "Lørenskog, Norge",
+        heroImageAlt: "Foto af Lørenskog hus",
+        practicalInfo: [
+          { label: "Adresse", value: "Festplassen 1, Lørenskog" },
+          { label: "Åbningstider", value: "Bibliotek, biograf og scener har egne tider, tjek lorenskoghus.no" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet, tjek lorenskoghus.no" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -336,6 +451,24 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           title: "What you see",
           text:
             "You are standing on an open, level square in the town centre. Ahead of you rises Lørenskog House: a large building that curves in an arc around the square, like a section of an arena. The side facing you is almost all glass, floor above floor, so you can see people and lights inside. At the back, towards Solheimveien, the facade is clad in pale marble. Around the square stand other new buildings with shops and flats. The square is paved with stone and has plenty of room for people.",
+          estimatedDurationS: 36,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Et centrum bliver til",
+          text:
+            "Du står ved Festplassen foran Lørenskog hus, kulturhuset, der blev slutstenen i Lørenskogs nye centrum. Lørenskog blev selvstændig kommune i 1908, men i lang tid havde egnen ikke noget tydeligt centrum. Her ved Solheim lå der landbrugsjord. Solheim gård blev revet ned i 1982, da vejen blev udbygget til den firesporede rigsvej 159, og i 1988 byggede Even Dahl Metrosenteret lige i nærheden. Samme år åbnede Triaden på Skårer, og der voksede et alternativt centrum frem.\n\nValget faldt på området her. Vinderforslaget til det nye centrum samlede de vigtigste bygninger omkring en plads, og i 2007 fik pladsen navnet Festplassen. Kulturhuset åbnede den 30. april 2011. Arkitekt Jon Flatebø fra L2 Arkitekter vandt konkurrencen med forslaget «C-moment», en monumental, buet bygning inspireret af Colosseum i Rom. Mod Solheimveien vender huset en væg af spansk marmor, mens siden mod Festplassen er af glas.\n\nIndenfor er der 15 000 kvadratmeter fordelt på otte etager. Her er bibliotek, biograf på fjerde etage, den store sal Storstua, kulturskole, ungdomshus, kunstgalleri, frivilligcenter, restauranter og kommunale tjenester. Også pladsen udenfor bruges som scene, når der er arrangementer.",
+          estimatedDurationS: 75,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på en åben, flad plads i centrum. Foran dig rejser Lørenskog hus sig: en stor bygning, der krummer sig i en bue rundt om pladsen, som et udsnit af en arena. Siden, der vender mod dig, er næsten kun glas, etage over etage, så du kan se folk og lys inde i huset. På bagsiden, mod Solheimveien, er facaden beklædt med lys marmor. Rundt om pladsen står andre nye bygninger med butikker og boliger. Pladsen er belagt med sten og har god plads til mennesker.",
           estimatedDurationS: 36,
         },
       ],
@@ -381,6 +514,26 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           explanation: "There is marble towards the road, while the side facing Festplassen is glass.",
         },
       ],
+      da: [
+        {
+          question: "Hvornår åbnede Lørenskog hus?",
+          options: ["2001", "2011", "2021"],
+          correctIndex: 1,
+          explanation: "Kulturhuset åbnede den 30. april 2011, og pladsen foran fik navnet Festplassen i 2007.",
+        },
+        {
+          question: "Hvilket bygningsværk blev arkitekten inspireret af?",
+          options: ["Colosseum i Rom", "Operaen i Sydney", "Eiffeltårnet"],
+          correctIndex: 0,
+          explanation: "Jon Flatebø fra L2 Arkitekter vandt med forslaget «C-moment», en buet bygning.",
+        },
+        {
+          question: "Hvad er væggen mod Solheimveien beklædt med?",
+          options: ["Norsk skifer", "Spansk marmor", "Røde teglsten"],
+          correctIndex: 1,
+          explanation: "Mod vejen er der marmor, mens siden mod Festplassen er af glas.",
+        },
+      ],
     },
   },
   {
@@ -424,6 +577,20 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed" },
         ],
       },
+      da: {
+        title: "Losby gods",
+        subtitle: "Fra vikingegård til jagtslot",
+        summary:
+          "Gårdene i Losbydalen overlevede den sorte død, og savværkerne her har kørt siden 1500-tallet. Jagthytten fra omkring 1850 blev Losby Bruks hovedbygning og er i dag et prisbelønnet historisk hotel.",
+        locationLabel: "Lørenskog, Norge",
+        heroImageAlt: "Foto af Losby gods",
+        practicalInfo: [
+          { label: "Adresse", value: "Losbyveien 270, Finstadjordet" },
+          { label: "Adgang", value: "Hotel og restaurant; tjek losbygods.no før besøget" },
+          { label: "I nærheden", value: "Golfbane og stier ind i Østmarka" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -460,6 +627,24 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           text:
             "You are standing in the Losby valley, where the forest meets open fields and golf courses. Ahead of you is the main house of Losby Manor, a large house that holds banqueting halls, hunting salons and many bedrooms. Around the house are lower buildings and yards, and a drive leads up to the main entrance. Further along the valley lie the Østmork and Vestmork golf courses, named after the old farms. Behind and around the estate the wooded ridges rise, and there the trails into the Østmarka forest begin. It is quiet here, far from the traffic, even though you are only a few kilometres from the centre of Lørenskog.",
           estimatedDurationS: 44,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Fra vikingegård til jagtslot",
+          text:
+            "Du er kommet til Losby, i Losbydalen i udkanten af Østmarka. Stedet har rødder tilbage til slutningen af vikingetiden, da Losby formentlig blev udskilt fra gården Mork. Navnet kommer af det norrøne mandsnavn Loptr. De tre gårde Losby, Vestmork og Østmork var blandt de få, der overlevede den sorte død, og navnene lever videre i golfbanerne Østmork og Vestmork.\n\nFra 1647 var Losby en sædegård. Mod slutningen af 1700-tallet ejede familien Cudrio stedet, fra omkring 1800 købmand Lumholtz og fra 1830 Jakob Meyer og siden sønnen Lorentz Meyer. Skoven var rigdommen. Savværksdriften her går tilbage til 1500-tallet, og i 1855 blev Losby, Østmork og Vestmork lagt sammen til én virksomhed, Losby Bruk. Fra 1861 kørte tømmer og planker på en seks kilometer lang jernbane ned til Fjellhamar station, først trukket af heste og fra 1914 af motorvogne.\n\nHovedbygningen blev opført omkring 1850 som jagthytte. Først i 1893, da Lorentz Meyer Boeck og hans kone Kathrine flyttede ind, fik godset fastboende ejere, og med dem begyndte Losbys storhedstid. Da Lørenskog blev selvstændig kommune i 1908, blev Boeck den første borgmester. Fra 1997 til 1999 blev huset restaureret og udbygget til hotel. I 2019 kårede Historic Hotels Worldwide Losby Gods til Europas bedste historiske hotel, og i 2025 til verdens bedste historiske resort.",
+          estimatedDurationS: 87,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står i Losbydalen, hvor skoven møder åbne marker og golfbaner. Foran dig ligger hovedbygningen på Losby gods, et stort hus, der rummer selskabssale, jagtsaloner og mange soveværelser. Rundt om huset ligger lavere bygninger og gårdspladser, og en vej fører op til hovedindgangen. Længere ude i dalen ligger golfbanerne Østmork og Vestmork, opkaldt efter de gamle gårde. Bag og omkring godset rejser de skovklædte åse sig, og der begynder stierne ind i Østmarka. Her er stille, langt fra trafikken, selv om du kun er nogle få kilometer fra Lørenskogs centrum.",
+          estimatedDurationS: 37,
         },
       ],
     },
@@ -504,6 +689,26 @@ export const LORENSKOG_POIS: DemoPoi[] = [
           explanation: "The hunting lodge got year-round owners in 1893 and became a hotel from 1997 to 1999.",
         },
       ],
+      da: [
+        {
+          question: "Hvad kommer navnet Losby af?",
+          options: ["Det norrøne mandsnavn Loptr", "Et gammelt ord for elg", "En dansk konge"],
+          correctIndex: 0,
+          explanation: "Losby blev formentlig udskilt fra Mork mod slutningen af vikingetiden.",
+        },
+        {
+          question: "Hvor gik jernbanen fra Losby hen fra 1861?",
+          options: ["Til Oslo centrum", "Til Fjellhamar station", "Til Lillestrøm"],
+          correctIndex: 1,
+          explanation: "Seks kilometer med tømmer og planker, først trukket af heste og fra 1914 af motorvogne.",
+        },
+        {
+          question: "Hvad blev hovedbygningen oprindeligt opført som omkring 1850?",
+          options: ["Kirke", "Jagthytte", "Skole"],
+          correctIndex: 1,
+          explanation: "Jagthytten fik fastboende ejere i 1893 og blev hotel fra 1997 til 1999.",
+        },
+      ],
     },
   },
 ];
@@ -546,6 +751,24 @@ export const LORENSKOG_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChap
         revealText: null,
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.18,
+        text: "Hvor tykke tror du, murene i kirken er?",
+        options: ["Omkring tyve centimeter", "Over en meter", "Omkring fem meter"],
+        answerIndex: 1,
+        revealText: "Over en meter. Det meste er kampesten bundet sammen med kalkmørtel.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.58,
+        text: "Se op: Tårnet af træ foran indgangen mod vest kom til i 1864.",
+        revealText: null,
+      },
+    ],
   },
   poi_langvannet_lorenskog: {
     nb: [
@@ -581,6 +804,24 @@ export const LORENSKOG_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChap
         kind: "look",
         atFraction: 0.82,
         text: "Look up: Along the path stand fourteen information boards about history, culture, nature and activities.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.4,
+        text: "Hvad tror du, Lørenskogs kommunevåben viser?",
+        options: ["En sejlbåd", "Et rødt vandhjul", "En guldfisk"],
+        answerIndex: 1,
+        revealText: "Et rødt vandhjul på guldbund, fordi tømmerflådning og savværker var så vigtige for egnen.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.79,
+        text: "Se op: Langs stien står fjorten informationstavler om historie, kultur, natur og aktiviteter.",
         revealText: null,
       },
     ],
@@ -622,6 +863,24 @@ export const LORENSKOG_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChap
         revealText: null,
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.56,
+        text: "Hvilket berømt bygningsværk tror du, den buede form er inspireret af?",
+        options: ["Pyramiderne i Giza", "Colosseum i Rom", "Operaen i Sydney"],
+        answerIndex: 1,
+        revealText: "Colosseum i Rom. Forslaget hed «C-moment», og arkitekten var Jon Flatebø fra L2 Arkitekter.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.76,
+        text: "Se op: Siden mod Festplassen er af glas, mens væggen mod Solheimveien er af spansk marmor.",
+        revealText: null,
+      },
+    ],
   },
   poi_losby_gods: {
     nb: [
@@ -657,6 +916,24 @@ export const LORENSKOG_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoChap
         kind: "look",
         atFraction: 0.67,
         text: "Look up: The main house was built around 1850 as a hunting lodge.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.53,
+        text: "Hvordan tror du, tømmer og planker blev fragtet fra Losby ned til Fjellhamar fra 1861?",
+        options: ["I rør", "På jernbane", "Med luftballon"],
+        answerIndex: 1,
+        revealText: "På en seks kilometer lang jernbane, først trukket af heste og fra 1914 af motorvogne.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.68,
+        text: "Se op: Hovedbygningen blev opført omkring 1850 som jagthytte.",
         revealText: null,
       },
     ],

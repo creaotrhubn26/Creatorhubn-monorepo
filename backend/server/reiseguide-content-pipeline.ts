@@ -3,10 +3,13 @@
  * CreatorHubs S3-bøtte (products/senseaid-explore/…) + tekstingscues i
  * databasen.
  *
- * Kjøres av backend/scripts/reiseguide-generate-audio.ts. Ett manus
- * (guide_poi_scripts-rad) gir én aktiv guide_poi_audio-rad og én
- * guide_poi_captions-rad; eldre lyd for samme manus deaktiveres, aldri
- * slettes. Manus med aktiv lyd for samme versjon hoppes over uten --force.
+ * Kjøres av backend/scripts/reiseguide-generate-audio.ts. Et språk kan ha
+ * flere stemmer (norsk: Hazel og Walter, Daniel 25.09.2026), så ett manus
+ * (guide_poi_scripts-rad) gir én aktiv guide_poi_audio-rad per stemme, hver
+ * med sin guide_poi_captions-rad. Eldre lyd for samme stemme, og lyd med
+ * stemmer språket ikke lenger bruker, deaktiveres når den nye er lagret,
+ * aldri slettes. Stemmer med aktiv lyd for samme manusversjon hoppes over
+ * uten --force.
  */
 
 import { createHash, randomUUID } from "node:crypto";
@@ -29,14 +32,19 @@ export interface ScriptAudioJob {
   chapterNo: number;
   version: number;
   text: string;
-  /** Versjonen den aktive lyden ble laget fra, eller null uten lyd. */
-  activeAudioVersion: number | null;
+  /** Aktiv lyd for manuset: én per stemme, med versjonen den ble laget fra. */
+  activeAudio: ActiveAudio[];
+}
+
+export interface ActiveAudio {
+  voice: string;
+  version: number;
 }
 
 export type GenerateResult =
-  | { status: "generated"; job: ScriptAudioJob; audioId: string; storageKey: string; durationS: number; cueCount: number }
-  | { status: "skipped"; job: ScriptAudioJob; reason: "up_to_date" | "dry_run" }
-  | { status: "failed"; job: ScriptAudioJob; error: string };
+  | { status: "generated"; job: ScriptAudioJob; voice: string; audioId: string; storageKey: string; durationS: number; cueCount: number }
+  | { status: "skipped"; job: ScriptAudioJob; voice: string; reason: "up_to_date" | "dry_run" }
+  | { status: "failed"; job: ScriptAudioJob; voice: string; error: string };
 
 export interface JobFilter {
   areaSlug: string;
@@ -47,19 +55,26 @@ export interface JobFilter {
 
 type Db = Pick<Pool, "query" | "connect">;
 
-export function audioStorageKey(job: Pick<ScriptAudioJob, "areaSlug" | "poiSlug" | "kind" | "chapterNo" | "lang" | "version">): string {
-  return senseAidAudioKey(job);
+export function audioStorageKey(
+  job: Pick<ScriptAudioJob, "areaSlug" | "poiSlug" | "kind" | "chapterNo" | "lang" | "version">,
+  voice: string,
+): string {
+  return senseAidAudioKey({ ...job, voice });
 }
 
 export async function listScriptAudioJobs(db: Pick<Pool, "query">, filter: JobFilter): Promise<ScriptAudioJob[]> {
   const { rows } = await db.query(
     `SELECT s.id, s.lang, s.kind, s.chapter_no, s.version, s.script_text,
             p.slug AS poi_slug, a.slug AS area_slug,
-            act.script_version AS active_audio_version
+            COALESCE(
+              (SELECT json_agg(json_build_object('voice', act.voice_id, 'version', act.script_version))
+                 FROM guide_poi_audio act
+                WHERE act.script_id = s.id AND act.is_active),
+              '[]'::json
+            ) AS active_audio
        FROM guide_poi_scripts s
        JOIN guide_pois p ON p.id = s.poi_id
        JOIN guide_areas a ON a.id = p.area_id
-       LEFT JOIN guide_poi_audio act ON act.script_id = s.id AND act.is_active
       WHERE a.slug = $1
         AND ($2::text IS NULL OR s.lang = $2)
         AND ($3::text IS NULL OR s.kind = $3)
@@ -76,30 +91,61 @@ export async function listScriptAudioJobs(db: Pick<Pool, "query">, filter: JobFi
     chapterNo: Number(r.chapter_no),
     version: Number(r.version),
     text: String(r.script_text),
-    activeAudioVersion: r.active_audio_version == null ? null : Number(r.active_audio_version),
+    activeAudio: parseActiveAudio(r.active_audio),
   }));
+}
+
+function parseActiveAudio(value: unknown): ActiveAudio[] {
+  const list = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((item) => {
+    const { voice, version } = (item ?? {}) as { voice?: unknown; version?: unknown };
+    return typeof voice === "string" && version != null ? [{ voice, version: Number(version) }] : [];
+  });
 }
 
 export interface GenerateOptions {
   db: Db;
   tts: SpeechSynthesizer;
   store: MediaStore;
-  voice: string;
+  /** Stemmene for alle språk, eller stemmene per språk (den første er standard). */
+  voice: string | string[] | ((lang: string) => string | string[]);
   force?: boolean;
   dryRun?: boolean;
 }
 
-export async function generateScriptAudio(job: ScriptAudioJob, options: GenerateOptions): Promise<GenerateResult> {
-  if (!options.force && job.activeAudioVersion === job.version) {
-    return { status: "skipped", job, reason: "up_to_date" };
-  }
-  if (options.dryRun) return { status: "skipped", job, reason: "dry_run" };
+export function voicesForJob(job: Pick<ScriptAudioJob, "lang">, voice: GenerateOptions["voice"]): string[] {
+  const resolved = typeof voice === "function" ? voice(job.lang) : voice;
+  const list = (Array.isArray(resolved) ? resolved : [resolved]).map((v) => v.trim()).filter(Boolean);
+  return [...new Set(list)];
+}
 
-  const synthesis = await options.tts.synthesize({ text: job.text, lang: job.lang, voice: options.voice });
+/** Stemmen har aktiv lyd for samme manusversjon. */
+export function isAudioUpToDate(job: ScriptAudioJob, voice: string): boolean {
+  return job.activeAudio.some((a) => a.voice === voice && a.version === job.version);
+}
+
+/**
+ * Lager lyd for ett manus med én stemme. `languageVoices` er alle stemmene
+ * språket bruker nå; aktiv lyd med andre stemmer (f.eks. Adrian på norsk før
+ * Hazel og Walter) deaktiveres når den nye lyden er lagret.
+ */
+export async function generateScriptAudio(
+  job: ScriptAudioJob,
+  voice: string,
+  options: GenerateOptions & { languageVoices?: string[] },
+): Promise<GenerateResult> {
+  if (!options.force && isAudioUpToDate(job, voice)) {
+    return { status: "skipped", job, voice, reason: "up_to_date" };
+  }
+  if (options.dryRun) return { status: "skipped", job, voice, reason: "dry_run" };
+  const languageVoices = options.languageVoices?.length ? options.languageVoices : [voice];
+
+  const synthesis = await options.tts.synthesize({ text: job.text, lang: job.lang, voice });
   const cues: CaptionCue[] = buildCaptionCues(job.text, synthesis.characters);
   if (cues.length === 0) throw new Error("Ingen tekstingscues kunne bygges fra tidsstemplene.");
 
-  const storageKey = audioStorageKey(job);
+  const storageKey = audioStorageKey(job, voice);
   await options.store.put({ key: storageKey, body: synthesis.audio, contentType: "audio/mpeg" });
 
   const audioId = `aud_${randomUUID()}`;
@@ -110,7 +156,11 @@ export async function generateScriptAudio(job: ScriptAudioJob, options: Generate
   const client = await options.db.connect();
   try {
     await client.query("BEGIN");
-    await client.query("UPDATE guide_poi_audio SET is_active = FALSE WHERE script_id = $1 AND is_active", [job.scriptId]);
+    await client.query(
+      `UPDATE guide_poi_audio SET is_active = FALSE
+        WHERE script_id = $1 AND is_active AND (voice_id = $2 OR NOT (voice_id = ANY($3::text[])))`,
+      [job.scriptId, voice, languageVoices],
+    );
     await client.query(
       `INSERT INTO guide_poi_audio
          (id, script_id, script_version, storage_key, format, bitrate_kbps, duration_s,
@@ -131,7 +181,7 @@ export async function generateScriptAudio(job: ScriptAudioJob, options: Generate
     client.release();
   }
 
-  return { status: "generated", job, audioId, storageKey, durationS, cueCount: cues.length };
+  return { status: "generated", job, voice, audioId, storageKey, durationS, cueCount: cues.length };
 }
 
 export async function generateAreaAudio(
@@ -141,14 +191,17 @@ export async function generateAreaAudio(
   const jobs = await listScriptAudioJobs(options.db, filter);
   const results: GenerateResult[] = [];
   for (const job of jobs) {
-    let result: GenerateResult;
-    try {
-      result = await generateScriptAudio(job, options);
-    } catch (err) {
-      result = { status: "failed", job, error: err instanceof Error ? err.message : String(err) };
+    const languageVoices = voicesForJob(job, options.voice);
+    for (const voice of languageVoices) {
+      let result: GenerateResult;
+      try {
+        result = await generateScriptAudio(job, voice, { ...options, languageVoices });
+      } catch (err) {
+        result = { status: "failed", job, voice, error: err instanceof Error ? err.message : String(err) };
+      }
+      results.push(result);
+      options.onResult?.(result);
     }
-    results.push(result);
-    options.onResult?.(result);
   }
   return results;
 }

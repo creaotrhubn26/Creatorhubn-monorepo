@@ -7,7 +7,7 @@
 // kompilere i dette monorepoet mot samme iOS 17-mål) — samme
 // ReiseguideIntentBridge-mønster som AppStateBridge der.
 //
-// Dialogtekstene under er bevisst rene Swift-strenger (nb/en-switch), ikke
+// Dialogtekstene under er bevisst rene Swift-strenger (nb/en/da-switch), ikke
 // via Localizable.xcstrings/L10n: PondusAppIntents.swift gjør det samme
 // (rene norske literals for IntentDialog), og hvorvidt AppIntents-dialoger
 // kan spille via et String Catalog-nøkkeloppslag fra en kjøretids-String er
@@ -36,37 +36,54 @@ struct PlayNearestPOIIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let env = ReiseguideIntentBridge.shared.environment else {
-            return .result(dialog: dialog(nb: "Åpner SenseAid Explore …", en: "Opening SenseAid Explore …"))
+            return .result(dialog: dialog(
+                nb: "Åpner SenseAid Explore …",
+                en: "Opening SenseAid Explore …",
+                da: "Åbner SenseAid Explore …"
+            ))
         }
-        let isNorwegian = env.settings.uiLanguage != "en"
+        let uiLanguage = env.settings.uiLanguage
 
         env.location.requestAndStart()
         guard let fix = await Self.awaitFix(location: env.location, timeout: Self.locationTimeout) else {
             return .result(dialog: dialog(
                 nb: "Fant ikke posisjonen din ennå. Åpner SenseAid Explore.",
-                en: "Couldn't find your location yet. Opening SenseAid Explore."
+                en: "Couldn't find your location yet. Opening SenseAid Explore.",
+                da: "Kunne ikke finde din position endnu. Åbner SenseAid Explore."
             ))
         }
 
         guard let nearest = NearestUnlockedPOI.find(pois: env.store.pois, from: fix.coordinate, isLocked: { env.isLocked($0) }) else {
             return .result(dialog: dialog(
                 nb: "Fant ingen severdighet du har tilgang til i nærheten.",
-                en: "Couldn't find a nearby place you have access to."
+                en: "Couldn't find a nearby place you have access to.",
+                da: "Fandt ingen seværdighed i nærheden, som du har adgang til."
             ))
         }
 
         env.player.start(poi: nearest)
         let title = nearest.title
-        return .result(dialog: isNorwegian
-            ? IntentDialog(stringLiteral: "Spiller av \(title).")
-            : IntentDialog(stringLiteral: "Playing \(title).")
-        )
+        return .result(dialog: Self.localizedDialog(
+            uiLanguage,
+            nb: "Spiller av \(title).",
+            en: "Playing \(title).",
+            da: "Afspiller \(title)."
+        ))
     }
 
     @MainActor
-    private func dialog(nb: String, en: String) -> IntentDialog {
+    private func dialog(nb: String, en: String, da: String) -> IntentDialog {
         let bridgeLang = ReiseguideIntentBridge.shared.environment?.settings.uiLanguage
-        return IntentDialog(stringLiteral: bridgeLang == "en" ? en : nb)
+        return Self.localizedDialog(bridgeLang ?? "nb", nb: nb, en: en, da: da)
+    }
+
+    /// Velger dialogteksten for UI-språket; norsk når språket er ukjent.
+    private static func localizedDialog(_ uiLanguage: String, nb: String, en: String, da: String) -> IntentDialog {
+        switch uiLanguage {
+        case "en": return IntentDialog(stringLiteral: en)
+        case "da": return IntentDialog(stringLiteral: da)
+        default: return IntentDialog(stringLiteral: nb)
+        }
     }
 
     /// Poller `location.fix` til den kommer eller tiden løper ut — enklere

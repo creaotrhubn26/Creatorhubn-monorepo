@@ -40,6 +40,10 @@ final class AreaStore {
 
     private(set) var state: State = .idle
     private(set) var loadedLang: String?
+    /// Fortellerstemmen brukeren har valgt (AppSettings.narratorVoiceId);
+    /// nil = språkets standardstemme. Settes av AppEnvironment og stemmevalget.
+    @ObservationIgnored var narratorVoice: String?
+    @ObservationIgnored private var loadedVoice: String?
     /// Området som vises (eller lastes) nå.
     private(set) var slug: String
     private(set) var areas: [GuideArea] = []
@@ -74,9 +78,9 @@ final class AreaStore {
 
     func poi(id: String) -> GuidePOI? { pois.first { $0.id == id } }
 
-    /// Henter området på nytt hvis språket eller området har endret seg, eller vi ikke har noe.
+    /// Henter området på nytt hvis språket, stemmen eller området har endret seg, eller vi ikke har noe.
     func loadIfNeeded(lang: String) async {
-        if loadedLang == lang, loadedSlug == slug, response != nil { return }
+        if loadedLang == lang, loadedSlug == slug, loadedVoice == narratorVoice, response != nil { return }
         await load(lang: lang)
     }
 
@@ -90,14 +94,16 @@ final class AreaStore {
 
     func load(lang: String) async {
         let requested = slug
+        let voice = narratorVoice
         if response == nil { state = .loading }
         do {
-            let fresh = try await api.area(idOrSlug: requested, lang: lang)
+            let fresh = try await api.area(idOrSlug: requested, lang: lang, voice: voice)
             // Brukeren byttet område mens vi ventet: ikke overskriv det nye.
             guard requested == slug else { return }
             state = .loaded(fresh, fromCache: false)
             loadedLang = lang
             loadedSlug = requested
+            loadedVoice = voice
             loadedAt = .now
             writeCache(fresh, slug: requested, lang: lang)
         } catch {

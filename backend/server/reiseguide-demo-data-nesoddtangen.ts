@@ -64,6 +64,19 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed; see ruter.no" },
         ],
       },
+      da: {
+        title: "Nesoddtangen brygge",
+        subtitle: "Båden til byen",
+        summary:
+          "Oslo ligger fem kilometer væk over fjorden, men 45 kilometer rundt ad vejen. Siden 1874 er bådene sejlet herfra, og i dag er Nesoddbådene Norges største bilfri bådforbindelse, drevet med batterier.",
+        locationLabel: "Nesodden, Norge",
+        heroImageAlt: "Foto af Nesoddtangen brygge",
+        practicalInfo: [
+          { label: "Båd", value: "Til Aker brygge (ca. 23 min) og Lysaker (ca. 8 min), tjek ruter.no" },
+          { label: "Terminal", value: "Venteværelse, kiosk og toiletter i terminalbygningen; busterminal og cykelparkering ved kajen" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet, tjek ruter.no" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -100,6 +113,24 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           text:
             "You are standing by the quay at the very tip of Nesodden. Right by the water is the terminal building, a low house of glass and glued laminated timber, with a waiting room and kiosk inside. Behind you is a large bus terminal and an open bicycle rack. Ahead of you the fjord opens out, broad and shining, and on the far side lies Oslo, with houses and hills in the distance. The boats berth at the quay at regular intervals, and at rush hour people stream off and on. To one side the Oslofjord continues south, to the other the Bunnefjord reaches in along the peninsula.",
           estimatedDurationS: 43,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Båden til byen",
+          text:
+            "Du står på Nesoddtangen brygge, yderst på halvøen mellem Oslofjorden og Bunnefjorden. Over vandet ligger Oslo, kun fem kilometer væk med båd, men omkring 45 kilometer væk ad vejen rundt om fjorden. Derfor er båden livsnerven her. Nesoddbådene er Norges største bilfri bådforbindelse, og hver dag rejser mere end 10 000 passagerer mellem Nesodden og Oslo. Turen til Aker brygge tager omkring 23 minutter, og til Lysaker i Bærum tager den kun otte.\n\nBådtrafikken begyndte i 1874, da A/S Bundefjord Dampskibsselskab blev stiftet, delvis med britiske penge. Den første båd var en hjuldamper, «Bundefjord», købt i Storbritannien. Senere kom dampskibe som «Kronprins Olav» fra 1908 og «Nesodtangen» fra 1929. I 1942 slog Bundefjord-selskabet og Nesodden-selskabet sig sammen til Nesodden–Bundefjord Dampskipsselskap, som drev bådene helt frem til 2009. Til langt op i 1970'erne havde de fleste anløbsbroer rundt om Nesodden daglige anløb. Så blev ruterne skåret ned, og i dag går næsten al trafik herfra, til Aker brygge og Lysaker. På Aker brygge har bådene lagt til ved Tingvallakaia siden 1986.\n\nI 2019 og 2020 blev de tre både «Kongen», «Dronningen» og «Prinsen» bygget om til batteridrift på et værft i Horten. Motoren blev skiftet ud med en batteripakke på 26 tons, og udledningen af CO2 fra bådtrafikken faldt med 34 procent.",
+          estimatedDurationS: 87,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står ved kajen helt yderst på Nesodden. Lige ved vandet ligger terminalbygningen, et lavt hus af glas og limtræ, med venteværelse og kiosk indenfor. Bag dig er der en stor busterminal og et åbent cykelstativ. Foran dig åbner fjorden sig, bred og blank, og på den anden side ligger Oslo, med huse og åse i det fjerne. Bådene lægger til ved kajen med jævne mellemrum, og i myldretiden strømmer folk af og på. Til den ene side fortsætter Oslofjorden mod syd, til den anden går Bunnefjorden ind langs halvøen.",
+          estimatedDurationS: 37,
         },
       ],
     },
@@ -144,6 +175,26 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           explanation: "A 26-tonne battery pack cut CO2 emissions from the boat traffic by 34 per cent.",
         },
       ],
+      da: [
+        {
+          question: "Omtrent hvor lang tid tager båden fra Nesoddtangen til Aker brygge?",
+          options: ["8 minutter", "23 minutter", "En time"],
+          correctIndex: 1,
+          explanation: "Omkring 23 minutter til Aker brygge; til Lysaker i Bærum tager det kun otte.",
+        },
+        {
+          question: "Hvornår begyndte bådtrafikken til Nesodden?",
+          options: ["1874", "1942", "1986"],
+          correctIndex: 0,
+          explanation: "A/S Bundefjord Dampskibsselskab blev stiftet i 1874, og den første båd var en hjuldamper.",
+        },
+        {
+          question: "Hvad blev bådene «Kongen», «Dronningen» og «Prinsen» bygget om til i 2019 og 2020?",
+          options: ["Sejlbåde", "Batteridrift", "Bilfærger"],
+          correctIndex: 1,
+          explanation: "En batteripakke på 26 tons skar udledningen af CO2 fra bådtrafikken ned med 34 procent.",
+        },
+      ],
     },
   },
   {
@@ -185,6 +236,19 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "No, stairs between the floors (not confirmed whether there is a lift)" },
         ],
       },
+      da: {
+        title: "Galleri Vanntårnet",
+        subtitle: "Kunstnerkommunen",
+        summary:
+          "Vandtårnet på Tangenåsen blev bygget, da Tangenbyen voksede frem efter krigen. I dag er det galleri for Nesodden kunstforening, i den kommune i Norge, der har flest kunstnere per indbygger.",
+        locationLabel: "Nesodden, Norge",
+        heroImageAlt: "Foto af Galleri Vanntårnet",
+        practicalInfo: [
+          { label: "Adresse", value: "Tårnstien, Nesoddtangen (stoppested Tangenåsen)" },
+          { label: "Åbningstider", value: "Kun ved udstillinger, tjek nesoddenkunstforening.no" },
+          { label: "Niveaufri adgang", value: "Nej, trapper mellem etagerne (ikke bekræftet, om der er elevator)" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -221,6 +285,24 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           text:
             "You are standing at the top of Tangenåsen, at the foot of a round tower. The tower is taller than the houses around it, and its walls curve all the way round the building, with no corners. The entrance is at ground level, and the path Tårnstien leads to the door. Just below the hill is the bus stop, and around you are detached houses and gardens on sloping ground. Inside the tower four round floors of art sit one above the other, joined by stairs, with a small waffle café. When the gallery is open, there are usually posters for the exhibition by the entrance.",
           estimatedDurationS: 42,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Tårnet og kunstnerkommunen",
+          text:
+            "Du står ved det gamle vandtårn på Tangenåsen, og tårnet fortæller to historier om Nesodden. Den første handler om, hvordan Nesoddtangen blev en by. Den gamle gård Tangen lå ude på odden ved bryggen, næsten to kilometer herfra. Efter krigen blev der bygget huse på skråningerne fra Oksval op mod Tangenåsen, og fra 1949 skød der så mange op, at stedet en tid blev kaldt Tangenbyen. Vandtårnet blev bygget for at give vand til de nye byggegrunde.\n\nDen anden historie handler om kunst. Ifølge Norsk kulturindeks er Nesodden den kommune i Norge, der har flest professionelle kunstnere per indbygger. Kunstnere har fundet vej til halvøen gennem hele det forrige århundrede. Bogen «Kunstnerkommunen» af Kathrine Geard præsenterer 68 billedkunstnere fra årene 1945 til 2000, blandt dem Per Kleiva, kendt for politisk grafik i serigrafi, Arne Åse, Kristian Kvakland og tekstilkunstneren Astrid Løvaas.\n\nNesodden kunstforening blev stiftet i 1972. I årene før 1997 byggede medlemmerne vandtårnet om som frivilligt arbejde. De lagde trægulve, byggede trapper og indrettede etagerne med lys og ophængningsmuligheder, og bænkene måtte specialfremstilles for at passe til de runde vægge. Galleriet åbnede i 1997. I dag har tårnet fire runde etager med kunst og en lille vaffelcafé, og her holdes udstillinger, koncerter, kurser og filmaftener. Kommunen ejer bygningen, og kunstforeningen driver den. I 2024 blev Nesodden kunstforening kåret til årets kunstforening.",
+          estimatedDurationS: 92,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står på toppen af Tangenåsen, ved foden af et rundt tårn. Tårnet er højere end husene omkring det, og væggene buer sig rundt om hele bygningen, uden hjørner. Indgangen ligger nede ved jorden, og stien Tårnstien fører hen til døren. Lige neden for åsen ligger busstoppestedet, og omkring dig er der villaer og haver i skrånende terræn. Inde i tårnet ligger fire runde etager med kunst over hinanden, forbundet af trapper, og en lille vaffelcafé. Når galleriet er åbent, står der som regel plakater for udstillingen ved indgangen.",
+          estimatedDurationS: 37,
         },
       ],
     },
@@ -265,6 +347,26 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           explanation: "The art society was founded in 1972, converted the tower with volunteer work and opened the gallery in 1997.",
         },
       ],
+      da: [
+        {
+          question: "Hvorfor blev vandtårnet bygget?",
+          options: ["Som udsigtstårn", "For at give vand til de nye byggegrunde", "For at slukke skovbrande"],
+          correctIndex: 1,
+          explanation: "Fra 1949 voksede Tangenbyen frem på skråningerne fra Oksval op mod Tangenåsen.",
+        },
+        {
+          question: "Hvad har Nesodden flest af per indbygger ifølge Norsk kulturindeks?",
+          options: ["Professionelle kunstnere", "Både", "Fodboldbaner"],
+          correctIndex: 0,
+          explanation: "Ingen norsk kommune har flere professionelle kunstnere per indbygger.",
+        },
+        {
+          question: "Hvornår åbnede Galleri Vanntårnet?",
+          options: ["1972", "1997", "2024"],
+          correctIndex: 1,
+          explanation: "Kunstforeningen blev stiftet i 1972, byggede tårnet om som frivilligt arbejde og åbnede galleriet i 1997.",
+        },
+      ],
     },
   },
   {
@@ -306,6 +408,19 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed" },
         ],
       },
+      da: {
+        title: "Skoklefall kirke",
+        subtitle: "Kirken fra Hallingdal",
+        summary:
+          "Trækirken for det nordlige Nesodden stod færdig i 1936, tegnet af Carl Michalsen og bygget af tømrere fra Hallingdal med tømmer derfra. Indenfor har Terje Grøstad lavet altertavle, prædikestol og døbefont.",
+        locationLabel: "Nesodden, Norge",
+        heroImageAlt: "Foto af Skoklefall kirke",
+        practicalInfo: [
+          { label: "Adresse", value: "Kapellveien 3, Nesoddtangen" },
+          { label: "Adgang", value: "Kirken er kun åben ved gudstjenester og arrangementer" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -342,6 +457,24 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           text:
             "In front of you stands a small, simple wooden church. It is long and narrow, with a pitched roof and low, straight eaves over the gables. The walls are of logs without cladding, so you see the timbers laid one on top of another. The entrance is in one gable end, and along the sides the windows sit in a row. There are no gravestones around the church; instead it stands among lawn and trees, near a road junction. The church is low, and the roof is what dominates. Inside stand the altarpiece, the pulpit and the font that Terje Grøstad made and decorated in the 1960s.",
           estimatedDurationS: 43,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Kirken fra Hallingdal",
+          text:
+            "Dette er Skoklefall kirke, kirken for det nordlige Nesodden, omkring tre kilometer syd for bryggen på Nesoddtangen. Grunden blev skænket af Olav Skoklefald, og bonden Johan Jacobsen gav penge til byggeriet. Grundstenen blev lagt den 16. januar 1935 af Johan P. Lunde, som dengang var biskop i Oslo, og kirken stod færdig året efter, i 1936. Den er også blevet kaldt Skoklefall kapel.\n\nArkitekten var Carl Michalsen. Han tegnede en enkel langkirke i træ med plads til omkring 130 mennesker. Bygmestrene og tømrerne kom fra Hallingdal, Arnfinn og Knut Hodnungseth og Knut Blakkestad, og det tømmer, de brugte, kom også derfra. Rundt om kirken er der ingen kirkegård.\n\nIndenfor er det kunstneren Terje Grøstad, der har sat sit præg på rummet. I 1960'erne lavede og dekorerede han både altertavlen, prædikestolen og døbefonten. I dag er Skoklefall en af tre kirker i Nesodden kommune, og menigheden her har planer om en ny kulturkirke på det nordlige Nesodden.",
+          estimatedDurationS: 65,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Foran dig står en lille, enkel kirke af træ. Den er lang og smal, med sadeltag og lave, lige tagudhæng over gavlene. Væggene er af tømmer uden beklædning, så du ser stokkene lagt oven på hinanden. Indgangen ligger i den ene gavl, og langs siderne sidder vinduerne på række. Der er ingen gravsten omkring kirken; i stedet ligger den med græsplæne og træer omkring sig, nær et vejkryds. Kirken er lav, og det er taget, der fylder mest. Indenfor står altertavlen, prædikestolen og døbefonten, som Terje Grøstad lavede og dekorerede i 1960'erne.",
+          estimatedDurationS: 38,
         },
       ],
     },
@@ -384,6 +517,26 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           options: ["Carl Michalsen", "Terje Grøstad", "Johan P. Lunde"],
           correctIndex: 1,
           explanation: "Terje Grøstad made and decorated all three in the 1960s.",
+        },
+      ],
+      da: [
+        {
+          question: "Hvor kom tømrerne og tømmeret til kirken fra?",
+          options: ["Hallingdal", "Gudbrandsdalen", "Sverige"],
+          correctIndex: 0,
+          explanation: "Bygmestrene Arnfinn og Knut Hodnungseth og Knut Blakkestad kom fra Hallingdal, og det gjorde tømmeret også.",
+        },
+        {
+          question: "Hvad findes der ikke rundt om Skoklefall kirke?",
+          options: ["Vinduer", "En kirkegård", "Et tag"],
+          correctIndex: 1,
+          explanation: "Kirken fra 1936 har ingen kirkegård omkring sig.",
+        },
+        {
+          question: "Hvem lavede altertavlen, prædikestolen og døbefonten?",
+          options: ["Carl Michalsen", "Terje Grøstad", "Johan P. Lunde"],
+          correctIndex: 1,
+          explanation: "Terje Grøstad lavede og dekorerede alle tre i 1960'erne.",
         },
       ],
     },
@@ -429,6 +582,20 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           { label: "Step-free access", value: "Not confirmed; parts of the park slope" },
         ],
       },
+      da: {
+        title: "Hellviktangen",
+        subtitle: "Lystgården ved Bunnefjorden",
+        summary:
+          "Petter Brandt holdt selskaber for Christianias fine folk her i 1700-tallet, og konsul Hennum byggede jugendvillaen omkring 1900. Staten købte stedet i 1978, og i dag er det kunstcafé, galleri og badested for alle.",
+        locationLabel: "Nesodden, Norge",
+        heroImageAlt: "Foto af Hellviktangen",
+        practicalInfo: [
+          { label: "Adresse", value: "Hellvikalleen 60, Nesodden" },
+          { label: "Adgang", value: "Åbent friluftsområde; bus fra Nesoddtangen og ca. 800 m til fods fra stoppestedet, eller kyststien fra bryggen" },
+          { label: "Kunstcafé og galleri", value: "Tjek åbningstider på hellviktangen.no" },
+          { label: "Niveaufri adgang", value: "Ikke bekræftet; parken ligger delvis på skrånende terræn" },
+        ],
+      },
     },
     scripts: {
       nb: [
@@ -465,6 +632,24 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           text:
             "You are standing in a park right down by the fjord, on the northern tip of the Hellvik point, with water on several sides, large lawns and tall old trees. Up in the park, close to the shore, stands a large Art Nouveau house. Stairs and terraces lead down from the house towards the water. Down by the shore there is a small sandy beach, smooth rocks and a jetty reaching out into the fjord. Ahead of you lies the Bunnefjord, calm and wide, and far off to the north you can see Oslo. In summer many people swim here, and the coastal path from Nesoddtangen passes along the water.",
           estimatedDurationS: 44,
+        },
+      ],
+      da: [
+        {
+          kind: "narration",
+          chapterNo: 1,
+          title: "Lystgården ved Bunnefjorden",
+          text:
+            "Du er kommet til Hellviktangen, på nordspidsen af Hellvikodden på østsiden af Nesodden, med udsigt over Bunnefjorden, Oslofjorden og hovedstaden. Navnet Hellvik kommer formentlig af en flad stenhelle ved vandet, som kan være blevet brugt til at laste og losse skibe i gamle dage.\n\nMod slutningen af 1700-tallet byggede Petter Brandt en lystgård her. Han var borger i Christiania, ejede hele gården Skoklefald og holdt store selskaber for byens fine folk. Senere blev Hellviktangen et selvstændigt landbrug. Omkring år 1900 overtog konsul A. Hennum stedet, og han anlagde en ejendom med park, trapper og terrasser. Det var Hennum, der byggede huset i jugendstil, som står her i dag, med egen anløbsbro nedenfor. Broen var også anløbssted for bådene, og det sidste anløb var i 1988, da ruten på Bunnefjorden blev nedlagt.\n\nI 1978 købte staten Hellviktangen som friluftsområde, og Nesodden kommune skulle forvalte det. Der kom protester, og mange lokale ildsjæle kæmpede for at bevare huset. Til sidst overlod staten huset til kommunen, og kommunen gav ansvaret videre til Stiftelsen Hellviktangen. I dag er området åbent for alle, med park, strand og badested, og i hovedhuset drives en kunstcafé og et galleri, som især viser Nesoddens professionelle kunstnere frem. Hertil kan du gå ad kyststien fra Nesoddtangen.",
+          estimatedDurationS: 86,
+        },
+        {
+          kind: "audio_description",
+          chapterNo: 1,
+          title: "Sådan ser det ud",
+          text:
+            "Du står i en park helt nede ved fjorden, på nordspidsen af Hellvikodden, med vand på flere sider, store græsplæner og gamle, høje træer. Oppe i parken, tæt ved vandet, ligger et stort hus i jugendstil. Trapper og terrasser fører ned fra huset mod vandet. Nede ved vandkanten er der en lille sandstrand, glatte klipper og en anløbsbro, der stikker ud i fjorden. Foran dig ligger Bunnefjorden, rolig og bred, og i det fjerne, mod nord, ser du Oslo. Om sommeren bader mange her, og kyststien fra Nesoddtangen går forbi langs vandet.",
+          estimatedDurationS: 38,
         },
       ],
     },
@@ -509,6 +694,26 @@ export const NESODDTANGEN_POIS: DemoPoi[] = [
           explanation: "After protests the house was handed over to the municipality and the Hellviktangen Foundation.",
         },
       ],
+      da: [
+        {
+          question: "Hvem byggede en lystgård på Hellviktangen mod slutningen af 1700-tallet?",
+          options: ["Petter Brandt", "Konsul A. Hennum", "Christian den Fjerde"],
+          correctIndex: 0,
+          explanation: "Brandt var borger i Christiania, ejede hele Skoklefald og holdt store selskaber.",
+        },
+        {
+          question: "Hvornår lagde en båd sidst til ved broen på Hellviktangen?",
+          options: ["1874", "1988", "2019"],
+          correctIndex: 1,
+          explanation: "Det sidste anløb var i 1988, da ruten på Bunnefjorden blev nedlagt.",
+        },
+        {
+          question: "Hvad skete der med Hellviktangen i 1978?",
+          options: ["Huset brændte ned", "Staten købte Hellviktangen som friluftsområde", "Der blev bygget et hotel"],
+          correctIndex: 1,
+          explanation: "Efter protester blev huset overladt til kommunen og Stiftelsen Hellviktangen.",
+        },
+      ],
     },
   },
 ];
@@ -551,6 +756,24 @@ export const NESODDTANGEN_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoC
         revealText: "A paddle steamer, the 'Bundefjord', bought from Britain.",
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.15,
+        text: "Se op: Over vandet ligger Oslo, kun fem kilometer væk med båd.",
+        revealText: null,
+      },
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.42,
+        text: "Hvilken slags båd tror du, den allerførste båd på ruten var?",
+        options: ["En sejlskude", "En hjuldamper", "En robåd"],
+        answerIndex: 1,
+        revealText: "En hjuldamper, «Bundefjord», købt i Storbritannien.",
+      },
+    ],
   },
   poi_galleri_vanntarnet: {
     nb: [
@@ -586,6 +809,24 @@ export const NESODDTANGEN_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoC
         kind: "look",
         atFraction: 0.81,
         text: "Look up: The walls of the tower are round, so the benches had to be specially made.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.33,
+        text: "Hvad tror du, Nesodden har flest af per indbygger af alle kommuner i Norge?",
+        options: ["Fodboldbaner", "Professionelle kunstnere", "Fiskerbåde"],
+        answerIndex: 1,
+        revealText: "Professionelle kunstnere, ifølge Norsk kulturindeks.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.81,
+        text: "Se op: Væggene i tårnet er runde, så bænkene måtte specialfremstilles.",
         revealText: null,
       },
     ],
@@ -627,6 +868,24 @@ export const NESODDTANGEN_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoC
         revealText: null,
       },
     ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.51,
+        text: "Hvor tror du, tømrerne, der byggede kirken, kom fra?",
+        options: ["Bergen", "Hallingdal", "København"],
+        answerIndex: 1,
+        revealText: "Fra Hallingdal, og det tømmer, de brugte, kom også derfra.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.86,
+        text: "Se op: Terje Grøstad lavede og dekorerede altertavlen, prædikestolen og døbefonten i 1960'erne.",
+        revealText: null,
+      },
+    ],
   },
   poi_hellviktangen: {
     nb: [
@@ -662,6 +921,24 @@ export const NESODDTANGEN_CHAPTER_PROMPTS: Record<string, Record<DemoLang, DemoC
         kind: "look",
         atFraction: 0.45,
         text: "Look up: Consul A. Hennum laid out a park, stairs and terraces around 1900.",
+        revealText: null,
+      },
+    ],
+    da: [
+      {
+        chapterNo: 1,
+        kind: "guess",
+        atFraction: 0.11,
+        text: "Hvad tror du, navnet Hellvik kommer af?",
+        options: ["En hval, der strandede", "En flad stenhelle ved vandet", "En konge, der boede her"],
+        answerIndex: 1,
+        revealText: "Formentlig af en flad stenhelle ved vandet, som kan være blevet brugt til at laste og losse skibe.",
+      },
+      {
+        chapterNo: 1,
+        kind: "look",
+        atFraction: 0.47,
+        text: "Se op: Konsul A. Hennum anlagde park, trapper og terrasser omkring år 1900.",
         revealText: null,
       },
     ],

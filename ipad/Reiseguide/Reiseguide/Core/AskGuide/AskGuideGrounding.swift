@@ -55,6 +55,7 @@ enum AskGuideGrounding {
         case "nb", "no": return "Norwegian Bokmål"
         case "nn": return "Norwegian Nynorsk"
         case "en": return "English"
+        case "da": return "Danish"
         default:
             let primary = primaryLanguage(code)
             return Locale(identifier: "en").localizedString(forLanguageCode: primary) ?? primary
@@ -66,6 +67,7 @@ enum AskGuideGrounding {
         switch primaryLanguage(code) {
         case "nb", "no", "nn": return "Det står ikke i guideteksten."
         case "en": return "The guide text doesn't say."
+        case "da": return "Det fremgår ikke af guideteksten."
         default: return nil
         }
     }
