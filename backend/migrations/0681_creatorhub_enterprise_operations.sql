@@ -145,6 +145,91 @@ SELECT entitlement.organization_id, feature.feature_id,
  ) AS feature(feature_id, permission_level, allowed_roles)
 ON CONFLICT (organization_id, feature_id) DO NOTHING;
 
+-- Runtime prototypes of the operations suite existed before this canonical
+-- migration. Reconcile every relation as one dependency graph before creating
+-- any new table. Incompatible data and indexes are retained under deterministic
+-- legacy names; compatible tables remain untouched.
+DO $reconcile_enterprise_operation_tables$
+DECLARE
+  relation_name TEXT;
+  required_columns TEXT[];
+  legacy_relation_name TEXT;
+  legacy_index_name TEXT;
+  index_record RECORD;
+  is_compatible BOOLEAN;
+BEGIN
+  FOR relation_name, required_columns IN
+    SELECT * FROM (VALUES
+      ('creatorhub_timesheet_periods', ARRAY['id','organization_id','project_id','participant_id','employee_user_id','period_start','period_end','status','submitted_at']::TEXT[]),
+      ('creatorhub_time_entries', ARRAY['id','period_id','organization_id','project_id','employee_user_id','work_date','started_at','ended_at','created_at']::TEXT[]),
+      ('creatorhub_timesheet_events', ARRAY['id','period_id','organization_id','event_type','actor_user_id','occurred_at']::TEXT[]),
+      ('creatorhub_timesheet_settlements', ARRAY['id','period_id','organization_id','project_id','participant_id','compensation_id','split_sheet_id','created_at']::TEXT[]),
+      ('creatorhub_booking_profiles', ARRAY['organization_id','owner_user_id','slug','business_name','timezone','currency','is_published']::TEXT[]),
+      ('creatorhub_booking_services', ARRAY['id','organization_id','name','duration_minutes','price_amount','deposit_amount','is_active','sort_order']::TEXT[]),
+      ('creatorhub_booking_availability', ARRAY['id','organization_id','weekday','start_time','end_time','is_active']::TEXT[]),
+      ('creatorhub_booking_blocks', ARRAY['id','organization_id','starts_at','ends_at']::TEXT[]),
+      ('creatorhub_bookings', ARRAY['id','organization_id','service_id','customer_email','starts_at','ends_at','status','idempotency_key','created_at']::TEXT[]),
+      ('creatorhub_vendor_products', ARRAY['id','organization_id','slug','name','category','sku','status','revision','updated_at']::TEXT[]),
+      ('creatorhub_vendor_api_keys', ARRAY['id','organization_id','key_prefix','key_hash','scopes','created_at']::TEXT[]),
+      ('creatorhub_vendor_api_rate_limits', ARRAY['key_id','window_start','request_count']::TEXT[]),
+      ('creatorhub_vendor_webhooks', ARRAY['id','organization_id','url','events','is_active']::TEXT[]),
+      ('creatorhub_vendor_outbox', ARRAY['id','organization_id','event_type','aggregate_id','status','available_at']::TEXT[])
+    ) AS expected(name, columns)
+  LOOP
+    IF to_regclass(format('public.%I', relation_name)) IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    SELECT COUNT(DISTINCT column_name) = cardinality(required_columns)
+      INTO is_compatible
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = relation_name
+       AND column_name = ANY(required_columns);
+
+    IF is_compatible THEN
+      CONTINUE;
+    END IF;
+
+    legacy_relation_name := LEFT(relation_name, 50) || '_legacy_0681';
+    IF to_regclass(format('public.%I', legacy_relation_name)) IS NOT NULL THEN
+      RAISE EXCEPTION 'Cannot reconcile %: legacy target % already exists',
+        relation_name, legacy_relation_name;
+    END IF;
+
+    FOR index_record IN
+      SELECT index_class.relname AS index_name
+        FROM pg_catalog.pg_index index_metadata
+        JOIN pg_catalog.pg_class table_class
+          ON table_class.oid = index_metadata.indrelid
+        JOIN pg_catalog.pg_namespace table_namespace
+          ON table_namespace.oid = table_class.relnamespace
+        JOIN pg_catalog.pg_class index_class
+          ON index_class.oid = index_metadata.indexrelid
+       WHERE table_namespace.nspname = 'public'
+         AND table_class.relname = relation_name
+    LOOP
+      legacy_index_name := LEFT(index_record.index_name, 50) || '_legacy_0681';
+      IF to_regclass(format('public.%I', legacy_index_name)) IS NOT NULL THEN
+        RAISE EXCEPTION 'Cannot reconcile index %: legacy target % already exists',
+          index_record.index_name, legacy_index_name;
+      END IF;
+      EXECUTE format(
+        'ALTER INDEX public.%I RENAME TO %I',
+        index_record.index_name,
+        legacy_index_name
+      );
+    END LOOP;
+
+    EXECUTE format(
+      'ALTER TABLE public.%I RENAME TO %I',
+      relation_name,
+      legacy_relation_name
+    );
+  END LOOP;
+END
+$reconcile_enterprise_operation_tables$;
+
 CREATE TABLE IF NOT EXISTS creatorhub_timesheet_periods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id VARCHAR(255) NOT NULL,
