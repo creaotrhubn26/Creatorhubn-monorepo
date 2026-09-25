@@ -205,3 +205,51 @@ export function flettMal(
     .sort((a, b) => a.order - b.order);
   return { steg: ut, mangler: [...new Set(alleMangler)] };
 }
+
+/**
+ * Bygger konteksten fra en crm_customers-rad.
+ *
+ * Regnskapstall og roller leses fra `enrichment_data`, der Discovery legger
+ * BRREG-berikelsen — ikke fra `notes`. Notatfeltet er fritekst et menneske
+ * kan skrive om når som helst; å parse tall ut av det ville gitt et manus
+ * som endrer seg når noen retter en skrivefeil.
+ *
+ * Alt som mangler blir null, og malen viser hullet. Bedre enn å gjette.
+ */
+export function leadKontekstFraRad(rad: {
+  company?: string | null;
+  name?: string | null;
+  city?: string | null;
+  employee_count_estimate?: number | null;
+  enrichment_data?: unknown;
+}): PondusLeadKontekst {
+  const b = rad.enrichment_data;
+  const berikelse = b && typeof b === "object" && !Array.isArray(b)
+    ? (b as Record<string, unknown>)
+    : {};
+  const objekt = (v: unknown): Record<string, unknown> =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  const selskap = objekt(berikelse.company);
+  const roller = objekt(berikelse.roller);
+  const regnskap = objekt(berikelse.regnskap);
+
+  const tall = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const tekst = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+
+  return {
+    navn: rad.company ?? null,
+    selskap: rad.company ?? null,
+    // `name` på raden er kontaktpersonen, ikke selskapet.
+    kontaktperson: rad.name ?? null,
+    poststed: rad.city ?? null,
+    ansatte: tall(rad.employee_count_estimate),
+    omsetning: tall(regnskap.omsetning),
+    driftsresultat: tall(regnskap.driftsresultat),
+    orgnr: tekst(selskap.orgNr) ?? tekst(selskap.organisasjonsnummer),
+    dagligLeder: tekst(roller.dagligLeder),
+    styreleder: tekst(roller.styreleder),
+  };
+}
+

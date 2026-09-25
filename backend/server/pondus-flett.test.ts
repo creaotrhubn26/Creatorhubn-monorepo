@@ -11,6 +11,7 @@ import {
   feltverdier,
   flettMal,
   fletteInn,
+  leadKontekstFraRad,
   oppfyller,
   TOM_KONTEKST,
   type PondusLeadKontekst,
@@ -159,3 +160,50 @@ describe("flettMal", () => {
     expect(r.steg.map((s) => s.id)).toEqual(["a", "b"]);
   });
 });
+
+describe("leadKontekstFraRad", () => {
+  it("leser regnskap og roller fra enrichment_data, ikke fra notes", () => {
+    // Notatfeltet er fritekst et menneske kan skrive om når som helst.
+    // Et manus som endrer seg når noen retter en skrivefeil er verdiløst.
+    const k = leadKontekstFraRad({
+      company: "NERAS DIREKTE AS",
+      name: "Jon Christian Hillestad",
+      city: "DRAMMEN",
+      employee_count_estimate: 65,
+      enrichment_data: {
+        found: true, source: "brreg",
+        company: { name: "NERAS DIREKTE AS", orgNr: "986330682" },
+        roller: { dagligLeder: "Jon Christian Hillestad", styreleder: "Jon Christian Hillestad" },
+        regnskap: { aar: "2025", omsetning: 51_700_000, driftsresultat: -3_700_000 },
+      },
+    });
+    expect(k.omsetning).toBe(51_700_000);
+    expect(k.driftsresultat).toBe(-3_700_000);
+    expect(k.orgnr).toBe("986330682");
+    expect(k.dagligLeder).toBe(k.styreleder);
+  });
+
+  it("gir null for alt som mangler i stedet for å gjette", () => {
+    const k = leadKontekstFraRad({ company: "UKJENT AS" });
+    expect(k.omsetning).toBeNull();
+    expect(k.dagligLeder).toBeNull();
+    expect(k.ansatte).toBeNull();
+    expect(k.navn).toBe("UKJENT AS");
+  });
+
+  it("tåler at enrichment_data er tull", () => {
+    for (const rart of [null, "en streng", 42, [], { regnskap: "ikke et objekt" }]) {
+      const k = leadKontekstFraRad({ company: "X", enrichment_data: rart });
+      expect(k.omsetning).toBeNull();
+    }
+  });
+
+  it("skiller kontaktperson fra selskap", () => {
+    // `name` på raden er personen, `company` er selskapet. Bytter man dem
+    // om, sier manuset «Hei NERAS DIREKTE AS».
+    const k = leadKontekstFraRad({ company: "NERAS DIREKTE AS", name: "Jon Christian Hillestad" });
+    expect(k.selskap).toBe("NERAS DIREKTE AS");
+    expect(k.kontaktperson).toBe("Jon Christian Hillestad");
+  });
+});
+
