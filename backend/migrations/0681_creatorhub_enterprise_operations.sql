@@ -21,12 +21,48 @@ CREATE TABLE IF NOT EXISTS creatorhub_enterprise_entitlements (
 -- Existing active Enterprise organizations retain access until billing takes
 -- ownership of the entitlement row. New organizations must be provisioned by
 -- billing/admin and therefore fail closed.
-INSERT INTO creatorhub_enterprise_entitlements
-  (organization_id, plan_id, status, source)
-SELECT DISTINCT organization_id, 'enterprise', 'active', 'migration'
-  FROM enterprise_team_members
- WHERE status = 'active' AND org_kind = 'enterprise'
-ON CONFLICT (organization_id) DO NOTHING;
+-- Production has historically had more than one shape of the Enterprise team
+-- table. Do not let a legacy table block the authoritative schema migration;
+-- only backfill memberships when all columns used by the backfill are present.
+-- The application still fails closed for organizations without an entitlement.
+DO $enterprise_entitlement_backfill$
+BEGIN
+  IF to_regclass('public.enterprise_team_members') IS NOT NULL
+     AND EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'enterprise_team_members'
+          AND column_name = 'organization_id'
+     )
+     AND EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'enterprise_team_members'
+          AND column_name = 'status'
+     )
+     AND EXISTS (
+       SELECT 1
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'enterprise_team_members'
+          AND column_name = 'org_kind'
+     ) THEN
+    EXECUTE $backfill$
+      INSERT INTO creatorhub_enterprise_entitlements
+        (organization_id, plan_id, status, source)
+      SELECT DISTINCT organization_id::text, 'enterprise', 'active', 'migration'
+        FROM enterprise_team_members
+       WHERE status = 'active'
+         AND org_kind = 'enterprise'
+         AND organization_id IS NOT NULL
+         AND BTRIM(organization_id::text) <> ''
+      ON CONFLICT (organization_id) DO NOTHING
+    $backfill$;
+  END IF;
+END
+$enterprise_entitlement_backfill$;
 
 INSERT INTO enterprise_feature_permissions
   (organization_id, feature_id, permission_level, allowed_roles, created_by)
