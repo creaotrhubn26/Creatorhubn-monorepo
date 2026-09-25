@@ -25,7 +25,8 @@ import type { Pool } from "pg";
 import { getStoredEnrichment } from "./lead-brreg-service.js";
 
 export type KoblingKilde =
-  | "lead" | "sted" | "mote" | "selskap" | "manuell" | "person";
+  | "lead" | "sted" | "mote" | "selskap" | "manuell" | "person" | "referert"
+  | "samtidig";
 
 export interface Kobling {
   type: "notat" | "lead" | "mote";
@@ -306,7 +307,47 @@ export async function koblingerFor(
     });
   }
 
-  // 5. Samme person, annet selskap.
+  // 5. Notater som har DETTE notatet liggende på flata si.
+  //
+  //    Å legge et notat inn i et annet er en påstand om sammenheng, og den
+  //    påstanden gjelder begge veier. Uten dette ser bare den som la det
+  //    inn at koblingen finnes; den som åpner notatet det ble pekt på, aner
+  //    ingenting.
+  //
+  //    `objekter` er TEXT, ikke jsonb, så vi forhåndsfiltrerer på rå tekst
+  //    før vi kaster — en LIKE mot en indeksløs kolonne er billig nok når
+  //    den følges av en presis sjekk, og å caste hver rad til jsonb først
+  //    er det ikke.
+  {
+    const r = await pool.query<{ id: string; tittel: string; created_at: Date }>(
+      `SELECT id::text, tittel, created_at
+         FROM leadgrid_canvas_notater
+        WHERE organization_id = $1 AND project_id = $2
+          AND slettet_at IS NULL
+          AND id <> $3::uuid
+          -- Formsjekk før kastet: én rad med ugyldig JSON ville ellers
+          -- tatt ned hele koblingspanelet, ikke bare sin egen kobling.
+          AND objekter LIKE '[%'
+          AND objekter LIKE '%' || $3::text || '%'
+          AND EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements(objekter::jsonb) o
+             WHERE o->>'type' = 'notat' AND o->>'refId' = $3::text
+          )
+        ORDER BY created_at DESC
+        LIMIT $4`,
+      [input.organizationId, input.projectId, notat.id, grense],
+    );
+    for (const rad of r.rows) {
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "referert", begrunnelse: "Har dette notatet på flata si",
+        tidspunkt: dato(rad.created_at), styrke: 110,
+      });
+    }
+  }
+
+  // 6. Samme person, annet selskap.
   //
   //    Dette er den eneste koblingen på lista et menneske ikke kunne funnet
   //    selv. Roller-API-et gir navn, og folk sitter i flere styrer: sitter
@@ -398,7 +439,45 @@ export async function koblingerFor(
     }
   }
 
-  // 6. Hvem du snakker med. Ikke en kobling mellom notater, men svaret på
+  // Notater uten lead, skrevet mens et møte pågikk.
+  //
+  //    Den vanligste måten et notat mister sammenhengen sin på er at
+  //    selgeren rakk aldri å koble det til kunden — han skrev mens noen
+  //    snakket. Møteloggen vet når møtet var og hvem det var med.
+  //
+  //    Signalet er svakt alene: tid og bruker, ingen posisjon (møteloggen
+  //    lagrer ikke koordinater). Derfor lav styrke og en begrunnelse som
+  //    sier hva vi bygger på, så selgeren kan avvise den med et blikk.
+  if (!notat.lead_id) {
+    const r = await pool.query<{
+      id: string; notat: string | null; selskap: string | null;
+      meeting_at: Date | null;
+    }>(
+      `SELECT id::text, notat, selskap, meeting_at
+         FROM leadgrid_mote_logg
+        WHERE organization_id = $1 AND project_id = $2
+          AND meeting_at IS NOT NULL
+          AND meeting_at BETWEEN $3::timestamptz - INTERVAL '2 hours'
+                             AND $3::timestamptz + INTERVAL '2 hours'
+        ORDER BY ABS(EXTRACT(EPOCH FROM (meeting_at - $3::timestamptz)))
+        LIMIT $4`,
+      [input.organizationId, input.projectId, notat.created_at, grense],
+    );
+    for (const rad of r.rows) {
+      const hvem = tekst(rad.selskap).trim();
+      ut.push({
+        type: "mote", id: rad.id,
+        tittel: hvem || (tekst(rad.notat).split("\n")[0] || "Møte").slice(0, 90),
+        kilde: "samtidig",
+        begrunnelse: hvem
+          ? `Skrevet mens møtet med ${hvem} pågikk`
+          : "Skrevet mens et møte pågikk",
+        tidspunkt: dato(rad.meeting_at), styrke: 45,
+      });
+    }
+  }
+
+  // 7. Hvem du snakker med. Ikke en kobling mellom notater, men svaret på
   //    det samme spørsmålet: hva henger sammen med dette notatet?
   //    Rollene ligger allerede i enrichment_data fra da leadet ble beriket.
   const personer: Person[] = [];

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS leadgrid_nexus_kobling_bruk (
   organization_id TEXT NOT NULL,
   project_id      TEXT NOT NULL,
   kilde           TEXT NOT NULL
-                  CHECK (kilde IN ('lead','sted','mote','selskap','manuell','person')),
+                  CHECK (kilde IN ('lead','sted','mote','selskap','manuell',
+                                   'person','referert','samtidig')),
   visninger       BIGINT NOT NULL DEFAULT 0,
   aapninger       BIGINT NOT NULL DEFAULT 0,
   oppdatert_at    TIMESTAMPTZ NOT NULL DEFAULT now(),

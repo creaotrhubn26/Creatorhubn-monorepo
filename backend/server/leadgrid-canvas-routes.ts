@@ -951,6 +951,70 @@ export function registerLeadgridCanvasRoutes(deps: {
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
   /**
+   * Søk på tvers av alle notater.
+   *
+   * Hvert notat har `sokbar_tekst` — håndskriften kjørt gjennom Vision ved
+   * lagring. Den har aldri vært søkbar fra noe annet enn notatet den ligger
+   * i, som er omtrent like nyttig som en bok uten register.
+   *
+   * Vi søker i tittel, selskap OG håndskrift, fordi selgeren ikke husker
+   * hvilken av dem han skrev navnet i. Treffet viser hvor det ble funnet,
+   * så han skjønner hvorfor raden er der.
+   */
+  app.get("/api/leadgrid/canvas/sok", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-sok", NEXUS_KVOTER.les))) return;
+      const q = String(req.query.q ?? "").trim();
+      // Under to tegn treffer alt, og «alt» er ikke et søkeresultat.
+      if (q.length < 2) { res.json({ treff: [] }); return; }
+      await ensureSchema(pool);
+      const r = await pool.query<{
+        id: string; tittel: string; selskap: string | null; kategori: string;
+        updated_at: Date; utdrag: string | null; traff_handskrift: boolean;
+      }>(
+        `SELECT id::text, tittel, selskap, kategori, updated_at,
+                -- Utdrag rundt treffet, ikke hele arket: selgeren skal
+                -- kjenne igjen notatet på én linje.
+                CASE WHEN sokbar_tekst ILIKE '%' || $4 || '%'
+                     THEN substring(sokbar_tekst
+                            FROM GREATEST(1, position(LOWER($4) IN LOWER(sokbar_tekst)) - 40)
+                            FOR 120)
+                END AS utdrag,
+                (sokbar_tekst ILIKE '%' || $4 || '%') AS traff_handskrift
+           FROM leadgrid_canvas_notater
+          WHERE organization_id = $1 AND project_id = $2
+            AND (user_id = $3 OR delt)
+            AND slettet_at IS NULL
+            AND (tittel ILIKE '%' || $4 || '%'
+                 OR selskap ILIKE '%' || $4 || '%'
+                 OR sokbar_tekst ILIKE '%' || $4 || '%')
+          ORDER BY updated_at DESC
+          LIMIT 40`,
+        [scope.organizationId, scope.projectId, session.userId, q],
+      );
+      res.json({
+        treff: r.rows.map((rad) => ({
+          id: rad.id,
+          tittel: rad.tittel,
+          selskap: rad.selskap,
+          kategori: rad.kategori,
+          oppdatert: rad.updated_at?.toISOString?.() ?? null,
+          utdrag: rad.utdrag?.trim() || null,
+          iHandskrift: rad.traff_handskrift === true,
+        })),
+      });
+    } catch (e) {
+      console.error("[nexus] søk feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  /**
    * Hvor mange notater finnes per lead?
    *
    * Nexus er usynlig fra flatene folk faktisk bruker. Produksjon hadde null
@@ -1004,7 +1068,10 @@ export function registerLeadgridCanvasRoutes(deps: {
       if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
       if (!(await innenforKvote(pool, res, session.userId, "nexus-bruk", NEXUS_KVOTER.skriv))) return;
       const b = (req.body ?? {}) as Record<string, unknown>;
-      const gyldige = new Set(["lead", "sted", "mote", "selskap", "manuell", "person"]);
+      const gyldige = new Set([
+        "lead", "sted", "mote", "selskap", "manuell", "person",
+        "referert", "samtidig",
+      ]);
       const vist = Array.isArray(b.vist)
         ? b.vist.map(String).filter((k) => gyldige.has(k)).slice(0, 100)
         : [];
