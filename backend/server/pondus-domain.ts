@@ -1,3 +1,5 @@
+import { PONDUS_BETINGELSER } from './pondus-flett.js';
+
 export const PONDUS_ANALYSIS_RUBRIC_VERSION = 'pondus-rubric-2026-09-1';
 export const PONDUS_QUIZ_SCORING_VERSION = 'pondus-quiz-2026-09-1';
 
@@ -19,6 +21,14 @@ export type PondusStepInput = {
   minLength: number | null;
   maxLength: number | null;
   order: number;
+  /**
+   * Betingelse for at steget vises. Null = alltid.
+   *
+   * Valideres mot en låst liste her, ikke ved kjøring. Et steg som stille
+   * forsvinner fordi noen skrev «taper_pengene» er verre enn en avvist
+   * lagring: selgeren ser et manus med hull og vet ikke hvorfor.
+   */
+  visIf: string | null;
 };
 
 export type PondusObjectionInput = {
@@ -113,6 +123,15 @@ function parseSteps(value: unknown, issues: PondusValidationIssue[]): PondusStep
     const minLength = optionalInteger(row.minLength ?? row.min_length, `${root}.minLength`, 0, 4_000, issues);
     const maxLength = optionalInteger(row.maxLength ?? row.max_length, `${root}.maxLength`, 1, 4_000, issues);
     const order = optionalInteger(row.order, `${root}.order`, 0, 99, issues) ?? index;
+    const visIf = row.visIf == null && row.vis_if == null
+      ? null
+      : boundedString(row.visIf ?? row.vis_if, `${root}.visIf`, 60, issues);
+    if (visIf && !(PONDUS_BETINGELSER as readonly string[]).includes(visIf)) {
+      issues.push({
+        path: `${root}.visIf`,
+        message: `Ukjent betingelse «${visIf}». Gyldige: ${PONDUS_BETINGELSER.join(", ")}.`,
+      });
+    }
     if (id && !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
       issues.push({ path: `${root}.id`, message: 'Steg-ID kan bare inneholde bokstaver, tall, _ og -.' });
     }
@@ -124,7 +143,7 @@ function parseSteps(value: unknown, issues: PondusValidationIssue[]): PondusStep
       issues.push({ path: `${root}.minLength`, message: 'Minimumslengde kan ikke være større enn maksimumslengde.' });
     }
     if (!id || !title) return [];
-    return [{ id, title, subtitle, icon, prompt, minLength, maxLength, order }];
+    return [{ id, title, subtitle, icon, prompt, minLength, maxLength, order, visIf }];
   });
 }
 

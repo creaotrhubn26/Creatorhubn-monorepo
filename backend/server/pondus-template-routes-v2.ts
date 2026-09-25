@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { flettMal, leadKontekstFraRad } from "./pondus-flett.js";
+import { berikInnvendinger } from "./pondus-innvendinger.js";
 import type { Express, Request, Response } from "express";
 import type { Pool, PoolClient } from "pg";
 import {
@@ -213,6 +215,73 @@ export function registerPondusTemplateRoutesV2(deps: PondusTemplateRoutesV2Deps)
       if (sendPondusAccessError(res, error)) return;
       console.error("[pondus-v2] get failed:", error);
       return res.status(500).json({ error: "pondus_template_failed" });
+    }
+  });
+
+  /**
+   * Malen ferdig flettet mot ett lead.
+   *
+   * Flettingen skjer her, ikke i appen: feltlisten og betingelsene finnes
+   * da ett sted. Appen cacher svaret per lead når leadet synkes, så manuset
+   * virker i en kjeller uten dekning — den henter det bare ikke i det
+   * øyeblikket selgeren åpner det.
+   *
+   * Leadet hentes med samme org-scope som malen. Et lead fra en annen
+   * organisasjon skal ikke kunne flettes inn i noens manus.
+   */
+  app.get("/api/leadgrid/pondus/templates/:id/for-lead/:leadId", async (req, res) => {
+    const session = requireUserSession(req, res);
+    if (!session) return;
+    const id = text(req.params.id);
+    const leadId = text(req.params.leadId);
+    if (!UUID.test(id)) return res.status(400).json({ error: "invalid_id" });
+    if (!UUID.test(leadId)) return res.status(400).json({ error: "invalid_lead_id" });
+    try {
+      const access = await requestAccess(pool, req, res, session);
+      if (!access) return;
+      if (!access.organizationId) {
+        return res.status(400).json({ error: "organization_required" });
+      }
+      if (!(await isPondusTemplateVisible(pool, id, access, { includeDraftForManagers: true }))) {
+        return res.status(404).json({ error: "not_found" });
+      }
+      const malRad = await pool.query(
+        `SELECT ${TEMPLATE_COLUMNS} FROM pondus_templates WHERE id = $1::uuid`, [id]);
+      if (!malRad.rows[0]) return res.status(404).json({ error: "not_found" });
+      const mal = mapTemplate(malRad.rows[0]);
+
+      const leadRad = await pool.query<{
+        company: string | null; name: string | null; city: string | null;
+        employee_count_estimate: number | null; enrichment_data: unknown;
+      }>(
+        `SELECT company, name, city, employee_count_estimate, enrichment_data
+           FROM crm_customers
+          WHERE id = $1::uuid AND organization_id = $2::uuid`,
+        [leadId, access.organizationId]);
+      if (!leadRad.rows[0]) return res.status(404).json({ error: "lead_not_found" });
+
+      const kontekst = leadKontekstFraRad(leadRad.rows[0]);
+      const flettet = flettMal(
+        (mal.steps ?? []) as Parameters<typeof flettMal>[0], kontekst);
+      const innvendinger = await berikInnvendinger(pool, {
+        organizationId: access.organizationId,
+        projectId: access.projectId,
+        kanal: typeof mal.kind === "string" ? mal.kind : null,
+        innvendinger: (mal.objections ?? []) as Array<{ id: string; prompt: string; response: string }>,
+      });
+
+      return res.json({
+        template: { id: mal.id, name: mal.name, kind: mal.kind, category: mal.category },
+        steps: flettet.steg,
+        objections: innvendinger,
+        // Selgeren skal se hva som ikke lot seg fylle ut, ikke oppdage det
+        // midt i setningen.
+        missingFields: flettet.mangler,
+      });
+    } catch (error) {
+      if (sendPondusAccessError(res, error)) return;
+      console.error("[pondus-v2] flett for lead feilet:", error);
+      return res.status(500).json({ error: "pondus_merge_failed" });
     }
   });
 
