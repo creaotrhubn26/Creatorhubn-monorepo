@@ -14,6 +14,9 @@
 import Foundation
 import CoreLocation
 import CoreMotion
+#if os(iOS)
+import UIKit
+#endif
 
 /// Bevegelsesform slik Apples motion-koprosessor klassifiserer den.
 enum MotionTransport: String, Sendable { case walking, cycling, automotive }
@@ -45,6 +48,24 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
     /// Sist rapporterte hastighet i meter/sekund (>= 0). `nil` når stille eller
     /// speed er ugyldig (CLLocation.speed < 0). Brukes av HUD-navigasjon.
     private(set) var speedMps: Double?
+
+    /// Hvilken vei enheten PEKER, fra kompasset — ikke hvilken vei du går.
+    ///
+    /// `heading` over er `CLLocation.course`, altså kursen over bakken. Den
+    /// krever at du beveger deg, og er `nil` når du står stille. Står du på
+    /// et fortau og snur deg mot inngangen, sier den ingenting.
+    ///
+    /// Dette er `CLHeading` fra magnetometeret. Den virker stillestående, og
+    /// det er den lyskjeglen rundt avataren skal følge.
+    ///
+    /// 0 = nord, 90 = øst. `nil` til første måling eller hvis enheten mangler
+    /// kompass (simulator).
+    private(set) var deviceHeading: CLLocationDirection?
+    /// Kompassets egen usikkerhet i grader. Er den høy, er magnetometeret
+    /// forstyrret — av en bilholder, en høyttaler eller et metallbord — og
+    /// kjeglen skal tegnes bredere i stedet for å lyve om presisjon.
+    private(set) var headingAccuracy: CLLocationDirection = -1
+    private var headingRunning = false
     private var isMovingResetTask: Task<Void, Never>?
 
     override init() {
@@ -54,6 +75,52 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest  // Best for speed-detection
         manager.distanceFilter = 5                          // Oppdater hvert 5m for jevn bevegelses-tracking
+        manager.headingFilter = 2                           // Grader — under dette rykker kjeglen uten å si noe nytt
+    }
+
+    // MARK: - Kompass
+
+    /// Start kompass-oppdatering. Kalles når kartet vises.
+    ///
+    /// Idempotent. No-op når enheten ikke har magnetometer (simulator), slik
+    /// at kjeglen bare uteblir i stedet for at kartet feiler.
+    func startHeadingUpdates() {
+        #if os(iOS)
+        guard CLLocationManager.headingAvailable(), !headingRunning else { return }
+        headingRunning = true
+        oppdaterHeadingOrientasjon()
+        manager.startUpdatingHeading()
+        #endif
+    }
+
+    /// Stopp kompasset når kartet forsvinner. Magnetometeret er billig, men
+    /// ikke gratis, og en selger har appen åpen hele dagen.
+    func stopHeadingUpdates() {
+        #if os(iOS)
+        guard headingRunning else { return }
+        headingRunning = false
+        manager.stopUpdatingHeading()
+        #endif
+        deviceHeading = nil
+        headingAccuracy = -1
+    }
+
+    /// CoreLocation antar portrett med mindre vi sier noe annet.
+    ///
+    /// En selger holder iPaden i landskap. Uten dette peker kjeglen 90 grader
+    /// feil — verre enn ingen kjegle, fordi den ser riktig ut.
+    func oppdaterHeadingOrientasjon() {
+        #if os(iOS)
+        manager.headingOrientation = switch UIDevice.current.orientation {
+        case .landscapeLeft: .landscapeLeft
+        case .landscapeRight: .landscapeRight
+        case .portraitUpsideDown: .portraitUpsideDown
+        case .portrait: .portrait
+        // flat/ukjent: behold forrige. Et bord-liggende nettbrett skal ikke
+        // nullstille orienteringen til portrett.
+        default: manager.headingOrientation
+        }
+        #endif
     }
 
     /// Ber om tilgang hvis vi ikke har spurt før. Idempotent — trygg å kalle
@@ -149,6 +216,18 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
                     self?.speedMps = nil
                 }
             }
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        // trueHeading krever posisjonsfix (den korrigerer for misvisning).
+        // Uten fix er den negativ, og da er magnetisk nord det beste vi har.
+        let grader = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        let nøyaktighet = newHeading.headingAccuracy
+        guard grader >= 0 else { return }
+        Task { @MainActor in
+            self.deviceHeading = grader
+            self.headingAccuracy = nøyaktighet
         }
     }
 
