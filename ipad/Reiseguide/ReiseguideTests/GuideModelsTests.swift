@@ -112,6 +112,30 @@ final class GuideModelsTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(GuidePOI.self, from: data), poi)
     }
 
+    func testDecodesVoicesAndOlderResponsesWithoutThem() throws {
+        let response = try loadFixture()
+        XCTAssertNil(response.voices, "svar fra før 0680 har ikke stemmer")
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(response)) as? [String: Any])
+        object["voices"] = [
+            ["id": "Hazel", "name": "Hedda", "gender": "female"],
+            ["id": "Walter", "name": "Vidar", "gender": "male"],
+        ]
+        let withVoices = try JSONDecoder().decode(AreaResponse.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(withVoices.voices?.map(\.id), ["Hazel", "Walter"])
+        XCTAssertEqual(withVoices.voices?.map(\.name), ["Hedda", "Vidar"])
+    }
+
+    @MainActor
+    func testRemembersNarratorVoice() throws {
+        let suite = "GuideModelsTests.voice.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertNil(AppSettings(defaults: defaults).narratorVoiceId)
+        AppSettings(defaults: defaults).narratorVoiceId = "Walter"
+        XCTAssertEqual(AppSettings(defaults: defaults).narratorVoiceId, "Walter")
+    }
+
     func testRoundTripsThroughCacheEncoding() throws {
         let response = try loadFixture()
         let data = try JSONEncoder().encode(response)

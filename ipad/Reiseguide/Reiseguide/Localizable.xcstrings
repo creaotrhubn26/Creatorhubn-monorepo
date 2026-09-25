@@ -5866,6 +5866,75 @@
         }
       }
     },
+    "settings.voice": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stemme"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stemme"
+          }
+        }
+      }
+    },
+    "settings.voice.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stemmen som leser fortellingen og synstolkingen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The voice that reads the narration and audio description."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stemmen, der læser fortællingen og synstolkningen op."
+          }
+        }
+      }
+    },
+    "settings.voice.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forteller"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Narrator"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortæller"
+          }
+        }
+      }
+    },
     "share.lead": {
       "extractionState": "manual",
       "localizations": {
@@ -6805,6 +6874,52 @@
           "stringUnit": {
             "state": "translated",
             "value": "Åbner vejviseren til det næste ubesøgte stop på ruten."
+          }
+        }
+      }
+    },
+    "voice.gender.female": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kvinnestemme"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "female voice"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kvindestemme"
+          }
+        }
+      }
+    },
+    "voice.gender.male": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mannsstemme"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "male voice"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mandsstemme"
           }
         }
       }

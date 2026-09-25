@@ -9,8 +9,13 @@
  *   GET /api/guide/areas                      publiserte områder + språk med innhold
  *   GET /api/guide/areas/:idOrSlug?lang=nb    ett område flatet ut: kategorier + POI-er
  *                                             med varianter (fortelling, synstolking),
- *                                             kapitler, lyd-URL-er og teksting
+ *                                             kapitler, lyd-URL-er og teksting, pluss
+ *                                             stemmene brukeren kan velge (voices)
  *   GET /api/guide/pois/:idOrSlug?lang=nb     én severdighet i samme form
+ *
+ * Stemme (Daniel 25.09.2026): norsk har to stemmer (reiseguide-config.ts,
+ * SENSEAID_VOICE_CATALOG). `?voice=Walter` velger lyden per kapittel; finnes
+ * den ikke, brukes språkets standardstemme, ellers nyeste aktive lyd.
  *   POST /api/guide/pois/:idOrSlug/rating     stjernerangering 1–5 fra anonym enhet
  *                                             (0641_reiseguide_after_visit.sql)
  *   GET /api/guide/share/:idOrSlug?lang=nb    delingsside (HTML med Open Graph) som
@@ -61,6 +66,7 @@ import {
 } from "./reiseguide-after-visit.js";
 import { buildChapterPrompts, type ChapterPromptRow, type ChapterPromptView } from "./reiseguide-chapter-prompts.js";
 import { registerReiseguideVisitRoutes } from "./reiseguide-visits.js";
+import { senseAidVoicePreference, senseAidVoicesForLang } from "./reiseguide-config.js";
 import { isSenseAidStorageKey, senseAidMediaUrl } from "./reiseguide-storage.js";
 
 interface Deps {
@@ -83,6 +89,7 @@ const RATING_LIMIT_PER_MINUTE = 30;
 const DEFAULT_MEDIA_URL_BASE = "https://pub-6556104b51da4540aebfd28b23c0ebea.r2.dev";
 const LANG_RE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/;
 const ID_OR_SLUG_RE = /^[A-Za-z0-9_-]{1,120}$/;
+const VOICE_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const FALLBACK_LANG = "en";
 
 export type ScriptKind = "narration" | "audio_description";
@@ -545,7 +552,15 @@ const SCRIPT_SELECT = `
          a.duration_s AS audio_duration_s,
          c.storage_key AS captions_key, c.cues AS captions_cues
     FROM guide_poi_scripts s
-    LEFT JOIN guide_poi_audio a ON a.script_id = s.id AND a.is_active
+    LEFT JOIN LATERAL (
+      SELECT act.id, act.storage_key, act.format, act.duration_s
+        FROM guide_poi_audio act
+       WHERE act.script_id = s.id AND act.is_active
+       ORDER BY (act.voice_id = $2) DESC NULLS LAST,
+                array_position($3::text[], act.voice_id) ASC NULLS LAST,
+                act.created_at DESC
+       LIMIT 1
+    ) a ON TRUE
     LEFT JOIN guide_poi_captions c ON c.audio_id = a.id
    WHERE s.poi_id = ANY($1::text[])
    ORDER BY s.poi_id, s.lang, s.kind, s.chapter_no`;
@@ -606,6 +621,12 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     return lang;
   };
 
+  /** Valgfri stemme; et ugyldig navn ignoreres og gir standardstemmen. */
+  const readVoice = (req: Request): string | null => {
+    const raw = req.query.voice;
+    return typeof raw === "string" && VOICE_RE.test(raw) ? raw : null;
+  };
+
   const readIdOrSlug = (req: Request, res: Response): string | null => {
     const value = String(req.params.idOrSlug ?? "");
     if (!ID_OR_SLUG_RE.test(value)) {
@@ -644,12 +665,13 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
     requestedLang: string,
     defaultLang: string,
     publicApiBase: string,
+    voice: string | null,
   ): Promise<PoiView[]> {
     if (poiRows.length === 0) return [];
     const ids = poiRows.map((p) => p.id);
     const [translations, scripts, quiz, ratings, prompts] = await Promise.all([
       pool.query<TranslationRow>(TRANSLATION_SELECT, [ids]),
-      pool.query<ScriptRow>(SCRIPT_SELECT, [ids]),
+      pool.query<ScriptRow>(SCRIPT_SELECT, [ids, voice, senseAidVoicePreference()]),
       pool.query<QuizRow>(QUIZ_SELECT, [ids]),
       pool.query<RatingAggregateRow>(RATING_AGGREGATE_SELECT, [ids]),
       loadPromptRows(ids),
@@ -726,7 +748,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
           [area.id],
         ),
       ]);
-      const poiViews = await loadPoiViews(pois.rows, lang, area.default_lang, apiBase(req));
+      const poiViews = await loadPoiViews(pois.rows, lang, area.default_lang, apiBase(req), readVoice(req));
       const usedCategories = new Set(poiViews.map((p) => p.categoryId).filter(Boolean));
 
       publicCache(res);
@@ -737,6 +759,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
           .filter((c) => usedCategories.has(c.id))
           .map((c) => categoryView(c, lang, area.default_lang)),
         pois: poiViews,
+        voices: senseAidVoicesForLang(lang),
       });
     }),
   );
@@ -753,7 +776,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
       }
       const lang = readLang(req, res, poi.default_lang);
       if (!lang) return;
-      const [view] = await loadPoiViews([poi], lang, poi.default_lang, apiBase(req));
+      const [view] = await loadPoiViews([poi], lang, poi.default_lang, apiBase(req), readVoice(req));
       publicCache(res);
       res.json({ requestedLang: lang, poi: view });
     }),
@@ -806,7 +829,7 @@ export function registerReiseguideRoutes(app: Express, deps: Deps): void {
       const lang = readLang(req, res, poi.default_lang);
       if (!lang) return;
       const base = apiBase(req);
-      const [view] = await loadPoiViews([poi], lang, poi.default_lang, base);
+      const [view] = await loadPoiViews([poi], lang, poi.default_lang, base, null);
       const pageLang = view.lang.resolved ?? lang;
       publicCache(res);
       res.setHeader("Content-Type", "text/html; charset=utf-8");

@@ -58,16 +58,58 @@ export function requireSenseAidEnv(
  * trenger en stemme med norsk aksent (Daniel 25.09.2026: «Adrian» låt dansk).
  */
 export function sonioxVoiceEnvForLang(lang: string): string {
-  const base = lang.trim().toLowerCase().split(/[-_]/)[0] ?? "";
-  return `${SENSEAID_ENV.sonioxVoice}_${base.toUpperCase()}`;
+  return `${SENSEAID_ENV.sonioxVoice}_${langBase(lang).toUpperCase()}`;
+}
+
+export interface SenseAidVoice {
+  /** Soniox-stemmenavnet, lagret som guide_poi_audio.voice_id. */
+  id: string;
+  /** Navnet brukeren ser i appen. */
+  name: string;
+  gender: "female" | "male";
 }
 
 /**
- * Stemmen for ett språk: SENSEAID_SONIOX_VOICE_<SPRÅK>, ellers
+ * Stemmene brukeren kan velge mellom per språk, i foretrukket rekkefølge
+ * (den første er standard). Daniel 25.09.2026: Hazel og Walter har norsk
+ * aksent; i appen får de norske navn. Språk som ikke står her, har én stemme
+ * (sonioxVoicesForLang).
+ */
+export const SENSEAID_VOICE_CATALOG: Readonly<Record<string, readonly SenseAidVoice[]>> = {
+  nb: [
+    { id: "Hazel", name: "Hedda", gender: "female" },
+    { id: "Walter", name: "Vidar", gender: "male" },
+  ],
+};
+
+function langBase(lang: string): string {
+  return lang.trim().toLowerCase().split(/[-_]/)[0] ?? "";
+}
+
+/** Stemmene appen kan velge mellom for ett språk (tom liste = ingen valg). */
+export function senseAidVoicesForLang(lang: string): readonly SenseAidVoice[] {
+  return SENSEAID_VOICE_CATALOG[langBase(lang)] ?? [];
+}
+
+/** Alle katalogstemmer, standardstemmen først for hvert språk (API-ets rekkefølge). */
+export function senseAidVoicePreference(): string[] {
+  return Object.values(SENSEAID_VOICE_CATALOG).flatMap((voices) => voices.map((v) => v.id));
+}
+
+/**
+ * Stemmene lydjobben lager lyd med for ett språk:
+ * SENSEAID_SONIOX_VOICE_<SPRÅK> (kommaseparert), ellers katalogen, ellers
  * SENSEAID_SONIOX_VOICE, ellers `fallback`.
  */
-export function sonioxVoiceForLang(lang: string, fallback: string, env: NodeJS.ProcessEnv = process.env): string {
-  return read(env, sonioxVoiceEnvForLang(lang)) ?? read(env, SENSEAID_ENV.sonioxVoice) ?? fallback;
+export function sonioxVoicesForLang(lang: string, fallback: string, env: NodeJS.ProcessEnv = process.env): string[] {
+  const fromEnv = read(env, sonioxVoiceEnvForLang(lang))
+    ?.split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (fromEnv?.length) return fromEnv;
+  const catalog = senseAidVoicesForLang(lang);
+  if (catalog.length > 0) return catalog.map((v) => v.id);
+  return [read(env, SENSEAID_ENV.sonioxVoice) ?? fallback];
 }
 
 /** Statusoversikt uten verdier, til admin-/helsesjekk og feilsøking. */

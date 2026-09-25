@@ -5,7 +5,7 @@
  *   products/senseaid-explore/
  *     areas/{areaSlug}/
  *       pois/{poiSlug}/
- *         audio/{kind}-{chapterNo}-{lang}-v{version}.mp3
+ *         audio/{kind}-{chapterNo}-{lang}-v{version}[-{voice}].mp3
  *         captions/{kind}-{chapterNo}-{lang}-v{version}.vtt
  *         images/{objectId}-{filename}
  *
@@ -29,15 +29,19 @@ export interface SenseAidScriptRef {
   chapterNo: number;
   lang: string;
   version: number;
+  /** Stemmen lyden er laget med; flere stemmer per manus får hver sin fil. */
+  voice?: string;
 }
 
 function scriptFileStem(ref: SenseAidScriptRef): string {
-  return [
+  const parts = [
     storageSegment(ref.kind, "script"),
     String(Math.max(1, Math.trunc(ref.chapterNo))),
     storageSegment(ref.lang, "und"),
     `v${Math.max(1, Math.trunc(ref.version))}`,
-  ].join("-");
+  ];
+  if (ref.voice) parts.push(storageSegment(ref.voice.toLowerCase(), "voice"));
+  return parts.join("-");
 }
 
 function poiPrefix(ref: Pick<SenseAidScriptRef, "areaSlug" | "poiSlug">): string {
