@@ -663,6 +663,7 @@ import { registerLeadgridMarketingRoutes } from "./leadgrid-marketing-routes.js"
 import { createLeadgridMarketingBridge } from "./leadgrid-marketing-bridge.js";
 import { registerLeadgridMomentumRoutes } from "./leadgrid-momentum-routes.js";
 import { registerLeadgridImportRoutes } from "./leadgrid-import-routes.js";
+import { registerLeadgridRegistrationRoutes } from "./leadgrid-registration-routes.js";
 import { registerLeadgridContinuousDiscoveryCron } from "./leadgrid-continuous-discovery.js";
 import { registerLeadgridDiscoveryRoutes } from "./leadgrid-discovery-routes.js";
 import { registerLeadgridDiscoveryConfigRoutes } from "./leadgrid-discovery-config-routes.js";
@@ -1055,6 +1056,11 @@ import { setupAdminStorageCostRoutes } from "./admin-storage-cost-routes";
 import { setupAdminFileAuditRoutes } from "./admin-file-audit-routes";
 import { setupAdminSecretsRotationRoutes } from "./admin-secrets-rotation-routes";
 import { setupClientGalleryRoutes } from "./client-gallery-routes";
+import { setupCreatorHubMediaPortabilityRoutes } from "./creatorhub-media-portability-routes";
+import {
+  restoreCreatorHubMediaAccess,
+  startCreatorHubMediaDownloadWindow,
+} from "./creatorhub-media-access";
 import { setupGalleryVersionsRoutes } from "./gallery-versions-routes";
 import { setupContractsRoutes } from "./contracts-routes";
 import { setupBusinessRoutes } from "./business-routes";
@@ -16979,7 +16985,7 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       subject: "Betalingen for CreatorHub må oppdateres",
       title: "Betalingen må oppdateres",
       body:
-        "<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{planName}}</strong> i CreatorHub.</p><p>Oppdater betalingsinformasjonen så snart som mulig for å unngå avbrudd i abonnementet.</p>",
+        "<p>Hei {{recipientName}},</p><p>Stripe klarte ikke å gjennomføre betalingen for <strong>{{planName}}</strong> i CreatorHub.</p><p>Kontoen går nå i nedlastingsmodus: du har <strong>30 dager</strong> til å laste ned mediene dine. Vi sletter dem ikke automatisk, og full tilgang åpnes igjen når betalingen er i orden.</p>",
       ctaLabel: "Åpne CreatorHub",
       footerNote:
         "Hvis betalingen allerede er oppdatert, kan du se bort fra denne e-posten.",
@@ -17003,7 +17009,7 @@ const CREATORHUB_PLATFORM_DEFAULT_EMAIL_TEMPLATES: CreatorHubPlatformEmailTempla
       subject: "CreatorHub-abonnementet ditt er avsluttet",
       title: "Abonnementet er avsluttet",
       body:
-        "<p>Hei {{recipientName}},</p><p>Stripe har registrert at abonnementet for <strong>{{planName}}</strong> er avsluttet.</p><p>Tilgangen din i CreatorHub er derfor stoppet. Hvis du vil fortsette, må abonnementet aktiveres på nytt fra CreatorHub.</p>",
+        "<p>Hei {{recipientName}},</p><p>Stripe har registrert at abonnementet for <strong>{{planName}}</strong> er avsluttet.</p><p>Du har <strong>30 dager</strong> til å laste ned mediene dine. CreatorHub sletter dem ikke automatisk; de beholdes låst etter fristen og åpnes igjen hvis du reaktiverer abonnementet.</p>",
       ctaLabel: "Åpne CreatorHub",
       footerNote:
         "Dette er en systemmelding. Hvis du trenger hjelp, kan du kontakte oss via supportsiden i CreatorHub.",
@@ -26002,6 +26008,7 @@ registerLeadgridMomentumRoutes({ app, pool, activeSessions });
 //   GET  /api/leadgrid/import/batches
 // Gated på leads.import_csv.
 registerLeadgridImportRoutes({ app, pool, activeSessions });
+registerLeadgridRegistrationRoutes({ app, pool, requireUserSession });
 // Legacy URL Research persisted raw Google Places payloads without a
 // customer-project boundary or Discovery V2 attestation. Keep one
 // authenticated tombstone for every method/subpath while a safe, project-bound
@@ -28285,6 +28292,7 @@ async function markCreatorHubStripeCheckoutRecordPaid(
     amountMajor: number;
     stripeSubscriptionId?: string | null;
     stripeCustomerId?: string | null;
+    accessSourceReference?: string;
   },
 ) {
   const nowIso = new Date().toISOString();
@@ -28375,6 +28383,17 @@ async function markCreatorHubStripeCheckoutRecordPaid(
   };
 
   await recordCompatPaymentCompletion(compatRecord);
+
+  // Betaling eller fornyelse åpner straks de beholdte mediene igjen.
+  // Kilden er idempotent, så en duplisert Stripe-webhook gir ikke ny historikk.
+  if (nextRecord.userId && isPersistableCompatUserId(nextRecord.userId)) {
+    await restoreCreatorHubMediaAccess(pool, {
+      userId: nextRecord.userId,
+      source: "stripe",
+      sourceReference: input.accessSourceReference || input.transactionId,
+      effectiveAt: new Date(input.completedAt),
+    });
+  }
 
   // Enterprise-kjøp → gi kjøperen et aktivt org-medlemskap (admin), slik at
   // team-/Enterprise-gatene (useTeamAccess, «Inviter team», Easeverse-band)
@@ -28627,6 +28646,7 @@ async function syncCreatorHubStripeCheckoutSession(
     amountMajor: record.amountMajor,
     stripeSubscriptionId: record.stripeSubscriptionId,
     stripeCustomerId: record.stripeCustomerId,
+    accessSourceReference: session.id,
   });
 }
 
@@ -28730,6 +28750,7 @@ async function syncCreatorHubStripeInvoice(invoice: Stripe.Invoice) {
     amountMajor,
     stripeSubscriptionId: subscriptionId,
     stripeCustomerId: customerId,
+    accessSourceReference: invoice.id,
   });
 }
 
@@ -28783,6 +28804,17 @@ async function clearCreatorHubStripeSubscription(
         options?.suppressFailureEmail === true || isSubscriptionDeletedEvent,
     },
   );
+
+  if (clearedRecord.userId && isPersistableCompatUserId(clearedRecord.userId)) {
+    await startCreatorHubMediaDownloadWindow(pool, {
+      userId: clearedRecord.userId,
+      reason: isSubscriptionDeletedEvent ? "subscription_cancelled" : "payment_failed",
+      source: "stripe",
+      // Betalingsforsøk for samme abonnement skal aldri skyve fristen fremover.
+      sourceReference: source.id,
+      effectiveAt: new Date(),
+    });
+  }
 
   if (
     isSubscriptionDeletedEvent &&
@@ -30975,10 +31007,14 @@ async function sendCreatorHubPaymentFailedEmail(options: {
     noticeSection: options.failureMessage
       ? {
           label: "Stripe-melding",
-          body: options.failureMessage,
+          body: `${options.failureMessage} Du har samtidig 30 dager til å laste ned CreatorHub-mediene dine. De slettes ikke automatisk.`,
           tone: "danger",
         }
-      : null,
+      : {
+          label: "Mediene dine",
+          body: "Du har 30 dager til å laste ned. CreatorHub sletter ikke mediene automatisk, og full tilgang åpnes igjen når betalingen er i orden.",
+          tone: "neutral",
+        },
   });
 
   return sendCreatorHubBillingEmail({
@@ -31117,7 +31153,7 @@ async function sendCreatorHubSubscriptionCancelledEmail(options: {
     ],
     noticeSection: {
       label: "Neste steg",
-      body: "Hvis du vil fortsette i CreatorHub, må abonnementet aktiveres på nytt fra kontoen din.",
+      body: "Du har 30 dager til å laste ned mediene dine. De slettes ikke automatisk; etter fristen beholdes de låst til abonnementet eventuelt reaktiveres.",
       tone: "neutral",
     },
   });
@@ -68817,6 +68853,11 @@ setupUploadsRoutes({
   requireUserSession,
 });
 setupStorageStatusRoutes({
+  app,
+  pool,
+  requireUserSession,
+});
+setupCreatorHubMediaPortabilityRoutes({
   app,
   pool,
   requireUserSession,

@@ -35,6 +35,8 @@ const room = {
 
 describe('PhotoRoomTab unified review flow', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/workspace/project-1/photo-room');
+    window.localStorage?.clear?.();
     apiRequest.mockReset();
     apiRequest.mockImplementation((url: string) => {
       if (url.includes('/photo-review')) return Promise.resolve(room);
@@ -59,10 +61,28 @@ describe('PhotoRoomTab unified review flow', () => {
   it('keeps mutations disabled while allowing local comparison for a read-only viewer', async () => {
     render(<PhotoRoomTab projectId="project-1" readOnly />);
     expect(await screen.findByText(/Du har lesetilgang/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'valgt: photo-1.jpg' }));
     expect(screen.getByRole('button', { name: 'Be om endringer' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Send til kunde' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'valgt: photo-1.jpg' }));
     fireEvent.click(screen.getByRole('checkbox', { name: 'valgt: photo-2.jpg' }));
     expect(screen.getByRole('button', { name: 'Sammenlign' })).toBeEnabled();
+  });
+
+  it('opens review mode with the keyboard without firing while typing', async () => {
+    render(<PhotoRoomTab projectId="project-1" />);
+    expect(await screen.findByRole('button', { name: /photo-1\.jpg/i })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'e' });
+    expect(await screen.findByAltText('photo-1.jpg')).toBeTruthy();
+    const search = screen.getByPlaceholderText('Søk etter filnavn');
+    fireEvent.keyDown(search, { key: 'g' });
+    expect(screen.getByAltText('photo-1.jpg')).toBeTruthy();
+  });
+
+  it('gives filters accessible names without applying listbox-only state to image buttons', async () => {
+    render(<PhotoRoomTab projectId="project-1" />);
+    const firstPhoto = await screen.findByRole('button', { name: /photo-1\.jpg/i });
+    expect(firstPhoto).not.toHaveAttribute('aria-selected');
+    expect(screen.getByRole('combobox', { name: 'Alle statuser' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Sortering' })).toBeTruthy();
   });
 });

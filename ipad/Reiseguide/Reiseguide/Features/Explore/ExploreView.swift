@@ -2,7 +2,8 @@
 //
 // Forside (UI-spesifikasjon 6.1): bakgrunnsbilde med scrim, språkvelger,
 // hero-tittel på valgt språk, ingress, søk, «Bruk posisjonen min» og
-// destinasjonsfliser for de tre demo-severdighetene.
+// destinasjonsfliser for de tre demo-severdighetene. Områdeknappen (AreaPill)
+// ved språkvelgeren viser valgt område og åpner områdevelgeren.
 
 import SwiftUI
 
@@ -14,15 +15,33 @@ struct ExploreView: View {
 
     @State private var searchText = ""
     @State private var showLanguageSheet = false
+    @State private var showAreaSheet = false
 
-    /// De tre flisene: Akershus festning, Kvadraturen (Christiania torv), Operaen.
+    /// De tre flisene i Oslo: Akershus festning, Kvadraturen (Christiania torv), Operaen.
     private static let featuredSlugs = ["akershus-festning", "christiania-torv", "operaen"]
 
+    /// Oslo-flisene når de finnes, ellers de tre første stedene i ruta (andre områder).
     private var featured: [GuidePOI] {
-        Self.featuredSlugs.compactMap { slug in env.store.pois.first { $0.slug == slug } }
+        let oslo = Self.featuredSlugs.compactMap { slug in env.store.pois.first { $0.slug == slug } }
+        return oslo.isEmpty ? Array(TourProgress.orderedRoute(env.store.pois).prefix(3)) : oslo
     }
 
-    private var heroPoi: GuidePOI? { env.store.pois.first { $0.slug == "akershus-festning" } }
+    private var heroPoi: GuidePOI? {
+        env.store.pois.first { $0.slug == "akershus-festning" }
+            ?? TourProgress.orderedRoute(env.store.pois).first { $0.heroImageUrl != nil }
+    }
+
+    /// Navnet på området som vises, også mens det nye området lastes.
+    private var areaName: String? {
+        env.store.area?.name ?? env.store.areas.first { $0.slug == env.store.slug }?.name
+    }
+
+    /// Områdeknapp og språkvelger side om side, under hverandre ved store tekststørrelser.
+    private var pillLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: AppSpacing.s))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: AppSpacing.s))
+    }
 
     /// Turprogresjon (pakke 1, punkt 3): stedene i området og fullførte besøk i loggen.
     private var tourProgress: TourProgress {
@@ -41,13 +60,18 @@ struct ExploreView: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Spacer()
+                        pillLayout {
+                            AreaPill(areaName: areaName) { showAreaSheet = true }
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Spacer(minLength: 0)
+                            }
                             LanguagePill(languageName: L10n.languageName(env.settings.guideLanguage)) {
                                 showLanguageSheet = true
                             }
                         }
-                        .padding(.top, AppSpacing.s)
+                        // ScrollView-en ligger under statuslinjen, så knappene
+                        // må flyttes ned forbi den (som i stedsdetaljen).
+                        .padding(.top, proxy.safeAreaInsets.top + AppSpacing.s)
 
                         Spacer(minLength: proxy.size.height * 0.30)
 
@@ -96,6 +120,12 @@ struct ExploreView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showLanguageSheet) {
             LanguageSheet()
+        }
+        .sheet(isPresented: $showAreaSheet) {
+            NavigationStack {
+                AreaPickerView(showsCloseButton: true)
+            }
+            .presentationDetents([.medium, .large])
         }
     }
 

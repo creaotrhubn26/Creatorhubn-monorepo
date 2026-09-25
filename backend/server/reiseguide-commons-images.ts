@@ -31,6 +31,22 @@ export interface CommonsImageSource {
   pinnedFile: string | null;
   categories: string[];
   searchTerms: string[];
+  /** Filnavnet må inneholde minst ett av disse (uten hensyn til store/små bokstaver). Tom/mangler = ingen krav. */
+  titleMustIncludeAny?: string[];
+  /** Filnavn som inneholder ett av disse forkastes (f.eks. et annet sted med samme navn). */
+  titleMustExclude?: string[];
+}
+
+/**
+ * Om filnavnet passer stedet. Kategorier på Commons blander inn nabobygg, og
+ * søk treffer bygninger med samme navn andre steder (Gamle rådhus i Bergen),
+ * så automatisk valg sjekker navnet. Fastspikrede filer sjekkes ikke.
+ */
+export function titleMatchesSource(title: string, source: CommonsImageSource): boolean {
+  const name = title.replace(/^File:/i, "").toLocaleLowerCase("nb");
+  const include = source.titleMustIncludeAny ?? [];
+  if (include.length > 0 && !include.some((word) => name.includes(word.toLocaleLowerCase("nb")))) return false;
+  return !(source.titleMustExclude ?? []).some((word) => name.includes(word.toLocaleLowerCase("nb")));
 }
 
 interface ExtMetadataValue {
@@ -326,7 +342,7 @@ export async function resolveHeroImage(source: CommonsImageSource, fetchImpl: Fe
     if (tier.queries.length === 0) continue;
     const candidates = await candidatesFor(tier.queries, fetchImpl, warnings);
     considered += candidates.length;
-    const chosen = pickBest(candidates);
+    const chosen = pickBest(candidates.filter((c) => titleMatchesSource(c.title, source)));
     if (chosen) return { chosen, via: tier.via, considered, warnings };
   }
   return { chosen: null, via: null, considered, warnings };

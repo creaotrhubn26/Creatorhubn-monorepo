@@ -275,7 +275,10 @@ describe("NHN public Fastlegeregister Discovery provider", () => {
 
     const decoded = jwt.verify(assertion, publicKey, {
       algorithms: ["RS256"],
-      audience: FLR_ENDPOINTS.test.tokenUrl,
+      // Utstederen, ikke token-endepunktet. Denne testen påsto tidligere
+      // tokenUrl — altså akkurat den verdien koden sendte — og var derfor
+      // grønn mens Maskinporten ville svart invalid_grant.
+      audience: FLR_ENDPOINTS.test.issuer,
       issuer: "client-id",
       clockTimestamp: Date.parse("2026-09-12T10:00:00Z") / 1_000,
     }) as Record<string, unknown>;
@@ -336,5 +339,229 @@ describe("NHN public Fastlegeregister Discovery provider", () => {
     await expect(provider.search(input())).rejects.toMatchObject<
       Partial<DiscoveryRegistryError>
     >({ code: "upstream_unavailable", retryable: false });
+  });
+});
+
+describe("felter slik FLR faktisk leverer dem", () => {
+  // Formene under er målt mot api.offentlig.test.flr.nhn.no 2026-09-24,
+  // ikke funnet på. Begge testene var røde før fiksene.
+
+  it("padder Oslos kommunenummer til fire siffer", async () => {
+    // FLR skriver «301», ikke «0301». BRREG, territoriene og Kartverket
+    // bruker firesifret. 985 av 6 564 avtaler var Oslo, og alle mistet
+    // kommunenummeret sitt — landets største marked falt ut av enhver
+    // filtrering på kommune.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([contract({ contractId: 1, municipalityNumber: "301" })]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].municipalityNumber).toBe("0301");
+    expect(candidates[0].municipality).toBe("Oslo");
+  });
+
+  it("velger besøksadressen, ikke postadressen", async () => {
+    // 5 911 kontorer har begge. For 1 901 peker de ulike steder, og
+    // postadressen lå først for 2 738 av dem. Provideren tok første rad i
+    // arrayet, så en selger kunne bli sendt til en postboks.
+    const base = contract({ contractId: 1 });
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([
+        {
+          ...base,
+          office: {
+            ...base.office,
+            addresses: [
+              {
+                streetAddress: "Postboks 44 Sentrum",
+                postalCode: 101,
+                city: "OSLO",
+                addressType: { value: "PST", name: "Postadresse" },
+              },
+              {
+                streetAddress: "Storgata 1",
+                postalCode: 159,
+                city: "OSLO",
+                addressType: { value: "RES", name: "Besøksadresse" },
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].address).toBe("Storgata 1");
+    expect(candidates[0].postalCode).toBe("0159");
+  });
+
+  it("hopper over Coordinates-rader, som er tomme skall", async () => {
+    // 717 slike i registeret. Ingen lat/lon, tom gate, postnummer 0 —
+    // ikke gratis geokoding, bare en rad som ville tømt adressefeltet.
+    const base = contract({ contractId: 1 });
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse([
+        {
+          ...base,
+          office: {
+            ...base.office,
+            addresses: [
+              {
+                streetAddress: "",
+                postalCode: 0,
+                city: "",
+                addressType: { value: "Coordinates", name: "Geografiske koordinater" },
+              },
+              {
+                streetAddress: "Storgata 1",
+                postalCode: 159,
+                city: "OSLO",
+                addressType: { value: "RES", name: "Besøksadresse" },
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(candidates[0].address).toBe("Storgata 1");
+  });
+});
+
+describe("når NHN taper kappløpet med sin egen timeout", () => {
+  // Produksjonsendepunktet bruker 13–15 s på å generere 23,5 MB og har en
+  // gateway-timeout på 15. Begge utfallene under er målt 2026-09-24.
+
+  it("prøver på nytt etter 504, og lykkes når cachen er varm", async () => {
+    // 504-kroppen er 24 bytes. Før denne fiksen ble 504 kastet umiddelbart:
+    // retry-listen hadde bare 429 og 503.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall < 3) {
+        return new Response('{"error":"timeout"}', {
+          status: 504,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(3);
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("prøver på nytt når strømmen dør MENS kroppen lastes ned", async () => {
+    // Statuslinjen kom med 200, så retry-løkka var alt ute av bildet da
+    // nedlastingen røk. Kroppen leses nå inne i løkka.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall === 1) {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          arrayBuffer: async () => {
+            throw new TypeError("terminated");
+          },
+        } as unknown as Response;
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(2);
+    expect(candidates).toHaveLength(1);
+  });
+
+  it("prøver IKKE på nytt når svaret er ugyldig, men komplett", async () => {
+    // Et ødelagt svar blir ikke gyldig av å hentes igjen. Dokumentet under
+    // ender på «}» — det er helt, bare feil. Da er nytt forsøk bortkastet.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      return new Response("{ ikke json }", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    await expect(provider.search(input())).rejects.toMatchObject({
+      code: "invalid_response",
+    });
+    expect(kall).toBe(1);
+  });
+});
+
+describe("avkortet kropp", () => {
+  it("prøver på nytt når JSON-en stopper midt i", async () => {
+    // Det farligste utfallet vi målte: gatewayen svarer 200, begynner å
+    // strømme 23,5 MB, og kutter når dens egen 15-sekundersgrense løper ut.
+    // arrayBuffer() kaster IKKE — den returnerer de delvise bytene. Uten
+    // denne sjekken meldte vi «ugyldig respons» om et transportbrudd, og ga
+    // opp på noe som ville lyktes ved neste forsøk.
+    let kall = 0;
+    const fetchImpl = vi.fn(async () => {
+      kall += 1;
+      if (kall === 1) {
+        return new Response('[{"id":1,"office":{"organizationNu', {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonResponse([contract({ contractId: 1 })]);
+    });
+    const provider = createDiscoveryFlrProvider({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      accessTokenProvider: async () => "test-access-token-value-long-enough",
+      beforeContractsRequest: async () => undefined,
+      sleep: async () => undefined,
+    });
+
+    const { candidates } = await provider.search(input());
+
+    expect(kall).toBe(2);
+    expect(candidates).toHaveLength(1);
   });
 });

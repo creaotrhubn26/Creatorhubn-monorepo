@@ -12,13 +12,14 @@ import {
   pickBest,
   rejectReason,
   resolveHeroImage,
+  titleMatchesSource,
   stripHtml,
   toCandidate,
   type CommonsCandidate,
   type CommonsPage,
   type FetchLike,
 } from "./reiseguide-commons-images.js";
-import { DEMO_HERO_IMAGES, DEMO_POIS } from "./reiseguide-demo-data.js";
+import { DEMO_AREAS, DEMO_HERO_IMAGES, DEMO_POIS } from "./reiseguide-demo-data.js";
 
 const page = (title: string, over: {
   width?: number;
@@ -295,6 +296,53 @@ describe("resolveHeroImage", () => {
     expect(result.warnings.join(" ")).toContain("license_not_allowed");
   });
 
+  it("forkaster nabobygg i kategorien når filnavnet ikke passer stedet", async () => {
+    const { impl } = mockFetch([
+      {
+        match: isCategory("Oslo Opera House"),
+        pages: [
+          page("File:Deichmanske bibliotek Bjørvika 002.jpg", { width: 8000, height: 5000 }),
+          page("File:Oslo Opera House 2019.jpg", { width: 4000, height: 3000 }),
+        ],
+      },
+    ]);
+    const result = await resolveHeroImage(
+      {
+        pinnedFile: null,
+        categories: ["Oslo Opera House"],
+        searchTerms: [],
+        titleMustIncludeAny: ["Opera"],
+        titleMustExclude: ["Deichman"],
+      },
+      impl,
+    );
+    expect(result.chosen?.title).toBe("File:Oslo Opera House 2019.jpg");
+  });
+
+  it("forkaster samme navn i en annen by fra søket", async () => {
+    const { impl } = mockFetch([
+      {
+        match: isSearch,
+        pages: [
+          page("File:Bergen, gamle rådhus - no-nb digifoto.jpg", { width: 8000, height: 5000 }),
+          page("File:Gamle rådhus i Oslo 2015.jpg", { width: 3000, height: 2000 }),
+        ],
+      },
+    ]);
+    const result = await resolveHeroImage(
+      {
+        pinnedFile: null,
+        categories: [],
+        searchTerms: ['intitle:"Gamle rådhus"'],
+        titleMustIncludeAny: ["Oslo"],
+        titleMustExclude: ["Bergen"],
+      },
+      impl,
+    );
+    expect(result.chosen?.title).toBe("File:Gamle rådhus i Oslo 2015.jpg");
+    expect(result.via).toBe("search");
+  });
+
   it("gir null og advarsler, men kaster ikke, når alt feiler", async () => {
     const { impl } = mockFetch([
       { match: isCategory("Christiania torv"), status: 503 },
@@ -311,6 +359,23 @@ describe("resolveHeroImage", () => {
   });
 });
 
+describe("titleMatchesSource", () => {
+  const base = { pinnedFile: null, categories: [], searchTerms: [] };
+  it("godtar alt uten krav", () => {
+    expect(titleMatchesSource("File:Hva som helst.jpg", base)).toBe(true);
+  });
+  it("krever ett av ordene, uten hensyn til store og små bokstaver", () => {
+    const source = { ...base, titleMustIncludeAny: ["Oslo", "Christiania"] };
+    expect(titleMatchesSource("File:Gamle rådhus, OSLO.jpg", source)).toBe(true);
+    expect(titleMatchesSource("File:Christiania rådhus 1890.jpg", source)).toBe(true);
+    expect(titleMatchesSource("File:Gamle rådhus.jpg", source)).toBe(false);
+  });
+  it("forkaster ekskluderte ord også når et krav er oppfylt", () => {
+    const source = { ...base, titleMustIncludeAny: ["Opera"], titleMustExclude: ["bibliotek"] };
+    expect(titleMatchesSource("File:Opera og Bibliotek i Bjørvika.jpg", source)).toBe(false);
+  });
+});
+
 describe("demo-oppsettet", () => {
   it("har 1–3 kategorier eller søk per sted og en nøktern alt-tekst på begge språk", () => {
     for (const poi of DEMO_POIS) {
@@ -321,6 +386,22 @@ describe("demo-oppsettet", () => {
       expect(source.categories.length + source.searchTerms.length).toBeGreaterThan(0);
       expect(poi.translations.nb.heroImageAlt).toBe(`Foto av ${poi.translations.nb.title}`);
       expect(poi.translations.en.heroImageAlt).toMatch(/^Photo of /);
+    }
+  });
+
+  it("dekker alle stedene i alle områdene", () => {
+    expect(DEMO_AREAS.length).toBeGreaterThanOrEqual(3);
+    for (const area of DEMO_AREAS) {
+      expect(area.pois.length, area.slug).toBeGreaterThan(0);
+      for (const poi of area.pois) expect(DEMO_HERO_IMAGES[poi.id], `${area.slug}/${poi.id}`).toBeDefined();
+    }
+  });
+
+  it("lar et vanlig filnavn for stedet («<navn> <by>.jpg») passere sine egne filnavn-krav", () => {
+    for (const poi of DEMO_POIS) {
+      const city = poi.translations.nb.locationLabel.split(",")[0];
+      const title = `File:${poi.translations.nb.title} ${city}.jpg`;
+      expect(titleMatchesSource(title, DEMO_HERO_IMAGES[poi.id]), `${poi.id}: ${title}`).toBe(true);
     }
   });
 });

@@ -19,8 +19,12 @@ struct ReiseguideApp: App {
                 .environment(\.locale, Locale(identifier: environment.settings.uiLanguage))
                 .preferredColorScheme(.dark)
                 .tint(AppColor.accent)
-                .task(id: environment.settings.guideLanguage) {
+                // Lastes på nytt når språket eller området (områdevelgeren) byttes.
+                .task(id: AreaLoadKey(slug: environment.store.slug, lang: environment.settings.guideLanguage)) {
                     await environment.store.loadIfNeeded(lang: environment.settings.guideLanguage)
+                }
+                .task {
+                    await environment.prepareAreas()
                 }
                 .onOpenURL { url in
                     environment.handle(url: url)
@@ -33,6 +37,12 @@ struct ReiseguideApp: App {
                 }
         }
     }
+}
+
+/// Hva innholdet i AreaStore avhenger av: område og språk.
+struct AreaLoadKey: Equatable {
+    let slug: String
+    let lang: String
 }
 
 enum AppTab: Hashable {
@@ -108,7 +118,12 @@ struct RootTabView: View {
                 .padding(.bottom, env.player.hasContent && !env.player.isPresented ? 64 : AppSpacing.s)
             }
         }
-        .onChange(of: env.location.fix) { _, _ in env.evaluateArrival() }
+        .onChange(of: env.location.fix) { _, _ in
+            env.reconcileArea()
+            env.evaluateArrival()
+        }
+        // Nytt område: stedene i Utforsk-stacken hører til det gamle området.
+        .onChange(of: env.store.slug) { _, _ in explorePath = NavigationPath() }
         .onChange(of: env.location.authorization) { _, _ in env.evaluateArrival() }
         .onChange(of: env.arrival.pendingAnnouncement) { _, poi in
             guard let poi else { return }

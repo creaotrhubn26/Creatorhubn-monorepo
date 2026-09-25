@@ -23,6 +23,7 @@ describe("reiseguide-config", () => {
     expect(status).toEqual({
       SENSEAID_SONIOX_API_KEY: true,
       SENSEAID_SONIOX_VOICE: false,
+      SENSEAID_SONIOX_REGION: false,
       REISEGUIDE_MEDIA_URL_BASE: false,
     });
     expect(JSON.stringify(status)).not.toContain("hemmelig");

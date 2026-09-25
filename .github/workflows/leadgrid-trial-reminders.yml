@@ -1,0 +1,44 @@
+name: Leadgrid trial reminders
+
+# Daglig 06:30 UTC (08:30 norsk sommertid). Varsler org-admin to dager før
+# prøvetiden går ut, på siste dag, og den dagen den faktisk er over.
+# Throttling ligger i organizations.trial_reminder_stage, så en ekstra
+# manuell kjøring sender ikke dobbelt.
+
+on:
+  schedule:
+    - cron: '30 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leadgrid-trial-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send trial reminders
+        env:
+          TOKEN: ${{ secrets.LEADGRID_CRON_TRIGGER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::LEADGRID_CRON_TRIGGER_TOKEN secret er ikke satt"
+            exit 1
+          fi
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "x-cron-trigger-token: $TOKEN" \
+            "https://creatorhub-backend-rtbl.onrender.com/api/leadgrid/cron/provetid-varsler")
+          BODY=$(echo "$RESP" | head -n -1)
+          CODE=$(echo "$RESP" | tail -n 1)
+          echo "HTTP $CODE"
+          echo "$BODY"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Prøvetidsvarsler feilet (HTTP $CODE)"
+            exit 1
+          fi
+          echo "$BODY" >> "$GITHUB_STEP_SUMMARY"

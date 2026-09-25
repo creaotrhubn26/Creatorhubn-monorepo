@@ -23,26 +23,32 @@ struct ScrimOverlay: View {
 
 /// Bilde fra URL med bgSurface som plassholder. Foto får
 /// accessibilityIgnoresInvertColors (Smart Invert, 8.6).
+///
+/// Tar alltid nøyaktig plassen forelderen tilbyr. Et `.fill`-bilde rett i en
+/// ZStack melder ellers bildets egen bredde (et liggende foto blir bredere enn
+/// skjermen) og gjør hele skjermen bredere, så innholdet kuttes på begge sider.
 struct RemoteImage: View {
     let url: String?
     var contentMode: ContentMode = .fill
 
     var body: some View {
-        Group {
-            if let url, let parsed = URL(string: url) {
-                AsyncImage(url: parsed) { phase in
-                    switch phase {
-                    case let .success(image):
-                        image.resizable().aspectRatio(contentMode: contentMode)
-                    default:
-                        placeholder
+        Color.clear
+            .overlay {
+                if let url, let parsed = URL(string: url) {
+                    AsyncImage(url: parsed) { phase in
+                        switch phase {
+                        case let .success(image):
+                            image.resizable().aspectRatio(contentMode: contentMode)
+                        default:
+                            placeholder
+                        }
                     }
+                } else {
+                    placeholder
                 }
-            } else {
-                placeholder
             }
-        }
-        .accessibilityIgnoresInvertColors()
+            .clipped()
+            .accessibilityIgnoresInvertColors()
     }
 
     private var placeholder: some View {
@@ -320,19 +326,29 @@ struct AudioDescriptionCard: View {
     }
 }
 
-/// Tekstingsvisning (5.16): gjeldende cue, 2 linjer høyt, sentrert.
+/// Tekstingsvisning (5.16): gjeldende cue, minst 3 linjer høyt, sentrert.
 struct CaptionView: View {
     let text: String?
 
     var body: some View {
-        Text(text ?? " ")
-            .font(AppFont.body)
-            .foregroundStyle(AppColor.textPrimary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .padding(.horizontal, AppSpacing.l)
-            .background(AppColor.bgSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
-            .accessibilityLabel(Text("captions.label"))
-            .accessibilityValue(Text(text ?? ""))
+        // Fast plass til tre linjer (skalerer med Dynamic Type), så knappene
+        // under ikke hopper for hver setning. Lengre setninger får vokse.
+        ZStack {
+            Text(verbatim: "\n\n")
+                .font(AppFont.body)
+                .hidden()
+                .accessibilityHidden(true)
+            Text(text ?? " ")
+                .font(AppFont.body)
+                .foregroundStyle(AppColor.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 56)
+        .padding(.horizontal, AppSpacing.l)
+        .background(AppColor.bgSurface.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.tile, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("captions.label"))
+        .accessibilityValue(Text(text ?? ""))
     }
 }

@@ -21,6 +21,9 @@
 //   - mapShowsList: kart eller liste i kartvisningen (UU-krav 8.5). Nil til
 //     brukeren har valgt; da er listen standard når VoiceOver kjører
 //     (Features/Map/MapAccessibility.swift, MapViewMode).
+//   - selectedAreaSlug: området brukeren selv har valgt (Lørenskog,
+//     Nesoddtangen, Oslo …). Nil til brukeren har valgt; da velges nærmeste
+//     område eller Oslo (Core/AreaSelection.swift).
 
 import Foundation
 import Observation
@@ -45,6 +48,7 @@ final class AppSettings {
         static let speakDirections = "reiseguide.speakDirectionsEnabled"
         static let inNarrationPrompts = "reiseguide.inNarrationPromptsEnabled"
         static let mapShowsList = "reiseguide.mapShowsList"
+        static let selectedAreaSlug = "reiseguide.selectedAreaSlug"
     }
 
     private let defaults: UserDefaults
@@ -107,6 +111,17 @@ final class AppSettings {
         }
     }
 
+    /// Området brukeren selv har valgt; nil = ikke valgt ennå (AreaSelection).
+    var selectedAreaSlug: String? {
+        didSet {
+            if let selectedAreaSlug {
+                defaults.set(selectedAreaSlug, forKey: Key.selectedAreaSlug)
+            } else {
+                defaults.removeObject(forKey: Key.selectedAreaSlug)
+            }
+        }
+    }
+
     /// Anonym enhets-ID (UUID). Lages og lagres ved første kjøring.
     private(set) var deviceId: String {
         didSet { defaults.set(deviceId, forKey: Key.deviceId) }
@@ -126,6 +141,7 @@ final class AppSettings {
         speakDirectionsEnabled = defaults.object(forKey: Key.speakDirections) as? Bool ?? UIAccessibility.isVoiceOverRunning
         inNarrationPromptsEnabled = defaults.object(forKey: Key.inNarrationPrompts) as? Bool ?? true
         mapShowsList = defaults.object(forKey: Key.mapShowsList) as? Bool
+        selectedAreaSlug = defaults.string(forKey: Key.selectedAreaSlug).flatMap { $0.isEmpty ? nil : $0 }
         if let stored = defaults.string(forKey: Key.deviceId), !stored.isEmpty {
             deviceId = stored
         } else {

@@ -1,7 +1,8 @@
 name: SenseAid Explore seed demo-innhold
 
-# Legger demo-innholdet for SenseAid Explore (Kvadraturen, Akershus festning,
-# Operaen: område, kategorier, seks steder, manus nb/en, quiz) inn i
+# Legger demo-innholdet for SenseAid Explore (tre områder: Kvadraturen/Akershus
+# festning/Operaen med seks steder, Lørenskog og Nesoddtangen med fire hver;
+# kategorier, manus nb/en, quiz, spørsmål underveis) inn i
 # produksjonsdatabasen med `npm run seed:reiseguide`. Idempotent (upsert på
 # id): kan kjøres på nytt etter hver manusendring i
 # backend/server/reiseguide-demo-data.ts. Rører aldri lydfiler, teksting eller
@@ -105,29 +106,44 @@ jobs:
             npm run reiseguide:images --prefix backend
           fi
 
-      - name: Verify public API serves the demo area
+      - name: Verify public API serves every demo area
         env:
           BACKEND_URL: https://creatorhub-backend-rtbl.onrender.com
         run: |
           set -euo pipefail
+          # Minste antall steder per område (DEMO_AREAS i reiseguide-demo-data.ts).
+          declare -A expected=(
+            [oslo-kvadraturen-festningen-operaen]=6
+            [lorenskog]=4
+            [nesoddtangen]=4
+          )
           areas=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas")
           count=$(jq -r '.areas | length' <<<"$areas")
-          slug=$(jq -r '.areas[0].slug // ""' <<<"$areas")
-          echo "Områder i produksjon: $count (første: $slug)"
-          if [ "$count" -lt 1 ]; then
-            echo "::error::GET /api/guide/areas returnerte ingen områder etter seed"
+          echo "Områder i produksjon: $count ($(jq -r '[.areas[].slug] | join(", ")' <<<"$areas"))"
+          if [ "$count" -lt 3 ]; then
+            echo "::error::GET /api/guide/areas returnerte $count områder etter seed, ventet minst 3"
             exit 1
           fi
-          area=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas/$slug?lang=nb")
-          poi_count=$(jq -r '.pois | length' <<<"$area")
-          echo "Steder i $slug: $poi_count"
-          if [ "$poi_count" -lt 6 ]; then
-            echo "::error::Ventet minst 6 steder i $slug, fikk $poi_count"
-            exit 1
-          fi
-          image_count=$(jq -r '[.pois[] | select(.heroImageUrl != null)] | length' <<<"$area")
-          credit_count=$(jq -r '[.pois[] | select(.heroImageCredit != null)] | length' <<<"$area")
-          echo "Steder med heltebilde: $image_count av $poi_count (med kreditering: $credit_count)"
-          if [ "$image_count" -lt "$poi_count" ]; then
-            echo "::warning::$((poi_count - image_count)) av $poi_count steder mangler heltebilde; se tabellen i Commons-steget"
-          fi
+          failed=0
+          for slug in "${!expected[@]}"; do
+            if ! jq -e --arg s "$slug" 'any(.areas[]; .slug == $s)' <<<"$areas" >/dev/null; then
+              echo "::error::Området $slug mangler i GET /api/guide/areas"
+              failed=1
+            fi
+          done
+          for slug in $(jq -r '.areas[].slug' <<<"$areas"); do
+            area=$(curl -fsS --connect-timeout 5 --max-time 20 -H "Accept: application/json" "$BACKEND_URL/api/guide/areas/$slug?lang=nb")
+            poi_count=$(jq -r '.pois | length' <<<"$area")
+            image_count=$(jq -r '[.pois[] | select(.heroImageUrl != null)] | length' <<<"$area")
+            credit_count=$(jq -r '[.pois[] | select(.heroImageCredit != null)] | length' <<<"$area")
+            min=${expected[$slug]:-1}
+            echo "$slug: $poi_count steder (ventet minst $min), heltebilde på $image_count (med kreditering: $credit_count)"
+            if [ "$poi_count" -lt "$min" ]; then
+              echo "::error::Ventet minst $min steder i $slug, fikk $poi_count"
+              failed=1
+            fi
+            if [ "$image_count" -lt "$poi_count" ]; then
+              echo "::warning::$slug: $((poi_count - image_count)) av $poi_count steder mangler heltebilde; se tabellen i Commons-steget"
+            fi
+          done
+          exit "$failed"

@@ -19,6 +19,9 @@
 //     med skjermen låst og lydløs-bryteren på.
 //   - VoiceOver: `prefersAssistiveTechnologySettings` lar VoiceOvers stemme og
 //     tempo vinne når VoiceOver kjører.
+//   - Stille stemme: starter ikke opplesningen innen `silenceTimeout` (en
+//     forbedret stemme kan stå i listen uten at lyden er lastet ned), prøver
+//     vi én gang til med systemets standardstemme for språket.
 //
 // Swift 6: delegatkallene er nonisolated. Vi tar bare ut Sendable-verdier
 // (ObjectIdentifier, Int) og hopper til MainActor, samme mønster som
@@ -69,6 +72,7 @@ final class SpeechNarrator: NSObject {
     }
 
     private static let restartDelay: Duration = .milliseconds(180)
+    private static let silenceTimeout: Duration = .seconds(3)
 
     private let synthesizer = AVSpeechSynthesizer()
     private var script: SpeechScript?
@@ -82,6 +86,10 @@ final class SpeechNarrator: NSObject {
     private var spokenOffset = 0
     private var pendingLeadIn: String?
     private var restartTask: Task<Void, Never>?
+    private var silenceTask: Task<Void, Never>?
+    /// Satt når synthesizeren faktisk har begynt å lese i gjeldende kjøring.
+    private var hasStartedRun = false
+    private var usesFallbackVoice = false
 
     private(set) var positionS: Double = 0
     private(set) var isFinished = false
@@ -98,6 +106,7 @@ final class SpeechNarrator: NSObject {
         self.rate = rate
         pendingLeadIn = script.leadIn
         voice = Self.bestVoice(for: script.language)
+        usesFallbackVoice = false
     }
 
     func play() {
@@ -177,6 +186,8 @@ final class SpeechNarrator: NSObject {
     private func halt() {
         restartTask?.cancel()
         restartTask = nil
+        silenceTask?.cancel()
+        silenceTask = nil
         currentUtterance = nil
         if synthesizer.isSpeaking || synthesizer.isPaused {
             synthesizer.stopSpeaking(at: .immediate)
@@ -211,7 +222,24 @@ final class SpeechNarrator: NSObject {
         spokenOffset = offset
         currentUtterance = utterance
         state = .speaking
+        hasStartedRun = false
         synthesizer.speak(utterance)
+        watchForSilence(utterance)
+    }
+
+    private func watchForSilence(_ utterance: AVSpeechUtterance) {
+        silenceTask?.cancel()
+        guard !usesFallbackVoice else { return }
+        let utteranceID = ObjectIdentifier(utterance)
+        silenceTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.silenceTimeout)
+            guard let self, !Task.isCancelled, self.state == .speaking, !self.hasStartedRun,
+                  let current = self.currentUtterance, ObjectIdentifier(current) == utteranceID,
+                  let script = self.script else { return }
+            self.usesFallbackVoice = true
+            self.voice = AVSpeechSynthesisVoice(language: SpeechVoicePicker.fallbackLanguageCode(for: script.language))
+            self.startRun(from: self.spokenOffset, in: script)
+        }
     }
 
     private func makeUtterance(_ text: String) -> AVSpeechUtterance {
@@ -232,7 +260,12 @@ final class SpeechNarrator: NSObject {
         isFinished = true
     }
 
+    fileprivate func didStartSpeaking() {
+        hasStartedRun = true
+    }
+
     fileprivate func didReach(location: Int, in utteranceID: ObjectIdentifier) {
+        hasStartedRun = true
         guard let script, let currentUtterance, ObjectIdentifier(currentUtterance) == utteranceID else { return }
         spokenOffset = min(runBaseOffset + location, script.timeline.length)
         positionS = script.timeline.time(atOffset: spokenOffset)
@@ -271,6 +304,10 @@ final class SpeechNarrator: NSObject {
 }
 
 extension SpeechNarrator: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.didStartSpeaking() }
+    }
+
     nonisolated func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         willSpeakRangeOfSpeechString characterRange: NSRange,

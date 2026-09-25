@@ -74,6 +74,7 @@ import { classifySession } from "./capture-culling-service";
 import { enqueuePhotoEnhancerJobFromBuffer, listPhotoEnhancerJobsByProjectId } from "./photo-enhancer-routes";
 import { isDeviceRevoked } from "./post-agent-storage";
 import { signCapturePreviewToken } from "./capture-preview-token";
+import { getProjectOwnerMediaAccess } from "./creatorhub-media-access";
 
 // Web-opplasting holdes i minne og skyves server-side til B2 (Role Room-bøtta).
 // 60 MB tak — store RAW/originaler skal uansett gjennom capture multipart-flyten.
@@ -300,19 +301,6 @@ async function ensureSchema(pool: any): Promise<void> {
           n          INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (project_id, word, category)
         )`,
-        `ALTER TABLE capture_assets ADD COLUMN IF NOT EXISTS folder_id UUID`,
-        `CREATE TABLE IF NOT EXISTS asset_refs (
-          id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          project_id  VARCHAR(64) NOT NULL,
-          master_id   UUID NOT NULL,           -- capture_assets.id (ett master)
-          master_kind VARCHAR(20) NOT NULL DEFAULT 'capture',
-          collection  VARCHAR(80) NOT NULL,    -- galleri/samling (mange referanser)
-          label       VARCHAR(120),
-          created_by  VARCHAR(64),
-          created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_ar_project_collection ON asset_refs (project_id, collection)`,
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_ar_dedupe ON asset_refs (project_id, master_id, collection)`,
         `CREATE TABLE IF NOT EXISTS folder_learn (
           project_id VARCHAR(64) NOT NULL,
           word       TEXT NOT NULL,
@@ -657,6 +645,19 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     if (!allowed) {
       res.status(403).json({ error: isRead ? "no_access" : "read_only_access" });
       return null;
+    }
+    if (!isRead) {
+      const mediaAccess = await getProjectOwnerMediaAccess(pool, projectId);
+      if (!mediaAccess.canCreate) {
+        res.status(402).json({
+          error: "creatorhub_download_only",
+          mediaAccess,
+          message: mediaAccess.state === "expired"
+            ? "Nedlastingsvinduet er utløpt. Mediene er beholdt og åpnes igjen ved reaktivering."
+            : `CreatorHub er i nedlastingsmodus i ${mediaAccess.daysRemaining ?? 0} dager. Nye endringer er satt på pause.`,
+        });
+        return null;
+      }
     }
     return session.userId;
   };
@@ -2062,10 +2063,10 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     portrait: { label: 'Portrett / Foto', folders: ['01_Brief', '02_RAW', '03_Selects', '04_Edited', '05_Client_Review', '06_Final'] },
     commercial: { label: 'Kommersiell', folders: ['01_Brief', '02_RAW', '03_Video', '04_Audio', '05_Graphics', '06_Selects', '07_Client_Review', '08_Final'] },
   };
-  async function ensureFoldersTable() {
-    await pool.query(`CREATE TABLE IF NOT EXISTS project_media_folders (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_id VARCHAR(64) NOT NULL, name VARCHAR(120) NOT NULL, order_index INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`).catch(() => undefined);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pmf_project ON project_media_folders (project_id, order_index)`).catch(() => undefined);
-  }
+  // project_media_folders and capture_assets.folder_id are migration-owned
+  // (0605). Keep this compatibility call so route structure stays stable,
+  // without issuing DDL from a request handler.
+  async function ensureFoldersTable() { return undefined; }
 
   app.get("/api/projects/:projectId/media-folders", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
@@ -3081,6 +3082,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const uid = await guard(req, res); if (!uid) return;
     try {
       const pid = req.params.projectId;
+      const mediaAccess = await getProjectOwnerMediaAccess(pool, pid);
       const limit = Math.min(200, Math.max(1, Number.parseInt(String(req.query.limit || "80"), 10) || 80));
       const offset = Math.max(0, Number.parseInt(String(req.query.offset || "0"), 10) || 0);
       const params: unknown[] = [pid];
@@ -3091,8 +3093,23 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       if (["approved", "needs_edit", "rejected", "flagged"].includes(status)) {
         params.push(status); conditions.push(`review.review_status = $${params.length}`);
       } else if (status === "pending") conditions.push(`review.review_status IS NULL`);
+      else if (status === "favorites") conditions.push(`asset.rating >= 4`);
       const folderId = String(req.query.folderId || "");
       if (isUuid(folderId)) { params.push(folderId); conditions.push(`asset.folder_id = $${params.length}::uuid`); }
+      else if (folderId === "unassigned") conditions.push(`asset.folder_id IS NULL`);
+      const sourceId = String(req.query.sourceId || "");
+      if (isUuid(sourceId)) { params.push(sourceId); conditions.push(`asset.session_id = $${params.length}::uuid`); }
+      const collection = String(req.query.collection || "").trim().slice(0, 80);
+      if (collection) {
+        params.push(collection);
+        conditions.push(`EXISTS (
+          SELECT 1 FROM asset_refs collection_ref
+           WHERE collection_ref.project_id=$1
+             AND collection_ref.master_kind='capture'
+             AND collection_ref.master_id=asset.id
+             AND collection_ref.collection=$${params.length}
+        )`);
+      }
       const sortSql: Record<string, string> = {
         oldest: "asset.created_at ASC",
         name_asc: "asset.original_filename ASC",
@@ -3103,12 +3120,18 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const orderBy = sortSql[String(req.query.sort || "newest")] || sortSql.newest;
       params.push(limit, offset);
       const rows = await pool.query(
-        `SELECT asset.id, asset.original_filename, asset.mime, asset.size_bytes, asset.state,
+        `SELECT asset.id, asset.session_id, asset.original_filename, asset.mime, asset.size_bytes, asset.state,
                 asset.rating, asset.color_label, asset.flagged_for_client, asset.rejected,
-                asset.preview_key, asset.full_key, asset.exif, asset.created_at, asset.folder_id,
+                asset.preview_key, asset.full_key, asset.exif, asset.signals, asset.created_at, asset.folder_id,
+                session.name AS source_name,
                 review.review_status, folder.name AS folder_name,
                 gallery_link.gallery_image_id, gallery_link.gallery_id,
                 gallery_link.client_selection, gallery_link.client_comment_count,
+                COALESCE((
+                  SELECT array_agg(ref.collection ORDER BY ref.collection)
+                    FROM asset_refs ref
+                   WHERE ref.project_id=$1 AND ref.master_kind='capture' AND ref.master_id=asset.id
+                ), ARRAY[]::varchar[]) AS collections,
                 count(*) OVER()::int AS filtered_total
            FROM capture_assets asset
            JOIN capture_sessions session ON session.id = asset.session_id
@@ -3136,10 +3159,18 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       );
       const assets = await Promise.all(rows.rows.map(async (row: any) => {
         const ex = row.exif || {};
+        const thumbUrl = await signAssetReadUrl(row.preview_key || row.full_key);
         return {
           id: row.id,
+          sessionId: row.session_id,
+          sourceName: row.source_name || "Capture",
+          sourceType: row.signals?.lightroom?.source === "lightroom_classic" || row.source_name === "Lightroom Classic Imports"
+            ? "lightroom"
+            : row.signals?.cardImport ? "memory_card" : "capture",
           filename: row.original_filename,
           mime: row.mime,
+          sizeBytes: row.size_bytes ? Number(row.size_bytes) : null,
+          state: row.state || null,
           rating: row.rating || 0,
           flagged: !!row.flagged_for_client,
           rejected: !!row.rejected,
@@ -3147,12 +3178,15 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           reviewStatus: row.review_status || null,
           folderId: row.folder_id || null,
           folderName: row.folder_name || null,
+          collections: Array.isArray(row.collections) ? row.collections : [],
           galleryImageId: row.gallery_image_id || null,
           galleryId: row.gallery_id || null,
           clientSelection: row.client_selection || null,
           clientCommentCount: row.client_comment_count || 0,
-          thumbUrl: await signAssetReadUrl(row.preview_key || row.full_key),
-          fullUrl: await signAssetReadUrl(row.full_key || row.preview_key),
+          thumbUrl,
+          fullUrl: mediaAccess.canDownload
+            ? await signAssetReadUrl(row.full_key || row.preview_key)
+            : thumbUrl,
           exif: {
             iso: ex.iso ?? ex.ISO ?? null,
             lens: ex.lens ?? ex.lensModel ?? ex.LensModel ?? null,
@@ -3167,7 +3201,7 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           createdAt: row.created_at,
         };
       }));
-      const [statsResult, commentResult, folderResult, galleryResult] = await Promise.all([
+      const [statsResult, commentResult, folderResult, galleryResult, sourceResult, collectionResult, deliveryResult] = await Promise.all([
         pool.query(
           `SELECT count(*)::int total,
                   count(*) FILTER (WHERE review.review_status = 'approved')::int approved,
@@ -3188,10 +3222,42 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
                 FROM client_image_comments comment
                 JOIN photographer_client_galleries gallery ON gallery.id=comment.gallery_id
                WHERE gallery.project_id::text=$1) AS client_count`, [pid]),
-        pool.query(`SELECT id, name FROM project_media_folders WHERE project_id=$1 ORDER BY order_index, name`, [pid]),
+        pool.query(
+          `SELECT folder.id, folder.name, count(asset.id)::int AS asset_count
+             FROM project_media_folders folder
+             LEFT JOIN capture_assets asset ON asset.folder_id=folder.id
+            WHERE folder.project_id=$1
+            GROUP BY folder.id, folder.name, folder.order_index
+            ORDER BY folder.order_index, folder.name`, [pid],
+        ),
         pool.query(`SELECT id, access_token, client_name, client_email, project_title, gallery_settings
                       FROM photographer_client_galleries WHERE project_id::text=$1 AND status='active'
                       ORDER BY updated_at DESC NULLS LAST LIMIT 1`, [pid]),
+        pool.query(
+          `SELECT session.id, session.name, session.created_at, count(asset.id)::int AS asset_count,
+                  count(asset.id) FILTER (WHERE asset.state IN ('uploaded','ready','verified'))::int AS ready_count
+             FROM capture_sessions session
+             LEFT JOIN capture_assets asset ON asset.session_id=session.id
+            WHERE session.project_id=$1
+            GROUP BY session.id, session.name, session.created_at
+            ORDER BY session.created_at DESC`, [pid],
+        ),
+        pool.query(
+          `SELECT ref.collection AS name, count(*)::int AS asset_count
+             FROM asset_refs ref
+             JOIN capture_assets asset ON asset.id=ref.master_id
+             JOIN capture_sessions session ON session.id=asset.session_id
+            WHERE ref.project_id=$1 AND ref.master_kind='capture' AND session.project_id=$1
+            GROUP BY ref.collection ORDER BY ref.collection`, [pid],
+        ),
+        pool.query(
+          `SELECT delivery.id, delivery.gallery_id, delivery.proofing_round,
+                  delivery.client_name, delivery.client_email, delivery.email_sent,
+                  delivery.asset_count, delivery.created_at
+             FROM project_photo_delivery_rounds delivery
+            WHERE delivery.project_id=$1
+            ORDER BY delivery.created_at DESC LIMIT 30`, [pid],
+        ),
       ]);
       const stats = statsResult.rows[0] || {};
       const counts = commentResult.rows[0] || {};
@@ -3199,9 +3265,29 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       const filteredTotal = Number(rows.rows[0]?.filtered_total || 0);
       res.json({
         hasSession: Number(stats.total || 0) > 0,
+        mediaAccess,
         stats: { ...stats, needsEdit: stats.needs_edit || 0, comments: totalComments, reviewed: Number(stats.total || 0) - Number(stats.pending || 0) },
         commentScopes: { all: totalComments, internal: counts.internal_count || 0, client: Number(counts.client_count || 0) + Number(counts.project_count || 0) - Number(counts.internal_count || 0) },
-        folders: folderResult.rows.map((folder: any) => ({ id: folder.id, name: folder.name })),
+        folders: folderResult.rows.map((folder: any) => ({ id: folder.id, name: folder.name, assetCount: Number(folder.asset_count || 0) })),
+        sources: sourceResult.rows.map((source: any) => ({
+          id: source.id,
+          name: source.name || "Capture",
+          kind: source.name === "Lightroom Classic Imports" ? "lightroom" : "capture",
+          assetCount: Number(source.asset_count || 0),
+          readyCount: Number(source.ready_count || 0),
+          createdAt: source.created_at,
+        })),
+        collections: collectionResult.rows.map((item: any) => ({ name: item.name, assetCount: Number(item.asset_count || 0) })),
+        deliveries: deliveryResult.rows.map((delivery: any) => ({
+          id: delivery.id,
+          galleryId: delivery.gallery_id,
+          proofingRound: Number(delivery.proofing_round || 1),
+          clientName: delivery.client_name,
+          clientEmail: delivery.client_email,
+          emailSent: !!delivery.email_sent,
+          assetCount: Number(delivery.asset_count || 0),
+          createdAt: delivery.created_at,
+        })),
         gallery: galleryResult.rows[0] ? {
           id: galleryResult.rows[0].id,
           shareUrl: `${(process.env.CREATORHUB_PUBLIC_URL || process.env.PUBLIC_APP_URL || "https://app.creatorhubn.com").replace(/\/$/, "")}/client/gallery/${galleryResult.rows[0].access_token}`,
@@ -3223,16 +3309,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO project_photo_review(asset_id, project_id, review_status, updated_by, updated_at)
-         SELECT asset.id, $1, $3, $4, now()
-           FROM capture_assets asset
-           JOIN capture_sessions session ON session.id=asset.session_id
-          WHERE asset.id=ANY($2::uuid[]) AND session.project_id=$1
-         ON CONFLICT(asset_id) DO UPDATE SET project_id=EXCLUDED.project_id,
-           review_status=EXCLUDED.review_status, updated_by=EXCLUDED.updated_by, updated_at=now()`,
+      const statusWrite = await client.query(
+        `SELECT creatorhub_set_project_photo_review_status($1, $2::uuid[], $3, $4) AS affected`,
         [projectId, assetIds, status, userId],
       );
+      if (Number(statusWrite.rows[0]?.affected || 0) !== assetIds.length) {
+        throw new Error("photo_review_asset_scope_mismatch");
+      }
       if (createTasks && status === "needs_edit") {
         await client.query(
           `INSERT INTO project_board_tasks(project_id, crew_role, title, status, created_by, source_kind, source_id)
@@ -3252,13 +3335,87 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   app.patch("/api/projects/:projectId/photo-review/:assetId", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
     try {
-      const status = parsePhotoReviewStatus(req.body?.reviewStatus);
-      if (status === undefined) return res.status(400).json({ error: "invalid_review_status" });
+      const hasStatus = Object.prototype.hasOwnProperty.call(req.body || {}, "reviewStatus");
+      const status = hasStatus ? parsePhotoReviewStatus(req.body?.reviewStatus) : undefined;
+      const hasRating = Object.prototype.hasOwnProperty.call(req.body || {}, "rating");
+      const rating = hasRating ? Number(req.body?.rating) : undefined;
+      const allowedLabels = new Set(["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray"]);
+      const hasColorLabel = Object.prototype.hasOwnProperty.call(req.body || {}, "colorLabel");
+      const colorLabel = req.body?.colorLabel == null ? null : String(req.body.colorLabel);
+      if (hasStatus && status === undefined) return res.status(400).json({ error: "invalid_review_status" });
+      if (hasRating && (!Number.isInteger(rating) || Number(rating) < 0 || Number(rating) > 5)) return res.status(400).json({ error: "invalid_rating" });
+      if (hasColorLabel && colorLabel !== null && !allowedLabels.has(colorLabel)) return res.status(400).json({ error: "invalid_color_label" });
+      if (!hasStatus && !hasRating && !hasColorLabel) return res.status(400).json({ error: "nothing_to_update" });
       const asset = await photoAsset(req.params.projectId, req.params.assetId);
       if (!asset) return res.status(404).json({ error: "asset_not_found" });
-      await writePhotoStatuses(req.params.projectId, uid, [asset.id], status, status === "needs_edit");
-      res.json({ ok: true, reviewStatus: status });
+      if (hasStatus) await writePhotoStatuses(req.params.projectId, uid, [asset.id], status ?? null, status === "needs_edit");
+      if (hasRating || hasColorLabel) {
+        const sets: string[] = []; const values: unknown[] = [];
+        if (hasRating) { values.push(rating); sets.push(`rating=$${values.length}`); }
+        if (hasColorLabel) { values.push(colorLabel); sets.push(`color_label=$${values.length}`); }
+        values.push(asset.id);
+        await pool.query(`UPDATE capture_assets SET ${sets.join(",")}, updated_at=now() WHERE id=$${values.length}`, values);
+      }
+      res.json({ ok: true, reviewStatus: hasStatus ? status : undefined, rating: hasRating ? rating : undefined, colorLabel: hasColorLabel ? colorLabel : undefined });
     } catch (error) { console.error("PATCH photo-review", error); res.status(500).json({ error: "failed" }); }
+  });
+
+  app.post("/api/projects/:projectId/photo-review/organize", async (req, res) => {
+    const uid = await guard(req, res); if (!uid) return;
+    try {
+      const requested = Array.isArray(req.body?.assetIds)
+        ? [...new Set(req.body.assetIds.filter((id: unknown) => isUuid(id)))].slice(0, 500) as string[]
+        : [];
+      const action = String(req.body?.action || "");
+      if (!requested.length || !["move_folder", "add_collection", "remove_collection"].includes(action)) {
+        return res.status(400).json({ error: "invalid_request" });
+      }
+      const valid = await pool.query(
+        `SELECT asset.id FROM capture_assets asset JOIN capture_sessions session ON session.id=asset.session_id
+          WHERE session.project_id=$1 AND asset.id=ANY($2::uuid[])`, [req.params.projectId, requested],
+      );
+      const ids = valid.rows.map((row: any) => String(row.id));
+      if (ids.length !== requested.length) return res.status(404).json({ error: "asset_not_found" });
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (action === "move_folder") {
+          const folderId = req.body?.folderId == null || req.body?.folderId === "" ? null : String(req.body.folderId);
+          if (folderId && !isUuid(folderId)) throw Object.assign(new Error("invalid_folder"), { statusCode: 400 });
+          if (folderId) {
+            const folder = await client.query(`SELECT id FROM project_media_folders WHERE id=$1 AND project_id=$2`, [folderId, req.params.projectId]);
+            if (!folder.rowCount) throw Object.assign(new Error("folder_not_found"), { statusCode: 404 });
+          }
+          await client.query(`UPDATE capture_assets SET folder_id=$1, updated_at=now() WHERE id=ANY($2::uuid[])`, [folderId, ids]);
+        } else {
+          const name = String(req.body?.collection || "").trim().slice(0, 80);
+          if (!name) throw Object.assign(new Error("collection_required"), { statusCode: 400 });
+          if (action === "add_collection") {
+            await client.query(
+              `INSERT INTO asset_refs(project_id, master_id, master_kind, collection, label, created_by)
+               SELECT $1, asset.id, 'capture', $3, asset.original_filename, $4
+                 FROM capture_assets asset WHERE asset.id=ANY($2::uuid[])
+               ON CONFLICT(project_id, master_id, collection) DO NOTHING`,
+              [req.params.projectId, ids, name, uid],
+            );
+          } else {
+            await client.query(
+              `DELETE FROM asset_refs WHERE project_id=$1 AND master_kind='capture' AND master_id=ANY($2::uuid[]) AND collection=$3`,
+              [req.params.projectId, ids, name],
+            );
+          }
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
+      res.json({ ok: true, updated: ids.length, action });
+    } catch (error: any) {
+      console.error("POST photo-review/organize", error);
+      res.status(Number(error?.statusCode || 500)).json({ error: error?.message || "organize_failed" });
+    }
   });
 
   app.post("/api/projects/:projectId/photo-review/bulk", async (req, res) => {
@@ -3499,6 +3656,32 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
       }
       const host = (process.env.CREATORHUB_PUBLIC_URL || process.env.PUBLIC_APP_URL || "https://app.creatorhubn.com").replace(/\/$/, "");
       const shareUrl = `${host}/client/gallery/${gallery.access_token}`;
+      const proofingRound = Number(gallery.gallery_settings?.proofingRound || 1);
+      const deliveryId = crypto.randomUUID();
+      const receipt = await pool.connect();
+      try {
+        await receipt.query("BEGIN");
+        await receipt.query(
+          `INSERT INTO project_photo_delivery_rounds
+            (id, project_id, gallery_id, proofing_round, client_name, client_email,
+             notify_client, email_sent, asset_count, created_by)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [deliveryId, req.params.projectId, gallery.id, proofingRound, clientName, clientEmail,
+           req.body?.notifyClient !== false, false, assets.rows.length, uid],
+        );
+        for (let index = 0; index < assets.rows.length; index += 1) {
+          await receipt.query(
+            `INSERT INTO project_photo_delivery_assets(delivery_id, asset_id, sort_order)
+             VALUES($1,$2,$3)`, [deliveryId, assets.rows[index].id, index],
+          );
+        }
+        await receipt.query("COMMIT");
+      } catch (error) {
+        await receipt.query("ROLLBACK");
+        throw error;
+      } finally { receipt.release(); }
+      // Persist the immutable delivery selection before contacting an external
+      // mail provider. A retry can therefore never lose which files were sent.
       let emailSent = false;
       if (req.body?.notifyClient !== false) {
         const mail = await sendTransactionalEmail({
@@ -3510,8 +3693,14 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
           projectId: req.params.projectId, sentByUserId: uid, pool,
         });
         emailSent = mail.sent;
+        if (emailSent) {
+          await pool.query(
+            `UPDATE project_photo_delivery_rounds SET email_sent=true WHERE id=$1 AND project_id=$2`,
+            [deliveryId, req.params.projectId],
+          );
+        }
       }
-      res.status(201).json({ ok: true, galleryId: gallery.id, shareUrl, delivered, emailSent, proofingRound: Number(gallery.gallery_settings?.proofingRound || 1) });
+      res.status(201).json({ ok: true, deliveryId, galleryId: gallery.id, shareUrl, delivered, emailSent, proofingRound });
     } catch (error) { console.error("POST photo-deliveries", error); res.status(500).json({ error: "delivery_failed" }); }
   });
 
@@ -5049,6 +5238,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
 
   app.get("/api/projects/:projectId/video-versions/:vid/download", async (req, res) => {
     const uid = await guard(req, res); if (!uid) return;
+    const mediaAccess = await getProjectOwnerMediaAccess(pool, req.params.projectId);
+    if (!mediaAccess.canDownload) return res.status(403).json({ error: "download_window_expired", mediaAccess });
     const row = await pool.query(
       `SELECT version.b2_key,version.file_url,version.version_label,stored.object_key AS storage_object_key
          FROM project_video_versions version
@@ -5199,6 +5390,8 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
   app.get("/api/video-review/:token/versions/:vid/download", async (req, res) => {
     const share = await loadPublicVideoShare(req, res); if (!share) return;
     if (!share.allow_download) return res.status(403).json({ error: "download_not_allowed" });
+    const mediaAccess = await getProjectOwnerMediaAccess(pool, String(share.project_id));
+    if (!mediaAccess.canDownload) return res.status(403).json({ error: "download_window_expired", mediaAccess });
     const row = await pool.query(
       `SELECT version.b2_key,version.file_url,version.version_label,stored.object_key AS storage_object_key
          FROM project_video_versions version

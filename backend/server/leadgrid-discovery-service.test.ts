@@ -356,6 +356,91 @@ describe("Leadgrid Discovery service", () => {
     expect(sequence.some((entry) => entry.includes("ROLLBACK"))).toBe(false);
   });
 
+  it("nekter nye kjøringer når prøvetiden er ute, og ruller tilbake", async () => {
+    // Organisasjonen er skrivebeskyttet: prøvetiden gikk ut i går, ingen
+    // betaling. Da skal ingen ny kjøring opprettes — heller ikke via
+    // kampanje- eller kontinuerlig-veien, som også går gjennom denne
+    // funksjonen.
+    const iGår = new Date(Date.now() - 86_400_000);
+    const { pool, sequence } = transactionPool((sql) => {
+      if (sql.includes("FROM organizations")) {
+        return {
+          rows: [
+            {
+              plan: "trial",
+              stripe_subscription_id: null,
+              trial_started_at: new Date(Date.now() - 8 * 86_400_000),
+              trial_ends_at: iGår,
+              trial_hard_expires_at: null,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+
+    await expect(
+      createDiscoveryRun(pool, {
+        project,
+        userId: "user-a",
+        brief,
+        idempotencyKey: "create-key-utlopt",
+        startImmediately: true,
+      }),
+    ).rejects.toMatchObject({ code: "trial_expired", status: 402 });
+
+    expect(
+      sequence.some((entry) => entry.includes("INSERT INTO leadgrid_discovery_runs")),
+    ).toBe(false);
+    expect(sequence.at(-1)).toBe("ROLLBACK");
+  });
+
+  it("slipper gjennom når organisasjonen betaler, selv om prøvetiden er utløpt", async () => {
+    const { pool, sequence } = transactionPool((sql, values) => {
+      if (sql.includes("FROM organizations")) {
+        return {
+          rows: [
+            {
+              plan: "trial",
+              stripe_subscription_id: "sub_123",
+              trial_started_at: new Date(Date.now() - 40 * 86_400_000),
+              trial_ends_at: new Date(Date.now() - 33 * 86_400_000),
+              trial_hard_expires_at: new Date(Date.now() - 10 * 86_400_000),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes("AND r.idempotency_key = $3")) return { rows: [] };
+      if (sql.includes("INSERT INTO leadgrid_discovery_monthly_usage")) {
+        return { rows: [{ reserved_candidates: 20 }], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO background_jobs")) {
+        return { rows: [{ id: JOB_ID }], rowCount: 1 };
+      }
+      if (sql.includes("UPDATE leadgrid_discovery_capacity_reservations")) {
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("WHERE r.id = $3::uuid")) {
+        return { rows: [runRow({ background_job_id: JOB_ID })] };
+      }
+      return undefined;
+    });
+
+    await createDiscoveryRun(pool, {
+      project,
+      userId: "user-a",
+      brief,
+      idempotencyKey: "create-key-betalende",
+      startImmediately: true,
+    });
+
+    expect(
+      sequence.some((entry) => entry.includes("INSERT INTO leadgrid_discovery_runs")),
+    ).toBe(true);
+  });
+
   it("requires an exact stored profile version and brief for profile-linked runs", async () => {
     const profileId = "77777777-7777-4777-8777-777777777777";
     const connect = vi.fn();
