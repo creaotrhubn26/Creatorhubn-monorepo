@@ -19,6 +19,7 @@
 
 import Observation
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
@@ -32,6 +33,10 @@ final class AppEnvironment {
     let player: PlayerViewModel
     let arrival: ArrivalCoordinator
     let tourProgress: TourProgressTracker
+    /// Tur-modus (pakke 2, item 3): «Start tur» → veiviser → ankomst → spill → neste.
+    let tourMode: TourModeController
+    /// Bakgrunnsvarsel (pakke 2, item 2): opt-in, av som standard.
+    let arrivalNotifications = ArrivalNotificationService()
 
     /// Sted som skal åpnes i Utforsk-stacken: id eller slug (deep link).
     var pendingPoi: PendingPoi?
@@ -68,6 +73,19 @@ final class AppEnvironment {
         self.player = PlayerViewModel(settings: settings, visits: visits)
         self.arrival = ArrivalCoordinator(settings: settings, store: self.store, player: self.player)
         self.tourProgress = TourProgressTracker()
+        self.tourMode = TourModeController(settings: settings)
+        self.arrival.tourMode = self.tourMode
+
+        // Bakgrunnsvarsel (pakke 2, item 2): «Spill av»-handlingen på
+        // varselet, og region-treff videresendt til ArrivalCoordinator (som
+        // avgjør forgrunn/bakgrunn og om innstillingen faktisk er på).
+        self.arrival.notificationService = self.arrivalNotifications
+        self.arrivalNotifications.registerCategory(uiLanguage: settings.uiLanguage)
+        let arrivalRef = self.arrival
+        self.location.onRegionEnter = { poiId in
+            let isForeground = UIApplication.shared.applicationState == .active
+            arrivalRef.handleRegionEnter(poiId: poiId, isForeground: isForeground)
+        }
 
         // Live Activity (pakke 2, item 6): kobler avspiller-manageren til de
         // andre butikkene så den kan vise avstand til neste stopp.
@@ -76,6 +94,18 @@ final class AppEnvironment {
             PlayerActivityManager.shared.configure(location: self.location, store: self.store, visits: self.visits, settings: self.settings)
         }
         #endif
+    }
+
+    /// Bakgrunnsvarsel (pakke 2, item 2): overvåker de nærmeste 20 stedene
+    /// med CLCircularRegion når innstillingen er på og «Alltid»-tillatelsen
+    /// er gitt. Kalles fra posisjonsoppdateringer (RootTabView), akkurat som
+    /// `evaluateArrival()`.
+    func updateArrivalRegions() {
+        guard settings.arrivalNotificationsEnabled, location.isAuthorizedAlways, let origin = location.fix?.coordinate else {
+            location.stopMonitoringAllRegions()
+            return
+        }
+        location.updateMonitoredRegions(store.pois, origin: origin)
     }
 
     /// Kalles når posisjonen oppdateres (RootTabView).
@@ -115,11 +145,45 @@ final class AppEnvironment {
         guard slug != store.slug else { return }
         store.select(slug: slug, lang: settings.guideLanguage)
         arrival.resetForNewArea()
+        tourMode.endIfAreaChanged(to: slug)
     }
 
     /// Kalles når besøksloggen eller stedene endrer seg (RootTabView).
     func evaluateTourProgress() {
         tourProgress.evaluate(area: store.area, pois: store.pois, completedPoiIds: visits.completedPoiIds)
+    }
+
+    /// Kalles sammen med `evaluateTourProgress()`: bokfører fullførte besøk
+    /// for en aktiv tur (pakke 2, item 3). Navigerer ikke selv — se
+    /// TourModeController sitt filhode for hvorfor.
+    func evaluateTourMode() {
+        guard tourMode.isActive, let latest = visits.entries.first(where: \.isCompleted) else { return }
+        tourMode.noteVisitCompletedIfNew(
+            poiId: latest.poiId,
+            route: TourProgress.orderedRoute(store.pois),
+            completedPoiIds: visits.completedPoiIds
+        )
+    }
+
+    /// «Start tur» (pakke 2, item 3): åpner veiviseren mot det første
+    /// ikke-besøkte stedet i områdets rute. Ingenting skjer hvis alt
+    /// allerede er besøkt (feiringen har allerede vist seg da).
+    func startTour() {
+        guard let area = store.area else { return }
+        let route = TourProgress.orderedRoute(store.pois)
+        guard let first = tourMode.start(areaSlug: area.slug, route: route, completedPoiIds: visits.completedPoiIds) else { return }
+        openVeiviser(to: first)
+    }
+
+    /// «Fortsett turen»: åpner veiviseren mot stedet den aktive touren venter på.
+    func resumeTour() {
+        guard let poiId = tourMode.currentPoiId, let poi = store.poi(id: poiId) else { return }
+        openVeiviser(to: poi)
+    }
+
+    /// «Avslutt turen»: rydder tur-tilstanden uten å røre spilleren eller kartet.
+    func endTour() {
+        tourMode.end()
     }
 
     func open(poi: GuidePOI) {
@@ -140,6 +204,13 @@ final class AppEnvironment {
     func openVeiviser(to poi: GuidePOI) {
         player.close()
         pendingVeiviserTarget = .poi(id: poi.id)
+    }
+
+    /// «Spill av» på bakgrunnsvarselet (pakke 2, item 2): starter avspilling
+    /// for stedet varselet gjaldt, hvis det fortsatt finnes i gjeldende område.
+    func playFromNotification(poiId: String) {
+        guard let poi = store.poi(id: poiId) else { return }
+        player.start(poi: poi)
     }
 
     /// senseaidexplore://poi/{slug}?lang=nb fra delingssiden.

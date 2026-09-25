@@ -38,6 +38,17 @@ final class VeiviserViewModel {
     private(set) var hasArrived = false
     private(set) var isHeadingAvailable = false
 
+    // MARK: - Turn-by-turn (pakke 2, item 1)
+
+    /// Manøverteksten for gjeldende steg («Sving til venstre inn på …»),
+    /// nil uten gangrute med steg for målet ennå (samme fallback som
+    /// avstand/retning: kompasset over virker helt fint alene).
+    private(set) var currentStepInstructions: String?
+    private(set) var distanceToManeuverM: Double?
+    private(set) var isOffRoute = false
+    /// Sann når gangruta faktisk har steg (turn-by-turn er tilgjengelig for målet).
+    private(set) var hasRouteSteps = false
+
     /// Kun for enhetstester/inspeksjon av hva som faktisk ble sagt.
     private(set) var lastSpokenText: String?
 
@@ -55,6 +66,14 @@ final class VeiviserViewModel {
     @ObservationIgnored private var wasPointingAtTarget = false
     @ObservationIgnored private var arrivalAnnounced = false
 
+    // MARK: - Turn-by-turn (pakke 2, item 1)
+
+    @ObservationIgnored private let routeService = WalkingRouteService()
+    @ObservationIgnored private let stepAnnouncer: RouteStepAnnouncer
+    @ObservationIgnored private var currentStepIndex = 0
+    @ObservationIgnored private var lastRouteSteps: [WalkingRouteStep] = []
+    @ObservationIgnored private var rerouteGate = OffRouteRerouteGate()
+
     init(
         target: VeiviserTarget,
         store: AreaStore,
@@ -69,6 +88,7 @@ final class VeiviserViewModel {
         self.visits = visits
         self.settings = settings
         self.player = player
+        self.stepAnnouncer = RouteStepAnnouncer(settings: settings, player: player)
     }
 
     func start() {
@@ -82,6 +102,8 @@ final class VeiviserViewModel {
         location.stopUpdatingHeading()
         stopTicker()
         synthesizer.stopSpeaking(at: .immediate)
+        stepAnnouncer.stop()
+        routeService.clear()
     }
 
     /// «Gjenta retning»: knapp/tilgjengelighetshandling. Hopper over mens
@@ -122,8 +144,11 @@ final class VeiviserViewModel {
             relativeAngleDeg = nil
             clockBucket = nil
             compassWordKey = nil
+            clearRouteSteps()
             return
         }
+
+        updateRouteSteps(poi: resolved, coordinate: fix.coordinate)
 
         let distance = Geo.distanceM(from: fix.coordinate, to: resolved.coordinate)
         let bearing = Geo.bearingDegrees(from: fix.coordinate, to: resolved.coordinate)
@@ -214,6 +239,56 @@ final class VeiviserViewModel {
                 .replacingOccurrences(of: "%2$@", with: distanceText)
         }
         return distanceText
+    }
+
+    // MARK: - Turn-by-turn (pakke 2, item 1)
+
+    /// Ber om gangruta gjennom WalkingRouteService (samme throttle som
+    /// kartet: nytt kall bare ved målbytte eller >50 m bevegelse), og
+    /// oppdaterer gjeldende steg, avstand til neste manøver og
+    /// av-rute-status ut fra den. Annonserer stegbytte og av-rute-varsel
+    /// via stepAnnouncer — som fortellingen ellers, snakker aldri over den.
+    private func updateRouteSteps(poi: GuidePOI, coordinate: Coordinate) {
+        routeService.update(poi: poi, origin: coordinate)
+        guard let route = routeService.route, route.poiId == poi.id, !route.steps.isEmpty else {
+            hasRouteSteps = false
+            currentStepInstructions = nil
+            distanceToManeuverM = nil
+            isOffRoute = false
+            return
+        }
+        hasRouteSteps = true
+        if route.steps != lastRouteSteps {
+            lastRouteSteps = route.steps
+            currentStepIndex = 0
+        }
+
+        let progress = RouteProgress.update(coordinate: coordinate, steps: route.steps, previousStepIndex: currentStepIndex)
+        let stepChanged = progress.currentStepIndex != currentStepIndex
+        currentStepIndex = progress.currentStepIndex
+        distanceToManeuverM = progress.distanceToManeuverM
+        isOffRoute = progress.isOffRoute
+        let instructions = route.steps[progress.currentStepIndex].instructions
+        currentStepInstructions = instructions.isEmpty ? nil : instructions
+
+        if stepChanged {
+            stepAnnouncer.hapticTurn()
+            if let currentStepInstructions { stepAnnouncer.announceStep(currentStepInstructions) }
+        }
+        if rerouteGate.update(isOffRoute: progress.isOffRoute) {
+            stepAnnouncer.announceOffRoute()
+        }
+    }
+
+    private func clearRouteSteps() {
+        routeService.clear()
+        hasRouteSteps = false
+        currentStepInstructions = nil
+        distanceToManeuverM = nil
+        isOffRoute = false
+        currentStepIndex = 0
+        lastRouteSteps = []
+        rerouteGate = OffRouteRerouteGate()
     }
 
     private func speak(_ text: String) {

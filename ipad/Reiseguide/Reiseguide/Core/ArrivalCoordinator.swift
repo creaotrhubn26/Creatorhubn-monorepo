@@ -36,6 +36,12 @@ final class ArrivalCoordinator {
     @ObservationIgnored private let settings: AppSettings
     @ObservationIgnored private let store: AreaStore
     @ObservationIgnored private let player: PlayerViewModel
+    /// Satt av AppEnvironment etter at begge er laget (tur-modus, pakke 2
+    /// item 3, trenger å vite om ankomsten er del av en aktiv tur). Nil før
+    /// den er koblet til — auto-start følger da bare `autoStartOnArrival` som før.
+    @ObservationIgnored var tourMode: TourModeController?
+    /// Bakgrunnsvarsel (pakke 2, item 2): satt av AppEnvironment.
+    @ObservationIgnored var notificationService: ArrivalNotificationService?
 
     init(settings: AppSettings, store: AreaStore, player: PlayerViewModel) {
         self.settings = settings
@@ -60,9 +66,16 @@ final class ArrivalCoordinator {
 
         let previouslyPlaying = player.poi
         pendingAnnouncement = poi
+        tourMode?.arrived(at: poi)
 
-        if settings.autoStartOnArrival, !player.hasContent {
+        // Tur-modus (pakke 2, item 3): egen, mer aggressiv auto-start-bryter
+        // som bare gjelder når brukeren aktivt har startet en tur — ellers
+        // gjelder den vanlige «Start automatisk når jeg er framme».
+        let tourAutoPlay = settings.tourModeAutoPlayOnArrival && tourMode?.isActive == true
+        let shouldAutoStart = settings.autoStartOnArrival || tourAutoPlay
+        if shouldAutoStart, !player.hasContent {
             player.start(poi: poi)
+            tourMode?.playbackStarted(for: poi)
         } else {
             card = ArrivalCard(poi: poi, previouslyPlaying: previouslyPlaying)
         }
@@ -86,5 +99,17 @@ final class ArrivalCoordinator {
         guard let poi = card?.poi else { return }
         card = nil
         player.start(poi: poi)
+        tourMode?.playbackStarted(for: poi)
+    }
+
+    /// Bakgrunnsvarsel (pakke 2, item 2): kalt fra `LocationService.onRegionEnter`
+    /// når en overvåket CLCircularRegion utløses — fungerer også i bakgrunnen,
+    /// i motsetning til `handleLocationUpdate` (som trenger løpende `fix`).
+    /// Hopper over i forgrunnen: der viser det vanlige framme-kortet seg selv
+    /// via `handleLocationUpdate`, en varsling i tillegg ville vært dobbelt opp.
+    func handleRegionEnter(poiId: String, isForeground: Bool) {
+        guard settings.arrivalNotificationsEnabled, !isForeground else { return }
+        guard let poi = store.poi(id: poiId), poi.id != player.poi?.id else { return }
+        notificationService?.scheduleArrivalNotification(poi: poi, uiLanguage: settings.uiLanguage)
     }
 }

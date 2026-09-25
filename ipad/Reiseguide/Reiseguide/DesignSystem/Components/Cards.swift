@@ -66,6 +66,9 @@ struct NearbyCard: View {
     let distanceM: Double?
     let isLocked: Bool
     let locale: Locale
+    /// Gangtid (pakke 2, item 4): ekte fra MKDirections eller avstandsestimat
+    /// (WalkingETA.isEstimate), vist under avstanden. Nil før noen av delene finnes.
+    var eta: WalkingETA?
     /// Liten etikett under tittelen, f.eks. «Samme kategori» i tipsene.
     var badge: String?
     /// Veiviseren (pakke 2, item 5): valgfri, egen knapp ved siden av
@@ -103,6 +106,11 @@ struct NearbyCard: View {
                                 .foregroundStyle(contrast.textSecondary)
                         } else if let location = poi.locationLabel {
                             Label(location, systemImage: "mappin")
+                                .font(AppFont.subtitle)
+                                .foregroundStyle(contrast.textSecondary)
+                        }
+                        if let eta {
+                            Label(walkingEtaText(eta), systemImage: "figure.walk")
                                 .font(AppFont.subtitle)
                                 .foregroundStyle(contrast.textSecondary)
                         }
@@ -161,6 +169,24 @@ struct NearbyCard: View {
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
     }
 
+    /// «6 min å gå» eller «6 min å gå (anslag)» (pakke 2, item 4).
+    private func walkingEtaText(_ eta: WalkingETA) -> String {
+        WalkingETAText.visible(
+            eta,
+            localize: { L10n.string($0, lang: locale.identifier) },
+            formatMinutes: { L10n.shortDuration(seconds: Double($0 * 60), locale: locale) }
+        )
+    }
+
+    /// «cirka 6 minutter å gå, anslag» for VoiceOver (pakke 2, item 4).
+    private func walkingEtaSpokenText(_ eta: WalkingETA) -> String {
+        WalkingETAText.spoken(
+            eta,
+            localize: { L10n.string($0, lang: locale.identifier) },
+            formatMinutesSpoken: { L10n.spokenDuration(seconds: Double($0 * 60), locale: locale) }
+        )
+    }
+
     private var accessibilityText: String {
         var parts: [String] = [poi.title]
         if isLocked { parts.append(L10n.string("poi.locked", lang: locale.identifier)) }
@@ -168,6 +194,7 @@ struct NearbyCard: View {
             parts.append(L10n.string("distance.away", lang: locale.identifier)
                 .replacingOccurrences(of: "%@", with: L10n.distance(meters: distanceM, locale: locale)))
         }
+        if let eta { parts.append(walkingEtaSpokenText(eta)) }
         if let rating = poi.rating {
             parts.append(L10n.string("rating.spoken", lang: locale.identifier)
                 .replacingOccurrences(of: "%1$@", with: rating.average.formatted(.number.precision(.fractionLength(1)).locale(locale)))

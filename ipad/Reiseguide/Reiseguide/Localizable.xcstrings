@@ -35,6 +35,23 @@
         }
       }
     },
+    "action.cancel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avbryt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
     "action.close": {
       "extractionState": "manual",
       "localizations": {
@@ -1106,6 +1123,57 @@
         }
       }
     },
+    "detail.lookAround.accessibleHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En visuell 360°-forhåndsvisning av stedet. Ikke tilgjengelig med VoiceOver."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A visual 360° preview of the place. Not accessible with VoiceOver."
+          }
+        }
+      }
+    },
+    "detail.lookAround.accessibleLabel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D-forhåndsvisning"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D preview"
+          }
+        }
+      }
+    },
+    "detail.lookAround.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se stedet i 3D"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the place in 3D"
+          }
+        }
+      }
+    },
     "detail.noContentHint": {
       "extractionState": "manual",
       "localizations": {
@@ -1786,6 +1854,74 @@
         }
       }
     },
+    "map.eta.walking": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk"
+          }
+        }
+      }
+    },
+    "map.eta.walkingEstimate": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå (anslag)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk (estimate)"
+          }
+        }
+      }
+    },
+    "map.eta.walkingEstimateSpoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "cirka %@ å gå, anslag"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "about %@ walk, estimate"
+          }
+        }
+      }
+    },
+    "map.eta.walkingSpoken": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ å gå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ walk"
+          }
+        }
+      }
+    },
     "map.listLabel": {
       "extractionState": "manual",
       "localizations": {
@@ -2224,6 +2360,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "View"
+          }
+        }
+      }
+    },
+    "notification.action.play": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play"
+          }
+        }
+      }
+    },
+    "notification.arrival.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ venter på deg. Trykk «Spill av» for å høre fortellingen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ is waiting for you. Tap “Play” to hear the story."
+          }
+        }
+      }
+    },
+    "notification.arrival.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er ved en severdighet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're at a place"
           }
         }
       }
@@ -3826,6 +4013,108 @@
         }
       }
     },
+    "settings.arrivalNotifications.allow": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow"
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.explanationBody": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SenseAid Explore kan sende deg et varsel når du er ved en severdighet, selv når appen ikke er åpen. Dette krever at du gir «Alltid»-tilgang til posisjonen din. Du kan skru dette av når som helst i Innstillinger. Varselet starter ikke lyd av seg selv — du velger selv å trykke «Spill av»."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SenseAid Explore can send you a notification when you're at a place, even when the app isn't open. This requires granting “Always” location access. You can turn this off anytime in Settings. The notification doesn't start playback on its own — you choose to tap “Play”."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.explanationTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsle meg ved ankomst?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify me on arrival?"
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.footer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Krever «Alltid»-posisjon. Varsler ikke mens appen er åpen — der vises kortet som vanlig. Åpner appen når du trykker «Spill av»; lyden starter først da."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requires Always location access. Doesn't notify while the app is open — the usual card appears there instead. Opens the app when you tap “Play”; playback starts then."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sender et varsel når du er ved en severdighet, selv om appen ikke er åpen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sends a notification when you're at a place, even if the app isn't open."
+          }
+        }
+      }
+    },
+    "settings.arrivalNotifications.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsle meg ved ankomst"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify me on arrival"
+          }
+        }
+      }
+    },
     "settings.autoStartOnArrival": {
       "extractionState": "manual",
       "localizations": {
@@ -4009,6 +4298,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reset demo purchase"
+          }
+        }
+      }
+    },
+    "settings.tourModeAutoPlayOnArrival": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av automatisk under tur"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-play during tour"
           }
         }
       }
@@ -4247,6 +4553,74 @@
           "stringUnit": {
             "state": "translated",
             "value": "You've completed the tour!"
+          }
+        }
+      }
+    },
+    "tour.resume": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsett turen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume tour"
+          }
+        }
+      }
+    },
+    "tour.resumeHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går videre til stedet turen venter på."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continues to the place the tour is waiting at."
+          }
+        }
+      }
+    },
+    "tour.start": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start tur"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start tour"
+          }
+        }
+      }
+    },
+    "tour.startHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Går til det første ikke-besøkte stedet i ruta."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walks to the first place on the route you haven't visited yet."
           }
         }
       }
@@ -4519,6 +4893,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Couldn't find a place to show directions to."
+          }
+        }
+      }
+    },
+    "veiviser.offRoute": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er utenfor ruta. Beregner ny rute."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're off the route. Recalculating."
           }
         }
       }

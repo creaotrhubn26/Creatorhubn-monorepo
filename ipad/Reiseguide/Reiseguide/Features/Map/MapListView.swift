@@ -11,6 +11,9 @@ import SwiftUI
 struct MapListView: View {
     let items: [(poi: GuidePOI, distanceM: Double?)]
     let locale: Locale
+    /// Gangtid per rad (pakke 2, item 4): ekte for de nærmeste, ellers
+    /// avstandsestimat. Nil (standard) skjuler linjen, som før.
+    var eta: ((poi: GuidePOI, distanceM: Double?)) -> WalkingETA? = { _ in nil }
     let onSelect: (GuidePOI) -> Void
 
     @Environment(AppEnvironment.self) private var env
@@ -31,6 +34,7 @@ struct MapListView: View {
                         distanceM: item.distanceM,
                         isLocked: env.isLocked(item.poi),
                         locale: locale,
+                        eta: eta(item),
                         onPlay: { play(item.poi) }
                     ) {
                         onSelect(item.poi)

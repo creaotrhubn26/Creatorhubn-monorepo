@@ -17,11 +17,31 @@ struct WalkingRoute: Sendable, Equatable {
     let coordinates: [Coordinate]
     let expectedTravelTimeS: Double
     let distanceM: Double
+    /// Manøvrene langs ruta (turn-by-turn, pakke 2 item 1): fra MKRoute.steps.
+    /// Tom for luftlinje-reserven (MapRouteLine.resolve) og eldre kall.
+    let steps: [WalkingRouteStep]
+
+    init(poiId: String, coordinates: [Coordinate], expectedTravelTimeS: Double, distanceM: Double, steps: [WalkingRouteStep] = []) {
+        self.poiId = poiId
+        self.coordinates = coordinates
+        self.expectedTravelTimeS = expectedTravelTimeS
+        self.distanceM = distanceM
+        self.steps = steps
+    }
 
     var walkingMinutes: Int { Self.wholeMinutes(seconds: expectedTravelTimeS) }
 
     /// Hele minutter, minst 1 («0 min» hjelper ingen).
     static func wholeMinutes(seconds: Double) -> Int { max(1, Int((seconds / 60).rounded())) }
+}
+
+/// Én manøver langs gangruta («Sving til venstre inn på …»), med sin egen
+/// del av polylinjen — brukt både til å annonsere neste sving og til
+/// av-rute-deteksjon for det aktuelle steget (Geo.distanceToSegmentM).
+struct WalkingRouteStep: Sendable, Equatable {
+    let instructions: String
+    let distanceM: Double
+    let coordinates: [Coordinate]
 }
 
 /// Hva et rutekall ble bedt om: sted og startpunkt.
