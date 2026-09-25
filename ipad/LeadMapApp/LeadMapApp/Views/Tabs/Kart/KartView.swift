@@ -6097,7 +6097,11 @@ struct KartView: View {
     /// segmenter foran deg. Gir stabil heading-up som følger veien (ikke luftlinje).
     private func navRouteHeading(from me: CLLocationCoordinate2D, dest: CLLocationCoordinate2D) -> Double {
         guard let route = navRoute, route.count > 1 else {
-            return KartLocationManager.shared.heading ?? bearing(me, dest)
+            // Uten rute-polylinje: bruk den valgte retningen. Før falt dette
+            // tilbake til `heading` — kursen — som er nil når du står stille,
+            // og kameraet pekte da rett mot målet gjennom bygningene i stedet
+            // for dit du faktisk så.
+            return KartLocationManager.shared.retning?.grader ?? bearing(me, dest)
         }
         // nærmeste rute-punkt
         var bestI = 0

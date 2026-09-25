@@ -21,6 +21,109 @@ import UIKit
 /// Bevegelsesform slik Apples motion-koprosessor klassifiserer den.
 enum MotionTransport: String, Sendable { case walking, cycling, automotive }
 
+
+/// Hvor retningen kom fra. Vises ikke til brukeren, men avgjør hvor bredt
+/// vi tegner lyskjeglen — og gjør det mulig å se i en logg hvorfor kartet
+/// pekte som det gjorde.
+enum HeadingKilde: String, Sendable {
+    /// Magnetometeret. Virker stillestående.
+    case kompass
+    /// Kurs over bakken fra GPS. Krever fart, men er urokkelig i bil.
+    case kurs
+    /// Siste kjente kurs, holdt fast. En bil som står i kø har ikke snudd
+    /// seg, og kompasset ligger i en magnetholder.
+    case holdt
+}
+
+/// Retningen vi faktisk stoler på akkurat nå.
+struct Retning: Sendable, Equatable {
+    let grader: CLLocationDirection
+    let kilde: HeadingKilde
+    /// Usikkerhet i grader. Mater bredden på lyskjeglen.
+    let usikkerhet: CLLocationDirection
+}
+
+/// Valget mellom kompass og GPS-kurs.
+///
+/// Det finnes ingen kilde som er best overalt:
+///
+/// **Kompasset** virker når du står stille — det er hele poenget med
+/// lyskjeglen. Men det forstyrres av metall og magneter. En MagSafe-holder
+/// i en bil er bokstavelig talt en magnet mot magnetometeret, og bilens eget
+/// karosseri og høyttalere gjør resten.
+///
+/// **GPS-kursen** er nærmest perfekt i 60 km/t og bryr seg ikke om magneter.
+/// Men den er kursen over BAKKEN: den vet bare hvor du flytter deg, ikke
+/// hvilken vei du ser, og den finnes ikke i det hele tatt når du står stille.
+///
+/// Derfor velger vi etter reisemåte og fart, ikke etter én regel:
+///
+///   gange            kompass — fotgjengere snur seg på stedet
+///   sykkel i fart    kurs — roligere enn et kompass som vugger med styret
+///   sykkel stille    kompass — lite metall, og sykkelen kan trilles rundt
+///   bil i fart       kurs
+///   bil i kø         holdt kurs — bilen har ikke snudd seg, og kompasset
+///                    ligger i magnetholderen
+///
+/// Terskelen har hysterese. Uten den flipper kilden fram og tilbake hver
+/// gang farten sitrer rundt grensen, og kartet rykker.
+enum Retningsvalg {
+    /// Over denne farten er GPS-kursen bedre enn kompasset. 2,2 m/s er
+    /// ca. 8 km/t — over rask gange, under sykkelfart.
+    static let kursTerskelOpp: Double = 2.2
+    /// Under denne farten går vi tilbake til kompasset. Gapet opp til
+    /// `kursTerskelOpp` er hysteresen.
+    static let kursTerskelNed: Double = 1.2
+
+    /// Kompasset får et gulv på usikkerheten når det ligger i en bil.
+    /// Vi kan ikke måle magnetforstyrrelsen direkte, men vi vet at den er der.
+    static let kompassUsikkerhetIKjoretoy: Double = 35
+
+    /// Velger kilde. Ren funksjon — all tilstand inn, ingen ut, så den kan
+    /// testes uten CoreLocation.
+    ///
+    /// - Parameter brukteKurs: om forrige valg landet på kurs. Bærer
+    ///   hysteresen.
+    /// - Returns: valgt retning (nil når vi ikke vet noe), og den nye
+    ///   `brukteKurs` som kalleren skal ta vare på.
+    static func velg(
+        kompass: Retning?,
+        kurs: Retning?,
+        sisteKurs: Retning?,
+        fart: Double,
+        transport: MotionTransport?,
+        brukteKurs: Bool
+    ) -> (retning: Retning?, brukerKurs: Bool) {
+        let iFart = brukteKurs ? (fart > kursTerskelNed) : (fart > kursTerskelOpp)
+
+        // Fotgjengere: kompasset, alltid. En som går snur hodet og kroppen
+        // uten å flytte seg, og det er nettopp det kjeglen skal vise.
+        if transport == .walking {
+            return (kompass ?? kurs ?? sisteKurs, false)
+        }
+
+        let iKjoretoy = transport == .cycling || transport == .automotive
+        let dempetKompass = kompass.map { k -> Retning in
+            guard iKjoretoy else { return k }
+            return Retning(grader: k.grader, kilde: k.kilde,
+                           usikkerhet: max(k.usikkerhet, kompassUsikkerhetIKjoretoy))
+        }
+
+        if iFart, let kurs {
+            return (kurs, true)
+        }
+
+        // Stillestående bil: hold kursen. Kompasset i en magnetholder lyver
+        // mer enn en kurs som er noen sekunder gammel.
+        if transport == .automotive, let sisteKurs {
+            return (Retning(grader: sisteKurs.grader, kilde: .holdt,
+                            usikkerhet: sisteKurs.usikkerhet), false)
+        }
+
+        return (dempetKompass ?? kurs ?? sisteKurs, false)
+    }
+}
+
 @MainActor
 @Observable
 final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked Sendable {
@@ -66,6 +169,15 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
     /// kjeglen skal tegnes bredere i stedet for å lyve om presisjon.
     private(set) var headingAccuracy: CLLocationDirection = -1
     private var headingRunning = false
+
+    /// Retningen kartet skal bruke — kompass eller GPS-kurs, valgt av
+    /// `Retningsvalg`. Dette er den lyskjeglen og nav-kameraet leser.
+    private(set) var retning: Retning?
+    /// Siste gyldige GPS-kurs, beholdt etter at du har stoppet. En bil i kø
+    /// har ikke snudd seg.
+    private var sisteKurs: Retning?
+    /// Bærer hysteresen i kildevalget.
+    private var brukerKurs = false
     private var isMovingResetTask: Task<Void, Never>?
 
     override init() {
@@ -103,6 +215,7 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
         #endif
         deviceHeading = nil
         headingAccuracy = -1
+        oppdaterRetning()
     }
 
     /// CoreLocation antar portrett med mindre vi sier noe annet.
@@ -179,6 +292,33 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
         #endif
     }
 
+    /// Regner ut hvilken retning kartet skal bruke nå.
+    ///
+    /// Kalles ved hver posisjon, hver kompassmåling og når bevegelsen dør ut,
+    /// fordi alle tre kan snu valget.
+    private func oppdaterRetning() {
+        let kompassRetning = deviceHeading.map {
+            Retning(grader: $0, kilde: .kompass,
+                    // CoreLocation sender -1 før kalibrering. Da vet vi
+                    // ingenting, og 20 grader er en ærlig gjetning.
+                    usikkerhet: headingAccuracy >= 0 ? headingAccuracy : 20)
+        }
+        // `heading` er live kurs — den nulles når du står stille. `sisteKurs`
+        // overlever, og er det «holdt» bygger på.
+        let liveKurs = heading.map {
+            Retning(grader: $0, kilde: .kurs, usikkerhet: sisteKurs?.usikkerhet ?? 12)
+        }
+        let valg = Retningsvalg.velg(
+            kompass: kompassRetning,
+            kurs: liveKurs,
+            sisteKurs: sisteKurs,
+            fart: speedMps ?? 0,
+            transport: motionTransport,
+            brukteKurs: brukerKurs)
+        retning = valg.retning
+        brukerKurs = valg.brukerKurs
+    }
+
     // MARK: - CLLocationManagerDelegate
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
@@ -196,6 +336,7 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
         let coord = loc.coordinate
         let speed = loc.speed  // m/s, -1 hvis ugyldig
         let course = loc.course  // grader, -1 hvis ugyldig
+        let courseAcc = loc.courseAccuracy  // grader, negativ hvis ugyldig
         Task { @MainActor in
             self.currentCoordinate = coord
 
@@ -205,7 +346,11 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
             if speed > 0.5 {
                 self.isMoving = true
                 self.speedMps = speed
-                if course >= 0 { self.heading = course }
+                if course >= 0 {
+                    self.heading = course
+                    self.sisteKurs = Retning(grader: course, kilde: .kurs,
+                                             usikkerhet: courseAcc >= 0 ? courseAcc : 12)
+                }
                 // Restart reset-timeren ved hver bevegelse
                 self.isMovingResetTask?.cancel()
                 self.isMovingResetTask = Task { @MainActor [weak self] in
@@ -214,8 +359,13 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
                     self?.isMoving = false
                     self?.heading = nil
                     self?.speedMps = nil
+                    // Bevegelsen døde ut: kilden kan ha byttet til kompass.
+                    // `sisteKurs` beholdes med vilje — bilen står, men peker
+                    // fortsatt samme vei.
+                    self?.oppdaterRetning()
                 }
             }
+            self.oppdaterRetning()
         }
     }
 
@@ -228,6 +378,7 @@ final class KartLocationManager: NSObject, CLLocationManagerDelegate, @unchecked
         Task { @MainActor in
             self.deviceHeading = grader
             self.headingAccuracy = nøyaktighet
+            self.oppdaterRetning()
         }
     }
 

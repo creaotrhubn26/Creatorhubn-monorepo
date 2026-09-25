@@ -142,9 +142,11 @@ struct MeMapPin: View {
     var body: some View {
         ZStack {
             // Lyskjegle — bak alt annet, så den aldri dekker avataren.
-            if let peiling = location.deviceHeading {
-                HeadingCone(skjermgrader: peiling - kartHeading,
-                            usikkerhet: location.headingAccuracy,
+            // Retningen er allerede valgt mellom kompass og GPS-kurs etter
+            // reisemåte og fart; her bryr vi oss bare om at den finnes.
+            if let peiling = location.retning {
+                HeadingCone(skjermgrader: peiling.grader - kartHeading,
+                            usikkerhet: peiling.usikkerhet,
                             farge: accentColor)
             }
 
