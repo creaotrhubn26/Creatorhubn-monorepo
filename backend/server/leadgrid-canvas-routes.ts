@@ -17,7 +17,9 @@ import {
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
 import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
-import { koblingerFor, lagKobling } from "./leadgrid-nexus-koblinger.js";
+import {
+  koblingerFor, lagKobling, tellKoblingsbruk,
+} from "./leadgrid-nexus-koblinger.js";
 import {
   CanvasRateLimitUnavailableError,
   consumeSharedCanvasRateLimit,
@@ -948,6 +950,43 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  /**
+   * Teller at koblinger ble vist, og hvilken som ble åpnet.
+   *
+   * Uten dette er rekkefølgen i panelet utviklerens gjetning for alltid.
+   * Ingen notat-ID og ingen bruker-ID sendes — bare kildene.
+   */
+  app.post("/api/leadgrid/canvas/koblinger/bruk", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-bruk", NEXUS_KVOTER.skriv))) return;
+      const b = (req.body ?? {}) as Record<string, unknown>;
+      const gyldige = new Set(["lead", "sted", "mote", "selskap", "manuell", "person"]);
+      const vist = Array.isArray(b.vist)
+        ? b.vist.map(String).filter((k) => gyldige.has(k)).slice(0, 100)
+        : [];
+      const aapnetRaa = typeof b.aapnet === "string" ? b.aapnet : null;
+      const aapnet = aapnetRaa && gyldige.has(aapnetRaa) ? aapnetRaa : null;
+      if (vist.length === 0 && !aapnet) { res.status(204).end(); return; }
+      await ensureSchema(pool);
+      await tellKoblingsbruk(pool, {
+        organizationId: scope.organizationId,
+        projectId: scope.projectId,
+        vist: vist as Parameters<typeof tellKoblingsbruk>[1]["vist"],
+        aapnet: aapnet as Parameters<typeof tellKoblingsbruk>[1]["aapnet"],
+      });
+      res.status(204).end();
+    } catch (e) {
+      // Telling er ikke verdt en feilmelding til brukeren.
+      console.warn("[nexus] kunne ikke telle koblingsbruk:", e);
+      res.status(204).end();
+    }
+  });
+
   app.post("/api/leadgrid/canvas/:id/koblinger", async (req, res) => {
     try {
       const session = await requireUserSession(req, res);
