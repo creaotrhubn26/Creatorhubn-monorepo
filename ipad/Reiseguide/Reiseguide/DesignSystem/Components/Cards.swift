@@ -72,6 +72,10 @@ struct NearbyCard: View {
     /// hovedknappen. Nil (standard) lar de andre kallstedene (listen, Mine
     /// steder, tipsene etter besøket) være helt uendret.
     var onShowDirections: (() -> Void)?
+    /// «Færre trykk til lyd» (avspiller-redesignet, item 5): valgfri
+    /// direkte-avspill-knapp, samme mønster som `onShowDirections`. Nil
+    /// (standard) lar andre kallsteder være uendret.
+    var onPlay: (() -> Void)?
     let action: () -> Void
 
     @Environment(\.contrastColors) private var contrast
@@ -131,6 +135,16 @@ struct NearbyCard: View {
             .accessibilityLabel(Text(accessibilityText))
             .accessibilityAddTraits(.isButton)
 
+            if let onPlay {
+                Button(action: onPlay) {
+                    Image(systemName: isLocked ? "lock.fill" : "play.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppColor.accent)
+                        .frame(width: AppSpacing.minTapTarget, height: AppSpacing.minTapTarget)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(Text(L10n.string("action.playPoi", lang: locale.identifier).replacingOccurrences(of: "%@", with: poi.title)))
+            }
             if let onShowDirections {
                 Button(action: onShowDirections) {
                     Image(systemName: "location.north.circle.fill")
@@ -140,9 +154,9 @@ struct NearbyCard: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(Text("map.showDirections"))
-                .padding(.trailing, AppSpacing.s)
             }
         }
+        .padding(.trailing, onPlay != nil || onShowDirections != nil ? AppSpacing.s : 0)
         .background(AppColor.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous).strokeBorder(contrast.border, lineWidth: 1))
     }

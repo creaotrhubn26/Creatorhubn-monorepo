@@ -35,6 +35,10 @@ struct ReiseguideApp: App {
                         Task { await environment.visitSync.flush() }
                         // Ny lyd og nye steder uten å starte appen på nytt.
                         Task { await environment.store.refreshIfStale(lang: environment.settings.guideLanguage) }
+                    } else {
+                        // «Fortsett der du slapp» (item 3): appen kan bli drept i
+                        // bakgrunnen uten en eksplisitt pause eller lukking av spilleren.
+                        environment.player.persistPlaybackPositionForBackground()
                     }
                 }
         }
@@ -55,6 +59,9 @@ struct RootTabView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var explorePath = NavigationPath()
     @State private var selectedTab: AppTab = .explore
+    /// «Færre trykk til lyd» (item 5): framme-kortets «Spill av» respekterer
+    /// låsen akkurat som detaljsiden, i stedet for å starte avspilling direkte.
+    @State private var lockedArrivalPoi: GuidePOI?
 
     init() {
         // Tab bar: bgBase med 0,5 pt topplinje i border (5.9).
@@ -106,6 +113,19 @@ struct RootTabView: View {
         .fullScreenCover(isPresented: Bindable(env.player).isPresented) {
             PlayerView()
         }
+        // Låst sted i framme-kortet (item 5): paywall i stedet for å starte
+        // avspilling direkte, akkurat som detaljsiden.
+        .sheet(item: $lockedArrivalPoi) { poi in
+            MockPaywallSheet(areaId: poi.areaId)
+        }
+        // «Gå til neste stopp» (avspiller-redesignet, punkt 2): spilleren er
+        // allerede lukket av `env.openVeiviser(to:)`; bare naviger hit.
+        .onChange(of: env.pendingVeiviserTarget) { _, target in
+            guard let target else { return }
+            env.pendingVeiviserTarget = nil
+            selectedTab = .explore
+            explorePath.append(Route.veiviser(target))
+        }
         // «Du er framme» (pakke 1, punkt 1): ren logikk i
         // Core/ProximityMonitor.swift og Core/ArrivalCoordinator.swift, bare
         // en liten hook her som driver den fra posisjonsoppdateringer.
@@ -114,7 +134,7 @@ struct RootTabView: View {
                 ArrivalCardView(
                     card: card,
                     locale: env.settings.locale,
-                    onPlay: { env.arrival.playCardPoi() },
+                    onPlay: { playArrivalCardPoi(card.poi) },
                     onDismiss: { env.arrival.dismissCard() }
                 )
                 .padding(.bottom, env.player.hasContent && !env.player.isPresented ? 64 : AppSpacing.s)
@@ -162,5 +182,15 @@ struct RootTabView: View {
         env.pendingPoi = nil
         selectedTab = .explore
         explorePath = NavigationPath([Route.poi(poi.id)])
+    }
+
+    /// «Spill av»/«Bytt til …» på framme-kortet (item 5): respekter låsen
+    /// akkurat som detaljsiden, i stedet for å starte avspilling direkte.
+    private func playArrivalCardPoi(_ poi: GuidePOI) {
+        if env.isLocked(poi) {
+            lockedArrivalPoi = poi
+        } else {
+            env.arrival.playCardPoi()
+        }
     }
 }

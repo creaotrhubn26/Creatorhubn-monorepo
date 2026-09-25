@@ -35,6 +35,10 @@ struct MapView: View {
     /// så snart tillatelsen og første posisjon er på plass.
     @State private var pendingFollow = false
     @State private var routeService = WalkingRouteService()
+    /// «Færre trykk til lyd» (avspiller-redesignet, item 5): nærmeste-kortets
+    /// direkte-avspill-knapp åpner denne i stedet for å starte avspilling
+    /// direkte, når stedet er låst — akkurat som detaljsiden.
+    @State private var paywallPoi: GuidePOI?
 
     private var locale: Locale { env.settings.locale }
     private var uiLanguage: String { env.settings.uiLanguage }
@@ -136,6 +140,18 @@ struct MapView: View {
             case .denied: pendingFollow = false
             case .notDetermined: break
             }
+        }
+        .sheet(item: $paywallPoi) { poi in
+            MockPaywallSheet(areaId: poi.areaId)
+        }
+    }
+
+    /// Direkte-avspill (item 5): paywall i stedet for avspilling når stedet er låst.
+    private func play(_ poi: GuidePOI) {
+        if env.isLocked(poi) {
+            paywallPoi = poi
+        } else {
+            env.player.start(poi: poi)
         }
     }
 
@@ -249,7 +265,8 @@ struct MapView: View {
                     distanceM: item.distanceM,
                     isLocked: env.isLocked(item.poi),
                     locale: locale,
-                    onShowDirections: { path.append(Route.veiviser(.poi(id: item.poi.id))) }
+                    onShowDirections: { path.append(Route.veiviser(.poi(id: item.poi.id))) },
+                    onPlay: { play(item.poi) }
                 ) {
                     path.append(Route.poi(item.poi.id))
                 }

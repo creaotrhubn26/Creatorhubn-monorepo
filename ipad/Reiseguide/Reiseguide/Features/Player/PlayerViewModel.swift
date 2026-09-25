@@ -20,84 +20,70 @@
 // Uten lydfil leses manuset opp av telefonen (SpeechNarrator via AudioEngine).
 // Da annonseres ikke kapittelbytte (det ville snakket over opplesningen);
 // med VoiceOver leses kapitteltittelen i stedet før teksten.
+//
+// Avspiller-redesignet (23.09.2026), to punkter i denne fila (2, 4 og 5 er
+// stort sett View-laget — se PlayerView.swift, EndOfVisitCard.swift,
+// PlayerChapterList.swift, Cards.swift):
+//   1. «Rolig slutt på besøket»: fortellingens naturlige slutt merker besøket
+//      fullført og avslutter Live Activity som før, men åpner IKKE
+//      etter-besøket med det samme — `narrationEndedVisit` viser i stedet et
+//      avslutningskort i spilleren (EndOfVisitCard.swift). Den eksplisitte
+//      «Avslutt besøket»-knappen bruker fortsatt `finishVisit()` og åpner
+//      arket direkte, som før.
+//   3. «Fortsett der du slapp»: posisjonen lagres (PlayerViewModel+Resume.swift)
+//      i PlaybackResumeStore (Core) ved pause, lukking, kapittelbytte og
+//      bakgrunn; `start(poi:)` gjenopptar den om den er verdt å tilby
+//      (PlaybackResumeDecision).
+// Live Activity-koden (punkt 6, pakke 2) er flyttet til
+// PlayerViewModel+LiveActivity.swift; kapittellasting/tikkeren til
+// +Playback.swift; CaptionSegment/CaptionTimeline til Core/CaptionTimeline.swift
+// — for å holde denne fila under SwiftLint sin file_length/type_body_length-grense.
 
 import Foundation
 import Observation
-
-struct CaptionSegment: Sendable, Equatable {
-    let startS: Double
-    let endS: Double
-    let text: String
-}
-
-enum CaptionTimeline {
-    /// Bygger tidslinje fra ekte cues, ellers fra manuset (jevnt fordelt).
-    static func build(chapter: GuideChapter) -> (segments: [CaptionSegment], isEstimated: Bool) {
-        let real = (chapter.captions?.cues ?? []).compactMap { cue -> CaptionSegment? in
-            guard let start = cue.startS, let end = cue.endS, let text = cue.text, end > start, !text.isEmpty else { return nil }
-            return CaptionSegment(startS: start, endS: end, text: text)
-        }
-        if !real.isEmpty { return (real.sorted { $0.startS < $1.startS }, false) }
-        return (estimate(text: chapter.scriptText, durationS: chapter.playbackDurationS), true)
-    }
-
-    static func estimate(text: String, durationS: Double) -> [CaptionSegment] {
-        let sentences = splitSentences(text)
-        guard !sentences.isEmpty, durationS > 0 else { return [] }
-        let totalChars = Double(sentences.reduce(0) { $0 + $1.count })
-        var cursor = 0.0
-        return sentences.map { sentence in
-            let share = totalChars > 0 ? Double(sentence.count) / totalChars : 1 / Double(sentences.count)
-            let start = cursor
-            cursor += durationS * share
-            return CaptionSegment(startS: start, endS: cursor, text: sentence)
-        }
-    }
-
-    static func splitSentences(_ text: String) -> [String] {
-        var result: [String] = []
-        var current = ""
-        for character in text {
-            current.append(character)
-            if ".!?".contains(character) {
-                let trimmed = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty { result.append(trimmed) }
-                current = ""
-            }
-        }
-        let rest = current.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !rest.isEmpty { result.append(rest) }
-        return result
-    }
-
-    static func segment(at seconds: Double, in segments: [CaptionSegment]) -> CaptionSegment? {
-        segments.first { seconds >= $0.startS && seconds < $0.endS }
-    }
-}
 
 @MainActor
 @Observable
 final class PlayerViewModel {
     static let rates: [Double] = [0.8, 1, 1.25, 1.5]
 
-    private(set) var poi: GuidePOI?
-    private(set) var variantKind: VariantKind = .narration
-    private(set) var chapterIndex = 0
-    private(set) var positionS: Double = 0
+    // Disse har bare intern (modulvid) skrivetilgang, ikke `private`: noen
+    // features er delt ut i egne filer (PlayerViewModel+Playback.swift,
+    // +Resume.swift, EndOfVisitCard.swift, ResumeHintBar.swift,
+    // PlayerChapterList.swift) for å holde denne fila under SwiftLint sin
+    // file_length/type_body_length-grense. Utsiden (View-laget) skal
+    // fortsatt bare bruke handlingene under, ikke sette disse direkte.
+    var poi: GuidePOI?
+    var variantKind: VariantKind = .narration
+    var chapterIndex = 0
+    var positionS: Double = 0
     private(set) var isPlaying = false
-    private(set) var captionSegments: [CaptionSegment] = []
-    private(set) var captionsAreEstimated = false
+    var captionSegments: [CaptionSegment] = []
+    var captionsAreEstimated = false
     /// Kapittelbytte annonseres én gang (8.4, punkt 6); visningen nullstiller.
     var pendingChapterAnnouncement: String?
     var isPresented = false
     var audioDescriptionExpanded = false
 
-    /// Besøket som nettopp ble fullført; avspilleren viser etter-besøket-arket.
+    /// Besøket som nettopp ble fullført via «Avslutt besøket»; avspilleren
+    /// åpner etter-besøket-arket med det samme.
     var finishedVisit: FinishedVisit?
+    /// Fortellingen tok slutt av seg selv (item 1, «Rolig slutt på besøket»):
+    /// besøket er allerede merket fullført, men i stedet for å åpne arket med
+    /// det samme viser spilleren et avslutningskort brukeren selv velger fra
+    /// (EndOfVisitCard.swift).
+    var narrationEndedVisit: FinishedVisit?
+    /// Annonseres én gang når avslutningskortet vises (samme mønster som
+    /// `pendingChapterAnnouncement`).
+    var pendingVisitEndedAnnouncement: String?
     /// Loggoppføringen for det som spilles nå.
-    private(set) var currentVisitId: String?
+    var currentVisitId: String?
     /// Spørsmål underveis for kapittelet som spilles.
     let prompts = ChapterPromptController()
+
+    /// «Fortsetter fra …» (item 3): vises når `start(poi:)` hopper til en
+    /// lagret posisjon. Nil til det skjer, eller etter at kortet er lukket.
+    var resumeHint: ResumeHint?
 
     struct FinishedVisit: Identifiable, Equatable {
         let entryId: String
@@ -105,14 +91,21 @@ final class PlayerViewModel {
         var id: String { entryId }
     }
 
-    @ObservationIgnored private let engine = AudioEngine()
-    @ObservationIgnored private let settings: AppSettings
-    @ObservationIgnored private let visits: VisitLogStore
-    @ObservationIgnored private var ticker: Task<Void, Never>?
+    struct ResumeHint: Equatable {
+        /// Posisjonen slik den var lagret (til visningen: «Fortsetter fra 2:14»).
+        let savedPositionS: Double
+    }
 
-    init(settings: AppSettings, visits: VisitLogStore) {
+    @ObservationIgnored let engine = AudioEngine()
+    @ObservationIgnored let settings: AppSettings
+    @ObservationIgnored let visits: VisitLogStore
+    @ObservationIgnored let resume: PlaybackResumeStore
+    @ObservationIgnored var ticker: Task<Void, Never>?
+
+    init(settings: AppSettings, visits: VisitLogStore, resume: PlaybackResumeStore = PlaybackResumeStore()) {
         self.settings = settings
         self.visits = visits
+        self.resume = resume
         engine.onRemotePlay = { [weak self] in self?.play() }
         engine.onRemotePause = { [weak self] in self?.pause() }
         engine.onRemoteSkip = { [weak self] delta in self?.skip(by: delta) }
@@ -122,15 +115,26 @@ final class PlayerViewModel {
 
     var variant: GuideVariant? {
         guard let poi else { return nil }
-        switch variantKind {
-        case .narration: return poi.variants.narration ?? poi.variants.audioDescription
-        case .audioDescription: return poi.variants.audioDescription ?? poi.variants.narration
-        }
+        return Self.variant(kind: variantKind, poi: poi)
     }
+
+    /// Antall kapitler er over 1: kapittellisten og forrige/neste-knappene
+    /// (item 4) vises bare da.
+    var hasMultipleChapters: Bool { (variant?.chapters.count ?? 0) > 1 }
 
     var chapter: GuideChapter? {
         guard let variant, variant.chapters.indices.contains(chapterIndex) else { return nil }
         return variant.chapters[chapterIndex]
+    }
+
+    /// Samme regel som `variant`, men for en vilkårlig variant: brukt av
+    /// `start(poi:)` til å sjekke en lagret gjenoppta-posisjon uten å bytte
+    /// `variantKind` før vi vet om posisjonen faktisk er verdt å bruke.
+    private static func variant(kind: VariantKind, poi: GuidePOI) -> GuideVariant? {
+        switch kind {
+        case .narration: return poi.variants.narration ?? poi.variants.audioDescription
+        case .audioDescription: return poi.variants.audioDescription ?? poi.variants.narration
+        }
     }
 
     var durationS: Double { chapter?.playbackDurationS ?? 0 }
@@ -164,14 +168,28 @@ final class PlayerViewModel {
 
     func start(poi: GuidePOI, kind: VariantKind = .narration) {
         self.poi = poi
-        variantKind = kind
-        chapterIndex = 0
         audioDescriptionExpanded = false
         finishedVisit = nil
+        narrationEndedVisit = nil
+        resumeHint = nil
         currentVisitId = visits.recordStart(poi: poi).id
         isPresented = true
         prompts.resetSession()
-        loadChapter(announce: false)
+
+        // «Fortsett der du slapp» (item 3): en lagret posisjon som fortsatt
+        // er meningsfull vinner over `kind`-parameteren (samme sted, kalt fra
+        // detaljsiden, kartet, framme-varselet osv. — alle skal fortsette).
+        if let resumed = PlaybackResumeDecision.resolve(saved: resume.position(for: poi.id), poi: poi) {
+            variantKind = resumed.variantKind
+            chapterIndex = resumed.chapterIndex
+            loadChapter(announce: false)
+            seek(to: resumed.startPositionS)
+            resumeHint = ResumeHint(savedPositionS: resumed.savedPositionS)
+        } else {
+            variantKind = kind
+            chapterIndex = 0
+            loadChapter(announce: false)
+        }
         play()
     }
 
@@ -179,11 +197,30 @@ final class PlayerViewModel {
     func finishVisit() {
         guard let poi else { return }
         pause()
+        narrationEndedVisit = nil
         let entryId = currentVisitId ?? visits.recordStart(poi: poi).id
         currentVisitId = entryId
         visits.markCompleted(entryId: entryId)
+        resume.clear(poiId: poi.id)
         finishedVisit = FinishedVisit(entryId: entryId, poi: poi)
         endLiveActivity()
+    }
+
+    /// Fortellingen tok slutt av seg selv (item 1, «Rolig slutt på besøket»):
+    /// besøket merkes fullført og Live Activity avsluttes akkurat som
+    /// «Avslutt besøket», men etter-besøket-arket åpnes IKKE med det samme —
+    /// `narrationEndedVisit` viser et avslutningskort i spilleren i stedet
+    /// (EndOfVisitCard.swift), og brukeren velger selv veien videre.
+    private func completeNarrationEnd() {
+        guard let poi else { return }
+        let entryId = currentVisitId ?? visits.recordStart(poi: poi).id
+        currentVisitId = entryId
+        visits.markCompleted(entryId: entryId)
+        resume.clear(poiId: poi.id)
+        endLiveActivity()
+        narrationEndedVisit = FinishedVisit(entryId: entryId, poi: poi)
+        pendingVisitEndedAnnouncement = L10n.string("player.visitEnded.announcement", lang: settings.uiLanguage)
+            .replacingOccurrences(of: "%@", with: poi.title)
     }
 
     func selectVariant(_ kind: VariantKind) {
@@ -216,6 +253,7 @@ final class PlayerViewModel {
         isPlaying = false
         stopTicker()
         startOrUpdateLiveActivity(isPlaying: false)
+        saveResumePosition()
     }
 
     func togglePlayPause() {
@@ -251,12 +289,13 @@ final class PlayerViewModel {
             // Siste kapittel i fortellingen er slutten på besøket; synstolking
             // alene avslutter ikke, den kan høres midt i.
             if variantKind == .narration || poi?.variants.narration == nil {
-                finishVisit()
+                completeNarrationEnd()
             }
             return
         }
         chapterIndex += 1
         loadChapter(announce: true)
+        saveResumePosition()
         play()
     }
 
@@ -271,6 +310,7 @@ final class PlayerViewModel {
     }
 
     func close() {
+        saveResumePosition()
         isPresented = false
     }
 
@@ -279,112 +319,10 @@ final class PlayerViewModel {
         engine.stop()
         poi = nil
         finishedVisit = nil
+        narrationEndedVisit = nil
+        resumeHint = nil
         currentVisitId = nil
         isPresented = false
         endLiveActivity()
-    }
-
-    // MARK: - Privat
-
-    private func loadChapter(announce: Bool) {
-        guard let poi, let chapter else { return }
-        positionS = 0
-        let timeline = CaptionTimeline.build(chapter: chapter)
-        captionSegments = timeline.segments
-        captionsAreEstimated = timeline.isEstimated
-        prompts.load(chapter: chapter)
-        let url = chapter.audio.flatMap { URL(string: $0.url) }
-        let speech = url != nil ? nil : SpeechScript.make(
-            chapter: chapter,
-            segments: timeline.segments,
-            language: variant?.lang ?? settings.guideLanguage,
-            announceTitle: announce,
-            uiLanguage: settings.uiLanguage
-        )
-        engine.load(
-            url: url,
-            durationS: chapter.playbackDurationS,
-            nowPlaying: AudioEngine.NowPlaying(title: poi.title, chapterTitle: chapter.title, durationS: chapter.playbackDurationS),
-            speech: speech
-        )
-        engine.setRate(settings.playbackRate)
-        if announce, let title = chapter.title, !engine.isReadByPhone {
-            pendingChapterAnnouncement = title
-        }
-        startOrUpdateLiveActivity(isPlaying: isPlaying)
-    }
-
-    private func startTicker() {
-        stopTicker()
-        ticker = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
-                guard let self, !Task.isCancelled else { return }
-                self.onTick()
-            }
-        }
-    }
-
-    private func stopTicker() {
-        ticker?.cancel()
-        ticker = nil
-    }
-
-    private func onTick() {
-        let finished = engine.tick()
-        positionS = min(engine.currentPositionS, durationS)
-        updateLiveActivityDistanceIfNeeded()
-        if prompts.advance(to: positionS, segments: captionSegments, enabled: settings.inNarrationPromptsEnabled) {
-            pause(fade: true)
-            return
-        }
-        if finished { nextChapter() }
-    }
-
-    // MARK: - Live Activity (pakke 2, item 6)
-    //
-    // Låseskjerm + Dynamic Island. Selve implementasjonen (start/oppdater/
-    // avslutt, avstand-throttling) ligger i PlayerActivityManager — her er
-    // det bare korte kall fra de fire livssyklus-punktene spesifikasjonen
-    // nevner: start, kapittelbytte, spill/pause, avslutt/stopp.
-
-    private func startOrUpdateLiveActivity(isPlaying: Bool) {
-        #if !targetEnvironment(macCatalyst)
-        if #available(iOS 16.1, *) {
-            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
-            PlayerActivityManager.shared.sync(snapshot)
-        }
-        #endif
-    }
-
-    private func updateLiveActivityDistanceIfNeeded() {
-        #if !targetEnvironment(macCatalyst)
-        if #available(iOS 16.1, *) {
-            guard let snapshot = liveActivitySnapshot(isPlaying: isPlaying) else { return }
-            PlayerActivityManager.shared.updateDistanceIfNeeded(snapshot)
-        }
-        #endif
-    }
-
-    #if !targetEnvironment(macCatalyst)
-    private func liveActivitySnapshot(isPlaying: Bool) -> PlayerActivitySnapshot? {
-        guard let poi, let chapter else { return nil }
-        return PlayerActivitySnapshot(
-            poi: poi,
-            chapter: chapter,
-            chapterCount: variant?.chapters.count ?? 1,
-            positionS: positionS,
-            durationS: durationS,
-            isPlaying: isPlaying
-        )
-    }
-    #endif
-
-    private func endLiveActivity() {
-        #if !targetEnvironment(macCatalyst)
-        if #available(iOS 16.1, *) {
-            PlayerActivityManager.shared.end()
-        }
-        #endif
     }
 }

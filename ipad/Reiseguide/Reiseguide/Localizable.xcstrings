@@ -69,6 +69,23 @@
         }
       }
     },
+    "action.playPoi": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play %@"
+          }
+        }
+      }
+    },
     "action.removeFavorite": {
       "extractionState": "manual",
       "localizations": {
@@ -2296,6 +2313,125 @@
         }
       }
     },
+    "player.chapter.next": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste kapittel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next chapter"
+          }
+        }
+      }
+    },
+    "player.chapter.previous": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige kapittel"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previous chapter"
+          }
+        }
+      }
+    },
+    "player.chapters.completed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hørt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listened to"
+          }
+        }
+      }
+    },
+    "player.chapters.current": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spilles nå"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Now playing"
+          }
+        }
+      }
+    },
+    "player.chapters.progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapittel %1$@ av %2$@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chapter %1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "player.chapters.showHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser alle kapitlene, med mulighet til å hoppe."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows all chapters, with the option to jump."
+          }
+        }
+      }
+    },
+    "player.chapters.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapitler"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chapters"
+          }
+        }
+      }
+    },
     "player.finish": {
       "extractionState": "manual",
       "localizations": {
@@ -2517,6 +2653,57 @@
         }
       }
     },
+    "player.resume.message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortsetter fra %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resuming from %@"
+          }
+        }
+      }
+    },
+    "player.resume.restart": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start på nytt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start over"
+          }
+        }
+      }
+    },
+    "player.resume.restartHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortellingen fra begynnelsen i stedet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starts the narration from the beginning instead."
+          }
+        }
+      }
+    },
     "player.stop": {
       "extractionState": "manual",
       "localizations": {
@@ -2581,6 +2768,108 @@
           "stringUnit": {
             "state": "translated",
             "value": "Narration"
+          }
+        }
+      }
+    },
+    "player.visitEnded.announcement": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@-besøket er ferdig."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The visit to %@ is complete."
+          }
+        }
+      }
+    },
+    "player.visitEnded.quiz": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta quizen og gi stjerner"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Take the quiz and rate it"
+          }
+        }
+      }
+    },
+    "player.visitEnded.replay": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spill av på nytt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play again"
+          }
+        }
+      }
+    },
+    "player.visitEnded.replayHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starter fortellingen fra begynnelsen."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starts the narration from the beginning."
+          }
+        }
+      }
+    },
+    "player.visitEnded.subtitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bra jobbet! Ta quizen og gi stjerner, eller fortsett til neste stopp."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Well done! Take the quiz and rate it, or continue to the next stop."
+          }
+        }
+      }
+    },
+    "player.visitEnded.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besøket er ferdig"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The visit is complete"
           }
         }
       }
@@ -4298,6 +4587,57 @@
           "stringUnit": {
             "state": "translated",
             "value": "Speaks direction and distance while you walk. Never talks over the narration."
+          }
+        }
+      }
+    },
+    "visit.nextStop": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gå til neste stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to the next stop"
+          }
+        }
+      }
+    },
+    "visit.nextStop.cardTitle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste stopp"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next stop"
+          }
+        }
+      }
+    },
+    "visit.nextStopHint": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner veiviseren til neste ikke-besøkte stopp på ruten."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the wayfinder to the next stop on the route you haven't visited yet."
           }
         }
       }

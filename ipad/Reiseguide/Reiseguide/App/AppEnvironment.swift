@@ -35,6 +35,10 @@ final class AppEnvironment {
 
     /// Sted som skal åpnes i Utforsk-stacken: id eller slug (deep link).
     var pendingPoi: PendingPoi?
+    /// «Gå til neste stopp» fra avspilleren eller etter-besøket (avspiller-
+    /// redesignet, punkt 2): spilleren er allerede lukket når dette settes;
+    /// RootTabView bytter til Utforsk-fanen og pusher veiviseren dit.
+    var pendingVeiviserTarget: VeiviserTarget?
 
     /// Posisjonen har allerede fått velge område denne økten; ikke bytt igjen
     /// under brukeren hvis de går videre.
@@ -120,6 +124,22 @@ final class AppEnvironment {
 
     func open(poi: GuidePOI) {
         pendingPoi = .id(poi.id)
+    }
+
+    /// «Gå til neste stopp» (avspiller-redesignet, punkt 2): det
+    /// ikke-fullførte stedet som kommer etter `poiId` i områdets rute, se
+    /// `TourProgress.nextStop`. Brukt av både avslutningskortet i spilleren
+    /// og «etter besøket»-arket, som begge kjenner sitt eget `poiId` uten å
+    /// gå via `player.poi`.
+    func nextStop(after poiId: String?) -> GuidePOI? {
+        TourProgress.nextStop(after: poiId, in: TourProgress.orderedRoute(store.pois), completedPoiIds: visits.completedPoiIds)
+    }
+
+    /// Lukker spilleren (om den er åpen) og ber RootTabView pushe veiviseren
+    /// mot `poi` på den aktive navigasjonsstacken.
+    func openVeiviser(to poi: GuidePOI) {
+        player.close()
+        pendingVeiviserTarget = .poi(id: poi.id)
     }
 
     /// senseaidexplore://poi/{slug}?lang=nb fra delingssiden.
