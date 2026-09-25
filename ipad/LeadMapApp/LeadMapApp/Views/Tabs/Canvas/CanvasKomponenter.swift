@@ -721,6 +721,17 @@ struct ObjektView: View {
     let onEndre: (CanvasObjekt) -> Void
     let onSlett: () -> Void
 
+    // MARK: Notat-i-notat og medier
+    /// Det refererte notatets tegning, når den er hentet.
+    var notatForhaandsvisning: PKDrawing? = nil
+    var notatKategori: CanvasKategori? = nil
+    /// Delt avspiller — bare ett opptak spiller om gangen på en flate.
+    var lydSpiller: NexusLydSpiller? = nil
+    /// Miniatyr for video, hentet ut av klippet.
+    var videoMiniatyr: UIImage? = nil
+    /// Åpne det som ligger i objektet: notatet, videoen, nettsiden.
+    var onApne: (() -> Void)? = nil
+
     @State private var dragOffset: CGSize = .zero
     @State private var pinchSkala: CGFloat = 1.0
 
@@ -798,7 +809,40 @@ struct ObjektView: View {
 
     @ViewBuilder
     private var innhold: some View {
-        if let dok = pdfDok, let sideIndeks = objekt.side,
+        if objekt.type == CanvasObjektType.notat.rawValue {
+            NexusNotatKort(
+                tittel: objekt.tittel ?? "",
+                kategori: notatKategori,
+                forhaandsvisning: notatForhaandsvisning,
+                skala: objekt.skala,
+                valgt: erValgt,
+                apne: { onApne?() })
+        } else if objekt.type == CanvasObjektType.lyd.rawValue {
+            NexusLydKort(
+                tittel: objekt.tittel ?? "",
+                varighet: objekt.varighet ?? 0,
+                skala: objekt.skala,
+                spiller: lydSpiller ?? NexusLydSpiller(),
+                harBlekkSynk: objekt.opptakStartet != nil,
+                valgt: erValgt,
+                startEllerPause: { onApne?() },
+                sokTil: { lydSpiller?.sokTil($0) })
+        } else if objekt.type == CanvasObjektType.video.rawValue {
+            NexusVideoKort(
+                tittel: objekt.tittel ?? "",
+                varighet: objekt.varighet ?? 0,
+                miniatyr: videoMiniatyr,
+                skala: objekt.skala,
+                valgt: erValgt,
+                spillAv: { onApne?() })
+        } else if objekt.type == CanvasObjektType.nettside.rawValue {
+            NexusNettsideKort(
+                url: objekt.url ?? "",
+                tittel: objekt.tittel,
+                skala: objekt.skala,
+                valgt: erValgt,
+                apne: { onApne?() })
+        } else if let dok = pdfDok, let sideIndeks = objekt.side,
            let pdfd = PdfDokumentCache.dokument(for: dok),
            let pdfSide = pdfd.page(at: sideIndeks) {
             // Ekte PDF-side: vektor-skarp uansett zoom.
@@ -903,6 +947,10 @@ struct ObjektView: View {
         case "kpi": return "chart.bar.fill"
         case "oppgave": return "checklist"
         case "kalender": return "calendar"
+        case "notat": return "doc.text.fill"
+        case "lyd": return "waveform"
+        case "video": return "film.fill"
+        case "nettside": return "globe"
         default: return "square.dashed"
         }
     }
@@ -912,6 +960,8 @@ struct ObjektView: View {
         case "lead": return CvBrand.orange
         case "kpi": return CvBrand.blue
         case "oppgave": return CvBrand.green
+        case "lyd": return CvBrand.green
+        case "nettside": return CvBrand.blue
         default: return CvBrand.purpleLight
         }
     }

@@ -15,6 +15,7 @@ import PencilKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+import AVKit
 @preconcurrency import Vision
 
 struct CanvasView: View {
@@ -69,6 +70,32 @@ struct CanvasView: View {
     @State private var bildeValg: PhotosPickerItem?
     @State private var bildeVelgerAapen = false
     @State private var pdfVelgerAapen = false
+
+    // MARK: Nexus henger sammen
+    /// Hva backenden mener hører sammen med dette notatet. Lastes når
+    /// panelet åpnes — ikke ved hvert notatbytte, det er et kall ingen ba om.
+    @State private var koblinger = NexusKoblingerStore()
+    @State private var koblingerAapent = false
+    /// Tegningene til notater som ligger som kort på flata. Cache, ikke
+    /// sannhet: notatet selv eier blekket.
+    @State private var notatForhaandsvisninger: [String: PKDrawing] = [:]
+    @State private var notatKategorier: [String: CanvasKategori] = [:]
+
+    // MARK: Medier
+    @State private var lydSpiller = NexusLydSpiller()
+    @State private var lydOpptaker = NexusLydOpptaker()
+    /// Hvilket lydobjekt spiller nå. Bare ett om gangen på en flate.
+    @State private var aktivtLydObjekt: String?
+    @State private var videoVelgerAapen = false
+    @State private var videoValg: PhotosPickerItem?
+    @State private var videoMiniatyrer: [String: UIImage] = [:]
+    @State private var videoSomSpilles: URL?
+    @State private var nettsideDialogAapen = false
+    @State private var nettsideUtkast = ""
+    @State private var nettsideSomVises: URL?
+    /// Strøkene som ble skrevet der lyden står nå — blekk-synkingen.
+    @State private var opplystStrok: Set<Int> = []
+    @Environment(\.accessibilityReduceMotion) private var reduserBevegelse
     /// Faner: flere notater åpne samtidig (session — bytt uten å miste noe;
     /// velg() auto-lagrer forrige notat stille).
     @State private var aapneFaner: [String] = []
@@ -1305,6 +1332,70 @@ struct CanvasView: View {
         }
         .photosPicker(isPresented: $bildeVelgerAapen, selection: $bildeValg,
                       matching: .images)
+        .photosPicker(isPresented: $videoVelgerAapen, selection: $videoValg,
+                      matching: .videos)
+        // Koblingspanelet er en sidepanel-sheet, ikke fullskjerm: man skal
+        // se flata bak mens man drar et notat ut av lista.
+        .sheet(isPresented: $koblingerAapent) {
+            NavigationStack {
+                NexusKoblingerPanel(
+                    store: koblinger,
+                    leggPaaFlata: { leggNotatPaaFlata($0) },
+                    apne: { k in
+                        if k.type == "notat",
+                           let n = notater.first(where: { $0.id == k.id }) {
+                            koblingerAapent = false
+                            velg(n)
+                        }
+                    })
+                .navigationTitle("Henger sammen")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Lukk") { koblingerAapent = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .task {
+                guard let id = valgtId,
+                      let prosjekt = appState.activeLeadgridProjectId else { return }
+                await koblinger.last(notatId: id, projectId: prosjekt,
+                                     api: appState.api)
+            }
+        }
+        .sheet(item: $nettsideSomVises) { url in
+            NexusSafari(url: url).ignoresSafeArea()
+        }
+        .fullScreenCover(item: $videoSomSpilles) { url in
+            VideoPlayer(player: AVPlayer(url: url))
+                .ignoresSafeArea()
+                .overlay(alignment: .topTrailing) {
+                    Button { videoSomSpilles = nil } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(.white, .black.opacity(0.5))
+                    }
+                    .padding()
+                }
+        }
+        .alert("Nettside", isPresented: $nettsideDialogAapen) {
+            TextField("leadgrid.no", text: $nettsideUtkast)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            Button("Legg til") { settInnNettside() }
+            Button("Avbryt", role: .cancel) { nettsideUtkast = "" }
+        } message: {
+            Text("Adressen legges som et kort på flata. Dobbelttrykk åpner "
+                 + "den uten å forlate notatet.")
+        }
+        // Blekk-synk: lyden flytter seg, markeringen følger etter.
+        .onChange(of: lydSpiller.posisjon) { _, _ in oppdaterBlekkSynk() }
+        .onChange(of: aktivtLydObjekt) { _, _ in oppdaterBlekkSynk() }
+        .onChange(of: videoValg) { _, valg in
+            guard let valg else { return }
+            Task { await importerVideo(valg) }
+        }
         .fileImporter(isPresented: $pdfVelgerAapen,
                       allowedContentTypes: [.pdf]) { resultat in
             if case .success(let url) = resultat {
@@ -1695,6 +1786,31 @@ struct CanvasView: View {
                 startKartUtsnitt()
             } label: {
                 Label("Kart-utsnitt", systemImage: "map")
+            }
+            Divider()
+            // Lyd, video og nettsider. Lyden først: den er den eneste av
+            // dem man rekker å starte mens noen andre snakker.
+            Button {
+                Task { await vekslLydopptak() }
+            } label: {
+                Label(lydOpptaker.tarOpp ? "Stopp opptaket" : "Ta opp lyd",
+                      systemImage: lydOpptaker.tarOpp ? "stop.circle.fill" : "mic.fill")
+            }
+            Button {
+                videoVelgerAapen = true
+            } label: {
+                Label("Video", systemImage: "film")
+            }
+            Button {
+                nettsideUtkast = ""
+                nettsideDialogAapen = true
+            } label: {
+                Label("Nettside", systemImage: "globe")
+            }
+            Button {
+                koblingerAapent = true
+            } label: {
+                Label("Hva henger sammen", systemImage: "point.3.connected.trianglepath.dotted")
             }
             Menu {
                 ForEach(oppgaveKandidater, id: \.id) { o in
@@ -2129,6 +2245,18 @@ struct CanvasView: View {
 
     private func hydrate(_ n: CanvasNotat) {
         underHydrering = true
+        // Et notat som bytter ut under føttene på et opptak skal ikke
+        // fortsette å spille fra forrige flate.
+        lydSpiller.stopp()
+        aktivtLydObjekt = nil
+        opplystStrok = []
+        // Notat-kortene skal vise ekte blekk, ikke et ikon. Hentes fra
+        // listen vi allerede har i minnet — ingen nettverkskall.
+        Task { @MainActor in
+            for o in n.objekter where o.type == CanvasObjektType.notat.rawValue {
+                if let id = o.refId { await hentNotatForhaandsvisning(id) }
+            }
+        }
         autoTittelTask?.cancel()
         markeringsTask?.cancel()
         let hydrateGeneration = UUID()
@@ -3558,6 +3686,204 @@ struct CanvasView: View {
         }
     }
 
+    // MARK: - Nexus: notat-i-notat, medier, blekk-synk
+
+    /// Legger et annet notat på flata som et levende kort, og gjør lenken
+    /// eksplisitt så den er synlig fra begge sider.
+    private func leggNotatPaaFlata(_ kobling: NexusKoblingDTO) {
+        guard kobling.type == "notat", kobling.id != valgtId else { return }
+        objekter.append(CanvasObjekt(
+            type: CanvasObjektType.notat.rawValue,
+            x: 430, y: 300,
+            tittel: kobling.tittel,
+            refId: kobling.id))
+        objektModus = true
+        koblingerAapent = false
+        Task { await hentNotatForhaandsvisning(kobling.id) }
+        // Manuell lenke i backend: styrke 120, sterkere enn alt utledet,
+        // fordi et menneske så sammenhengen systemet ikke kunne gjette.
+        Task {
+            guard let api = appState.api,
+                  let prosjekt = appState.activeLeadgridProjectId,
+                  let fra = valgtId else { return }
+            try? await api.lagCanvasKobling(
+                notatId: fra, projectId: prosjekt,
+                tilType: "notat", tilId: kobling.id,
+                merknad: kobling.tittel)
+        }
+    }
+
+    /// Henter blekket til et notat som ligger som kort. Cache — kortet skal
+    /// vise ekte tegning, ikke et ikon.
+    private func hentNotatForhaandsvisning(_ id: String) async {
+        guard notatForhaandsvisninger[id] == nil else { return }
+        guard let notat = notater.first(where: { $0.id == id }) else { return }
+        notatKategorier[id] = notat.kategori
+        if let tegning = try? PKDrawing(data: notat.drawingData) {
+            notatForhaandsvisninger[id] = tegning
+        } else {
+            notatForhaandsvisninger[id] = PKDrawing()
+        }
+    }
+
+    /// Start eller stopp lydopptak. Stopp laster opp bytes og legger kortet
+    /// på flata med tidspunktet opptaket begynte — nøkkelen til blekk-synk.
+    private func vekslLydopptak() async {
+        if lydOpptaker.tarOpp {
+            guard let resultat = lydOpptaker.stopp() else { return }
+            let dokId = UUID().uuidString
+            let navn = "Opptak \(Date().formatted(date: .omitted, time: .shortened))"
+            objekter.append(CanvasObjekt(
+                type: CanvasObjektType.lyd.rawValue,
+                x: 430, y: 300,
+                tittel: navn,
+                dokId: dokId,
+                varighet: resultat.varighet,
+                opptakStartet: resultat.startet))
+            objektModus = true
+            await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data)
+        } else {
+            let ok = await lydOpptaker.start()
+            if !ok { feilVedImport = "Mikrofonen er ikke tilgjengelig." }
+        }
+    }
+
+    /// Mediebytes går gjennom dokument-endepunktet. Det er innholdsagnostisk
+    /// og lagrer allerede til S3 — et eget medie-endepunkt ville vært den
+    /// samme koden med et annet navn.
+    private func lastOppMedie(dokId: String, navn: String, data: Data) async {
+        guard let api = appState.api,
+              let prosjekt = appState.activeLeadgridProjectId,
+              let notatId = valgtId else { return }
+        do {
+            try await api.lastOppCanvasDokument(
+                notatId: notatId, dokId: dokId, projectId: prosjekt,
+                navn: navn, base64: data.base64EncodedString())
+        } catch {
+            feilVedImport = "Fikk ikke lagret \(navn). Den ligger bare på iPaden nå."
+        }
+    }
+
+    /// Hva som skjer når man åpner et objekt.
+    private func apneObjekt(_ objekt: CanvasObjekt) {
+        switch CanvasObjektType(rawValue: objekt.type) {
+        case .notat:
+            if let id = objekt.refId,
+               let n = notater.first(where: { $0.id == id }) { velg(n) }
+        case .lyd:
+            Task { await vekslLyd(objekt) }
+        case .video:
+            Task { await spillVideo(objekt) }
+        case .nettside:
+            if let u = objekt.url, let url = URL(string: u) { nettsideSomVises = url }
+        default:
+            break
+        }
+    }
+
+    private func vekslLyd(_ objekt: CanvasObjekt) async {
+        if aktivtLydObjekt == objekt.id {
+            lydSpiller.startEllerPause()
+            return
+        }
+        guard let dokId = objekt.dokId, let api = appState.api,
+              let prosjekt = appState.activeLeadgridProjectId else { return }
+        // Endepunktet gir (navn, base64) — det er formatet PDF-lasteren
+        // allerede bruker, og mediebytes går samme vei.
+        guard let svar = try? await api.hentCanvasDokument(
+                dokId: dokId, projectId: prosjekt),
+              let data = Data(base64Encoded: svar.base64) else {
+            feilVedImport = "Fant ikke opptaket."
+            return
+        }
+        lydSpiller.last(data)
+        aktivtLydObjekt = objekt.id
+        lydSpiller.startEllerPause()
+    }
+
+    private func spillVideo(_ objekt: CanvasObjekt) async {
+        guard let dokId = objekt.dokId, let api = appState.api,
+              let prosjekt = appState.activeLeadgridProjectId,
+              let svar = try? await api.hentCanvasDokument(
+                dokId: dokId, projectId: prosjekt),
+              let data = Data(base64Encoded: svar.base64) else {
+            feilVedImport = "Fant ikke videoen."
+            return
+        }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nexus-\(dokId).mov")
+        try? data.write(to: url)
+        videoSomSpilles = url
+    }
+
+    /// Blekket som ble skrevet der lyden står nå.
+    ///
+    /// PencilKit tidsstempler hvert strøk, så dette krever ingen ekstra
+    /// lagring — bare at vi vet når opptaket startet.
+    private func oppdaterBlekkSynk() {
+        guard let id = aktivtLydObjekt,
+              let objekt = objekter.first(where: { $0.id == id }),
+              let start = objekt.opptakStartet else {
+            if !opplystStrok.isEmpty { opplystStrok = [] }
+            return
+        }
+        let treff = NexusBlekkSynk.strokIndekser(
+            i: drawing, vedTid: lydSpiller.posisjon,
+            opptakStartet: start, varighet: objekt.varighet ?? 0)
+        let nytt = Set(treff)
+        if nytt != opplystStrok { opplystStrok = nytt }
+    }
+
+    /// Video fra biblioteket: last bytes, hent varighet og miniatyr, legg
+    /// kortet på flata og last opp i bakgrunnen.
+    private func importerVideo(_ valg: PhotosPickerItem) async {
+        defer { videoValg = nil }
+        guard let data = try? await valg.loadTransferable(type: Data.self) else {
+            feilVedImport = "Fikk ikke lest videoen."
+            return
+        }
+        // Endepunktet tar 27 MB base64 ≈ 20 MB binært. Si fra før vi prøver,
+        // ikke etter at opplastingen feiler.
+        guard data.count < 19_000_000 else {
+            feilVedImport = "Videoen er \(data.count / 1_000_000) MB. "
+                + "Grensen er 19 MB — trim klippet først."
+            return
+        }
+        let dokId = UUID().uuidString
+        let varighet = await NexusVideo.varighet(for: data)
+        let objektId = UUID().uuidString
+        objekter.append(CanvasObjekt(
+            id: objektId,
+            type: CanvasObjektType.video.rawValue,
+            x: 430, y: 300,
+            tittel: "Video",
+            dokId: dokId,
+            varighet: varighet))
+        objektModus = true
+        if let mini = await NexusVideo.miniatyr(for: data) {
+            videoMiniatyrer[objektId] = mini
+        }
+        await lastOppMedie(dokId: dokId, navn: "Video", data: data)
+    }
+
+    private func settInnNettside() {
+        let renset = nettsideUtkast.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !renset.isEmpty else { return }
+        // Folk skriver «leadgrid.no», ikke «https://leadgrid.no».
+        let medSkjema = renset.contains("://") ? renset : "https://\(renset)"
+        guard let url = URL(string: medSkjema), url.host != nil else {
+            feilVedImport = "Det ser ikke ut som en nettadresse."
+            return
+        }
+        objekter.append(CanvasObjekt(
+            type: CanvasObjektType.nettside.rawValue,
+            x: 430, y: 300,
+            tittel: url.host?.replacingOccurrences(of: "www.", with: ""),
+            url: medSkjema))
+        objektModus = true
+        nettsideUtkast = ""
+    }
+
     private func settInnLeadKort(_ lead: LeadModel) {
         objekter.append(CanvasObjekt(
             type: "lead", x: 400, y: 260,
@@ -4376,6 +4702,7 @@ struct CanvasView: View {
             canvasObjektLag
             canvasTankekartKoblinger
             canvasPencilLag
+            blekkSynkLag
             canvasStempelLag
             canvasFigurLag
             canvasNodeLag
@@ -4455,13 +4782,51 @@ struct CanvasView: View {
                 onToggleValg: { toggleValgtObjekt(objekt.id) },
                 onFlyttFelles: flyttValgte,
                 onEndre: { oppdaterObjekt($0, id: objekt.id) },
-                onSlett: { slettObjekt(objekt.id) })
+                onSlett: { slettObjekt(objekt.id) },
+                notatForhaandsvisning: objekt.refId.flatMap { notatForhaandsvisninger[$0] },
+                notatKategori: objekt.refId.flatMap { notatKategorier[$0] },
+                lydSpiller: aktivtLydObjekt == objekt.id ? lydSpiller : nil,
+                videoMiniatyr: videoMiniatyrer[objekt.id],
+                onApne: { apneObjekt(objekt) })
         }
     }
 
     @ViewBuilder private var canvasTankekartKoblinger: some View {
         if !noder.isEmpty && !skjulteLag.contains(CanvasLag.noder.rawValue) {
             NodeKoblinger(noder: noder)
+        }
+    }
+
+    /// Blekket som ble skrevet der lyden står nå.
+    ///
+    /// Tegnes som et lysende lag OPPÅ PencilKit, ikke ved å endre strøkene.
+    /// Blekket i notatet skal aldri endre seg fordi noen spiller av et
+    /// opptak — markeringen er en lampe, ikke en redigering.
+    @ViewBuilder private var blekkSynkLag: some View {
+        if !opplystStrok.isEmpty {
+            let valgte = opplystStrok
+                .compactMap { i in drawing.strokes.indices.contains(i) ? drawing.strokes[i] : nil }
+            let del = PKDrawing(strokes: valgte)
+            if !del.bounds.isEmpty {
+                Image(uiImage: del.image(
+                    from: CGRect(x: 0, y: 0,
+                                 width: Self.logiskSidebredde,
+                                 height: Self.logiskSidehoyde),
+                    scale: 1))
+                    .resizable()
+                    .frame(width: Self.logiskSidebredde,
+                           height: Self.logiskSidehoyde)
+                    // Grønt som lydkortet, så man kobler lampen til kilden.
+                    .colorMultiply(CvBrand.green)
+                    .shadow(color: CvBrand.green.opacity(0.9), radius: 9)
+                    .shadow(color: CvBrand.green.opacity(0.6), radius: 18)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                    // Markeringen er informasjon, ikke pynt: den vises også
+                    // med redusert bevegelse — bare uten overgangen.
+                    .animation(reduserBevegelse ? nil : .easeOut(duration: 0.2),
+                               value: opplystStrok)
+            }
         }
     }
 

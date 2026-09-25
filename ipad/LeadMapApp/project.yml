@@ -73,7 +73,7 @@ targets:
         NSCalendarsWriteOnlyAccessUsageDescription: Leadgrid legger rute-stoppene dine inn i kalenderen med beregnet ankomsttid, slik at dagen din er synlig der du planlegger.
         NSCameraUsageDescription: Leadgrid bruker kameraet til å skanne visittkort (auto-fyll lead) og QR-koden i nettleseren for paring.
         # Mikrofon: dikter visit-notater (#183).
-        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater etter besøk.
+        NSMicrophoneUsageDescription: Leadgrid bruker mikrofonen til å diktere visit-notater, og til å ta opp lyd i Nexus-notater slik at blekket du skriver kan knyttes til det som ble sagt.
         # Tale-gjenkjenning: transkriber dikterte notater (#183).
         NSSpeechRecognitionUsageDescription: Leadgrid transkriberer din tale til tekst slik at du kan diktere visit-notater hands-free.
         # Bevegelse & Trening: nav-modus kjenner igjen om du går/sykler/kjører
