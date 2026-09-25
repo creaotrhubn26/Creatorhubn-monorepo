@@ -1834,12 +1834,20 @@ struct CanvasView: View {
             Divider()
             // Lyd, video og nettsider. Lyden først: den er den eneste av
             // dem man rekker å starte mens noen andre snakker.
+            // Lydopptak gates på leadbookLydopptak-entitlementet.
+            //
+            // docs/leadgrid-gdpr-lydopptak.md krever at GDPR-pakken er
+            // godkjent FØR ekte lyd skrus på, og nøkkelen åpnes først når
+            // org-admin har bekreftet alle fire §7-punktene. Uten den skal
+            // knappen være der, men inert — en manglende meny forteller
+            // ingenting om hvorfor.
             Button {
                 Task { await vekslLydopptak() }
             } label: {
                 Label(lydOpptaker.tarOpp ? "Stopp opptaket" : "Ta opp lyd",
                       systemImage: lydOpptaker.tarOpp ? "stop.circle.fill" : "mic.fill")
             }
+            .disabled(!kanTaOppLyd)
             Button {
                 videoVelgerAapen = true
             } label: {
@@ -3799,8 +3807,15 @@ struct CanvasView: View {
             // Filen beholdes til opplastingen har gått gjennom. Den er den
             // eneste kopien av møtet.
             ventendeOpplasting[dokId] = resultat.fil
-            await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data)
+            await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data,
+                               slag: "lyd")
         } else {
+            guard kanTaOppLyd else {
+                feilVedImport = "Lydopptak er ikke åpnet for organisasjonen "
+                    + "ennå. En leder må bekrefte GDPR-sjekklisten under "
+                    + "Leadbook → Lydopptak først."
+                return
+            }
             let ok = await lydOpptaker.start()
             if !ok { feilVedImport = "Mikrofonen er ikke tilgjengelig." }
         }
@@ -3809,14 +3824,15 @@ struct CanvasView: View {
     /// Mediebytes går gjennom dokument-endepunktet. Det er innholdsagnostisk
     /// og lagrer allerede til S3 — et eget medie-endepunkt ville vært den
     /// samme koden med et annet navn.
-    private func lastOppMedie(dokId: String, navn: String, data: Data) async {
+    private func lastOppMedie(dokId: String, navn: String, data: Data,
+                              slag: String = "pdf") async {
         guard let api = appState.api,
               let prosjekt = appState.activeLeadgridProjectId,
               let notatId = valgtId else { return }
         do {
             try await api.lastOppCanvasDokument(
                 notatId: notatId, dokId: dokId, projectId: prosjekt,
-                navn: navn, base64: data.base64EncodedString())
+                navn: navn, base64: data.base64EncodedString(), slag: slag)
             // Først nå er den lokale kopien overflødig.
             if let fil = ventendeOpplasting.removeValue(forKey: dokId) {
                 try? FileManager.default.removeItem(at: fil)
@@ -3832,8 +3848,8 @@ struct CanvasView: View {
         guard let dokId = objekt.dokId,
               let fil = ventendeOpplasting[dokId],
               let data = try? Data(contentsOf: fil) else { return }
-        await lastOppMedie(dokId: dokId,
-                           navn: objekt.tittel ?? "Opptak", data: data)
+        await lastOppMedie(dokId: dokId, navn: objekt.tittel ?? "Opptak",
+                           data: data, slag: "lyd")
     }
 
     /// Hva som skjer når man åpner et objekt.
@@ -3949,7 +3965,7 @@ struct CanvasView: View {
             dokId: dokId,
             varighet: varighet))
         objektModus = true
-        await lastOppMedie(dokId: dokId, navn: "Video", data: data)
+        await lastOppMedie(dokId: dokId, navn: "Video", data: data, slag: "video")
     }
 
     private func settInnNettside() {
@@ -4463,6 +4479,11 @@ struct CanvasView: View {
         // kundens. Det er riktig: stedkoblingen handler om hvor notatet ble
         // skrevet. Planlegger du fra kontoret, hører notatet hjemme der.
         Task { await lagre(stille: true) }
+    }
+
+    /// Åpnet først når org-en har bekreftet compliance-sjekklisten.
+    private var kanTaOppLyd: Bool {
+        EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
     }
 
     private func materWidget() {

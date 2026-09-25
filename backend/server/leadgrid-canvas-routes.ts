@@ -11,7 +11,10 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
-import { assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import {
+  assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS,
+  LEADBOOK_LYDOPPTAK_FEATURE_KEY,
+} from "./leadgrid-entitlement-guard.js";
 import {
   getLeadgridObjectStorage,
   leadgridStorageKeys,
@@ -645,7 +648,24 @@ export function registerLeadgridCanvasRoutes(deps: {
       const dokId = String(b.id ?? "").slice(0, 64);
       const navn = String(b.navn ?? "").slice(0, 200);
       const base64 = String(b.base64 ?? "");
+      const slag = String(b.slag ?? "pdf");
       if (!dokId || !base64) { res.status(400).json({ error: "bad_request" }); return; }
+
+      // Rå lyd er ikke som en PDF.
+      //
+      // docs/leadgrid-gdpr-lydopptak.md er tydelig: GDPR-pakken må være
+      // godkjent og implementert FØR ekte lyd skrus på, og
+      // leadbook-recording-consent-routes.ts bygger på at rå lyd ALDRI
+      // persisteres — transkripsjon skjer på enheten, bare teksten sendes.
+      //
+      // Nexus-opptakene bryter den forutsetningen: de laster opp lyden.
+      // Derfor gates de på det samme entitlementet som åpnes først når
+      // org-admin har bekreftet alle fire §7-punktene. Uten den bekreftelsen
+      // skal opptaket ikke kunne lagres i det hele tatt.
+      if (slag === "lyd" || slag === "video") {
+        if (!(await assertAnyEntitled(
+          pool, session.userId, [LEADBOOK_LYDOPPTAK_FEATURE_KEY], res))) return;
+      }
       if (base64.length > 27_000_000) {
         res.status(413).json({ error: "dokument_for_stort" });
         return;

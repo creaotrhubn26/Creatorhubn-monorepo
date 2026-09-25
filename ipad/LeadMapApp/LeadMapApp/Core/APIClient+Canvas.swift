@@ -394,11 +394,17 @@ extension APIClient {
     }
 
     /// Last opp dokument-bytes til egen tabell (klient-generert id).
+    /// `slag` lar backenden skille lyd og video fra PDF-er. Lyd gates på
+    /// leadbookLydopptak-entitlementet; en PDF gjør det ikke.
     func lastOppCanvasDokument(notatId: String, dokId: String,
                                projectId: String,
-                               navn: String, base64: String) async throws {
-        struct Body: Encodable { let id: String; let navn: String; let base64: String }
-        let data = try JSONEncoder().encode(Body(id: dokId, navn: navn, base64: base64))
+                               navn: String, base64: String,
+                               slag: String = "pdf") async throws {
+        struct Body: Encodable {
+            let id: String; let navn: String; let base64: String; let slag: String
+        }
+        let data = try JSONEncoder().encode(
+            Body(id: dokId, navn: navn, base64: base64, slag: slag))
         _ = try await _request(canvasScopedPath(
             "/api/leadgrid/canvas/\(notatId)/dokumenter", projectId: projectId),
                                method: "POST", body: data)
