@@ -59,8 +59,20 @@ export interface RoleCardDraft {
   scene_id?: string | null;
   /** Dagen kortet hører til. Stedet henger på dagen, så uten den mangler kortet oppmøtestedet. */
   production_day_id?: string | null;
+  /** Talent-profilen kortet hører til. Uten den kan personen ikke se kortet innlogget. */
+  talent_id?: string | null;
   sort_order?: number | null;
   contact_email?: string | null;
+}
+
+/** En person som alt er i produksjonen — kandidatlista, ikke hele registeret. */
+export interface Kandidat {
+  id: string;
+  name: string;
+  email: string | null;
+  talent_id: string | null;
+  headshot_url?: string | null;
+  city?: string | null;
 }
 
 export interface SendResultat {
@@ -132,6 +144,14 @@ export const roleCardService = {
     const payload = await r.json().catch(() => null);
     if (!r.ok) return { error: payload?.error ?? 'Klarte ikke å sende lenkene' };
     return payload as SendResultat;
+  },
+
+  /** Folkene som alt er i produksjonen, til å fylle et kort uten å skrive på nytt. */
+  async kandidater(projectId: string, q = ''): Promise<Kandidat[]> {
+    const sti = `${base(projectId)}/rollekort-kandidater${q ? `?q=${encodeURIComponent(q)}` : ''}`;
+    const r = await authFetch(sti);
+    if (!r.ok) return [];
+    return (await r.json().catch(() => null))?.kandidater ?? [];
   },
 
   async listFrames(projectId: string, sceneId: string): Promise<StoryboardFrame[]> {

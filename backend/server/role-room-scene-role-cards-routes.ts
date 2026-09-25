@@ -510,6 +510,82 @@ export function setupRoleRoomSceneRoleCardsRoutes(
     }
   });
 
+  // ── GET /projects/:projectId/rollekort-kandidater ───────────────────
+  //
+  // Folkene som alt er i produksjonen. Uten denne skrev produsenten navn og
+  // e-post inn på nytt for hvert kort — og kortet ble aldri koblet til
+  // talent-profilen, så personen kunne ikke se det når hen var innlogget.
+  app.get("/api/role-room/projects/:projectId/rollekort-kandidater", async (req, res) => {
+    const { projectId } = req.params;
+    if (!(await requireProject(req, res, projectId))) return;
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+
+    try {
+      const r = await pool.query(
+        `SELECT c.id, c.name, COALESCE(t.email, c.email) AS email, c.talent_id::text,
+                t.headshot_url, t.city
+           FROM casting_candidates c
+           LEFT JOIN talents t ON t.id = c.talent_id
+          WHERE c.project_id = $1
+            AND ($2 = '' OR c.name ILIKE '%' || $2 || '%')
+          ORDER BY c.name ASC
+          LIMIT 25`,
+        [projectId, q],
+      );
+      return res.json({ kandidater: r.rows });
+    } catch (err) {
+      console.error("[rollekort kandidater] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente folkene i produksjonen" });
+    }
+  });
+
+  // ── GET /talents/me/rollekort — mine kort, uten lenke ───────────────
+  //
+  // Lenken i e-posten er fortsatt hovedveien: en statist har sjelden konto.
+  // Men den som HAR konto skal slippe å lete i innboksen etter en lenke hen
+  // fikk for tre uker siden.
+  app.get("/api/role-room/talents/me/rollekort", async (req, res) => {
+    const session = getActiveSession(req);
+    if (!session?.userId) return res.status(401).json({ error: "Innlogging kreves" });
+
+    try {
+      const talent = await pool.query(
+        `SELECT id FROM talents WHERE owner_user_id = $1 LIMIT 1`,
+        [session.userId],
+      );
+      const talentId = talent.rows[0]?.id;
+      if (!talentId) return res.status(401).json({ error: "Innlogging kreves" });
+
+      const r = await pool.query(
+        `SELECT c.id, c.token, c.person_name, c.action, c.cue, c.call_time, c.sent_at,
+                c.opened_at, c.response, c.frame_image_url,
+                s.title AS scene_title, s.int_ext, s.time_of_day,
+                p.name AS project_name,
+                d.date AS day_date,
+                l.name AS location_name, l.address AS location_address
+           FROM scene_role_cards c
+           LEFT JOIN casting_scenes s ON s.id = c.scene_id
+           LEFT JOIN casting_projects p ON p.id = c.project_id
+           LEFT JOIN casting_production_days d
+                  ON d.project_id = c.project_id
+                 AND (d.id = c.production_day_id
+                      OR (c.production_day_id IS NULL
+                          AND c.scene_id IS NOT NULL
+                          AND d.scene_ids @> to_jsonb(c.scene_id)))
+           LEFT JOIN casting_locations l ON l.id = d.location_id
+          WHERE c.talent_id = $1
+            AND c.revoked_at IS NULL
+          ORDER BY c.call_time ASC NULLS LAST, c.created_at DESC
+          LIMIT 50`,
+        [talentId],
+      );
+      return res.json({ kort: r.rows });
+    } catch (err) {
+      console.error("[mine rollekort] failed", err);
+      return res.status(500).json({ error: "Klarte ikke å hente kortene dine" });
+    }
+  });
+
   // ── GET /role-cards/r/:token — det statisten åpner ──────────────────
   //
   // Offentlig, uten innlogging: en statist har sjelden konto, og et krav om
