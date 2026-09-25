@@ -1442,6 +1442,30 @@ struct LeadTableRow: View {
     @State private var contactHandoffRequest: LeadgridExternalContactRequest?
     @State private var emailTemplateOpen = false
 
+    /// Antall Nexus-notater på dette leadet. Merket er den eneste pekeren
+    /// fra leadlista til Nexus — uten den finner ingen fram til flata.
+    private var notatAntall: Int {
+        guard let id = lead.backendId else { return 0 }
+        return appState.nexusNotatAntall[id] ?? 0
+    }
+
+    @ViewBuilder private var notatMerke: some View {
+        if notatAntall > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "scribble.variable")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("\(notatAntall)")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(LdBrand.purpleLight)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(LdBrand.purpleLight.opacity(0.14), in: Capsule())
+            .accessibilityLabel(notatAntall == 1
+                                ? "1 notat i Nexus" : "\(notatAntall) notater i Nexus")
+        }
+    }
+
     var body: some View {
         Group {
             // iPhone (compact width): kolonnene får ikke plass side-ved-side —
@@ -1475,10 +1499,13 @@ struct LeadTableRow: View {
                 .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(lead.company)
-                        .font(.appScaled(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .axLineLimit(1, ax: 2)
+                    HStack(spacing: 6) {
+                        Text(lead.company)
+                            .font(.appScaled(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .axLineLimit(1, ax: 2)
+                        notatMerke
+                    }
                     Text(lead.contactName.isEmpty ? lead.category : lead.contactName)
                         .font(.appScaled(size: 10))
                         .foregroundStyle(LdBrand.textSecondary)
@@ -1531,10 +1558,13 @@ struct LeadTableRow: View {
                     }
                     .frame(width: 36, height: 36)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(lead.company)
-                            .font(.appScaled(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(lead.company)
+                                .font(.appScaled(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            notatMerke
+                        }
                         Text(lead.category)
                             .font(.appScaled(size: 10))
                             .foregroundStyle(LdBrand.textSecondary)
@@ -1952,6 +1982,30 @@ struct LeadDetailSidebar: View {
     @State private var favoriteTick = 0
     @State private var contactHandoffRequest: LeadgridExternalContactRequest?
     @State private var emailTemplateOpen = false
+
+    /// Antall Nexus-notater på dette leadet. Merket er den eneste pekeren
+    /// fra leadlista til Nexus — uten den finner ingen fram til flata.
+    private var notatAntall: Int {
+        guard let id = lead.backendId else { return 0 }
+        return appState.nexusNotatAntall[id] ?? 0
+    }
+
+    @ViewBuilder private var notatMerke: some View {
+        if notatAntall > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "scribble.variable")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("\(notatAntall)")
+                    .font(.appScaled(size: 10, weight: .bold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(LdBrand.purpleLight)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(LdBrand.purpleLight.opacity(0.14), in: Capsule())
+            .accessibilityLabel(notatAntall == 1
+                                ? "1 notat i Nexus" : "\(notatAntall) notater i Nexus")
+        }
+    }
 
     var body: some View {
         ScrollView {

@@ -475,3 +475,19 @@ extension APIClient {
         return try Self._sharedDecoder.decode(Resp.self, from: data).revision
     }
 }
+
+extension APIClient {
+    /// Hvor mange Nexus-notater finnes per lead.
+    ///
+    /// Tallet vises i leadlista og på kartet. Nexus er usynlig fra flatene
+    /// folk faktisk bruker, og et tall ved siden av leadet er det billigste
+    /// hintet som finnes om at flata eksisterer.
+    func hentCanvasAntallPerLead(
+        projectId: String
+    ) async throws -> [String: Int] {
+        struct Resp: Decodable { let antall: [String: Int] }
+        let r: Resp = try await _get(
+            canvasScopedPath("/api/leadgrid/canvas/antall", projectId: projectId))
+        return r.antall
+    }
+}

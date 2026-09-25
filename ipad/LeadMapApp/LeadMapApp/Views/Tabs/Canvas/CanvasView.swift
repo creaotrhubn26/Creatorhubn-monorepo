@@ -335,6 +335,12 @@ struct CanvasView: View {
         }
         .background(CvBrand.bg)
         .task(id: canvasDraftScope) { await lastInn() }
+        // Deep-link fra kartet eller leadlista: åpne kundens notat, eller
+        // lag det. Ignorerer gamle forespørsler, som Pondus-deep-linken.
+        .onChange(of: appState.deepLinkNexusRequestedAt) { _, _ in
+            konsumerNexusDeepLink()
+        }
+        .onAppear { konsumerNexusDeepLink() }
         .onChange(of: appState.activeOrganizationId) { _, _ in
             snapshotGjeldendeNotatForForrigeScope()
         }
@@ -4022,6 +4028,37 @@ struct CanvasView: View {
 
     /// ETT org-delt lerret per kunde: første notat, befarings-bilder,
     /// tilbud, AI-oppsummeringer, kontrakter — alt der brukeren la det.
+    /// Plukker opp en deep-link fra kartet eller leadlista.
+    ///
+    /// Notatet får leadet med én gang, så koblingspanelet har noe å jobbe
+    /// med fra første strøk.
+    private func konsumerNexusDeepLink() {
+        guard let bedt = appState.deepLinkNexusRequestedAt,
+              Date().timeIntervalSince(bedt) < 60,
+              let selskap = appState.deepLinkNexusSelskap else { return }
+        let leadId = appState.deepLinkNexusLeadId
+        appState.nullstillNexusDeepLink()
+
+        // Finnes et notat på dette leadet fra før, åpner vi det siste i
+        // stedet for å lage enda et. Selgeren mente «notatene om denne
+        // kunden», ikke «et nytt blankt ark».
+        if let leadId,
+           let siste = notater
+            .filter({ $0.leadId == leadId && $0.slettetAt == nil })
+            .max(by: { $0.oppdatert < $1.oppdatert }) {
+            velg(siste)
+            return
+        }
+        nyttNotat(type: .lead)
+        tittel = selskap
+        kobletSelskap = selskap
+        kobletLeadId = leadId
+        // Posisjonen settes av nyttNotat fra ENHETENS plassering, ikke
+        // kundens. Det er riktig: stedkoblingen handler om hvor notatet ble
+        // skrevet. Planlegger du fra kontoret, hører notatet hjemme der.
+        Task { await lagre(stille: true) }
+    }
+
     private func aapneKundeminne(selskap: String, leadId: String?) {
         if let minne = notater.first(where: {
             $0.tittel.hasPrefix("Kundeminne")

@@ -951,6 +951,45 @@ export function registerLeadgridCanvasRoutes(deps: {
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
   /**
+   * Hvor mange notater finnes per lead?
+   *
+   * Nexus er usynlig fra flatene folk faktisk bruker. Produksjon hadde null
+   * notater, og en av grunnene er at ingenting i leadlista eller på kartet
+   * antyder at flata finnes. Et tall ved siden av leadet er det billigste
+   * hintet som finnes.
+   *
+   * Synligheten speiler notatlista nøyaktig: egne notater pluss delte. Teller
+   * vi noe brukeren ikke får åpne, lover tallet noe det ikke kan holde.
+   */
+  app.get("/api/leadgrid/canvas/antall", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      if (!(await innenforKvote(pool, res, session.userId, "nexus-antall", NEXUS_KVOTER.les))) return;
+      await ensureSchema(pool);
+      const r = await pool.query<{ lead_id: string; antall: string }>(
+        `SELECT lead_id, count(*)::text AS antall
+           FROM leadgrid_canvas_notater
+          WHERE organization_id = $1 AND project_id = $2
+            AND (user_id = $3 OR delt)
+            AND slettet_at IS NULL
+            AND lead_id IS NOT NULL
+          GROUP BY lead_id`,
+        [scope.organizationId, scope.projectId, session.userId],
+      );
+      const antall: Record<string, number> = {};
+      for (const rad of r.rows) antall[rad.lead_id] = Number(rad.antall) || 0;
+      res.json({ antall });
+    } catch (e) {
+      console.error("[nexus] antall per lead feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  /**
    * Teller at koblinger ble vist, og hvilken som ble åpnet.
    *
    * Uten dette er rekkefølgen i panelet utviklerens gjetning for alltid.
