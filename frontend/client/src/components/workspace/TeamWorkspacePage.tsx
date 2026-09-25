@@ -26,6 +26,7 @@ import MoodboardTab from './tabs/MoodboardTab';
 import MediaTab from './tabs/MediaTab';
 import LeveranserTab from './tabs/LeveranserTab';
 import OppgaverTab from './tabs/OppgaverTab';
+import TimesheetsTab from './tabs/TimesheetsTab';
 import AvtalerTab from './tabs/AvtalerTab';
 import KundevisningTab from './tabs/KundevisningTab';
 import TeamTab from './tabs/TeamTab';
@@ -361,6 +362,7 @@ const TeamWorkspacePage: React.FC = () => {
       case 'utstyr':          return <UtstyrTab projectId={projectId} profession={projectProfession} userId={user?.id} />;
       case 'leveranser':      return <LeveranserTab projectId={projectId} />;
       case 'oppgaver':        return <OppgaverTab projectId={projectId} />;
+      case 'timer':           return <TimesheetsTab projectId={projectId} />;
       case 'avtaler':         return <AvtalerTab projectId={projectId} />;
       case 'foresporsler':    return <ForesporslerTab projectId={projectId} profession={projectProfession} userId={user?.id} userName={user?.firstName || (user as any)?.name || user?.email} />;
       case 'kundevisning':    return <KundevisningTab projectId={projectId} />;

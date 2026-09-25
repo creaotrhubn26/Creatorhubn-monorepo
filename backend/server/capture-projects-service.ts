@@ -1,4 +1,5 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { Pool } from 'pg';
 import { and, desc, eq, isNull, or } from 'drizzle-orm';
 import { projects, shotLists } from '../migrations/schema.js';
 import { captureSessions, type CaptureSession } from '../migrations/capture-schema.js';
@@ -162,6 +163,83 @@ export async function listProjectsForPhotographer(
       updatedAt: row.updatedAt ?? null,
     };
   });
+}
+
+/**
+ * Capture project picker for both owners and explicitly assigned team members.
+ * Membership is server-derived from the authenticated user id; inactive,
+ * deactivated and canRead=false assignments are excluded.
+ */
+export async function listProjectsForCaptureUser(
+  pool: Pool,
+  userId: string,
+  limit: number = 50,
+): Promise<CaptureProjectSummary[]> {
+  const result = await pool.query(
+    `SELECT project.id::text AS id,
+            COALESCE(NULLIF(project.title,''), NULLIF(project.name,''), 'Untitled project') AS title,
+            project.client_name, project.event_date, project.location, project.project_type,
+            COALESCE(project.status,'active') AS status, project.settings, project.updated_at,
+            shot_list.id::text AS list_id, shot_list.total_shots, shot_list.completed_shots,
+            shot_list.must_have_shots, shot_list.completed_must_have
+       FROM public.projects project
+       LEFT JOIN LATERAL (
+         SELECT list.id, list.total_shots, list.completed_shots, list.must_have_shots, list.completed_must_have
+           FROM shot_lists list
+          WHERE list.project_id=project.id AND list.user_id=project.user_id
+          ORDER BY list.updated_at DESC NULLS LAST LIMIT 1
+       ) shot_list ON TRUE
+      WHERE project.user_id::text=$1
+         OR EXISTS (
+              SELECT 1 FROM project_team_members member
+               WHERE member.project_id=project.id
+                 AND member.user_id=$1
+                 AND member.status='active' AND member.deactivated_at IS NULL
+                 AND (member.permissions->'canRead' IS NULL OR member.permissions @> '{"canRead":true}'::jsonb)
+            )
+      ORDER BY project.updated_at DESC NULLS LAST
+      LIMIT $2`,
+    [userId, Math.max(1, Math.min(limit, 200))],
+  );
+  return result.rows.map((row) => {
+    const settings = row.settings && typeof row.settings === 'object' ? row.settings as Record<string, unknown> : {};
+    return {
+      id: String(row.id), title: String(row.title), clientName: row.client_name ?? null,
+      eventDate: row.event_date ? String(row.event_date) : null, location: row.location ?? null,
+      projectType: row.project_type ?? null, status: String(row.status || 'active'),
+      shotListSummary: row.list_id ? {
+        listId: String(row.list_id), totalShots: Number(row.total_shots || 0),
+        completedShots: Number(row.completed_shots || 0), mustHaveShots: Number(row.must_have_shots || 0),
+        completedMustHave: Number(row.completed_must_have || 0),
+      } : null,
+      showcaseSettings: (settings.showcaseSettings as Record<string, unknown> | undefined) ?? null,
+      updatedAt: row.updated_at ? String(row.updated_at) : null,
+    };
+  });
+}
+
+export async function resolveCaptureProjectOwner(
+  pool: Pool,
+  userId: string,
+  projectId: string,
+): Promise<string | null> {
+  const result = await pool.query(
+    `SELECT project.user_id::text AS owner_user_id
+       FROM public.projects project
+      WHERE project.id=$1
+        AND (
+          project.user_id::text=$2
+          OR EXISTS (
+            SELECT 1 FROM project_team_members member
+             WHERE member.project_id=project.id AND member.user_id=$2
+               AND member.status='active' AND member.deactivated_at IS NULL
+               AND (member.permissions->'canRead' IS NULL OR member.permissions @> '{"canRead":true}'::jsonb)
+          )
+        )
+      LIMIT 1`,
+    [projectId, userId],
+  );
+  return result.rows[0]?.owner_user_id ? String(result.rows[0].owner_user_id) : null;
 }
 
 /// Full project + shots[] for the iPad's session detail / shot-list
