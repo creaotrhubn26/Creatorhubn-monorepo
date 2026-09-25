@@ -21,6 +21,24 @@ import {
 } from "./leadgrid-s3-storage-service.js";
 import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
 import {
+  gyldigFrist, STANDARD_FRIST_DAGER, slettUtloptNexusLyd,
+} from "./leadgrid-nexus-lyd-retensjon.js";
+
+/**
+ * MIME-typen som lagres på dokumentraden.
+ *
+ * Alt ble tidligere merket 'application/pdf' fordi endepunktet bare tok
+ * PDF-er. Nå bærer det lyd og video også, og en feil MIME gjør at
+ * nedlastingen serveres som feil type.
+ */
+function mimeForSlag(slag: string): string {
+  switch (slag) {
+    case "lyd": return "audio/mp4";
+    case "video": return "video/quicktime";
+    default: return "application/pdf";
+  }
+}
+import {
   koblingerFor, lagKobling, tellKoblingsbruk,
 } from "./leadgrid-nexus-koblinger.js";
 import {
@@ -662,9 +680,16 @@ export function registerLeadgridCanvasRoutes(deps: {
       // Derfor gates de på det samme entitlementet som åpnes først når
       // org-admin har bekreftet alle fire §7-punktene. Uten den bekreftelsen
       // skal opptaket ikke kunne lagres i det hele tatt.
+      let fristDager = STANDARD_FRIST_DAGER;
       if (slag === "lyd" || slag === "video") {
         if (!(await assertAnyEntitled(
           pool, session.userId, [LEADBOOK_LYDOPPTAK_FEATURE_KEY], res))) return;
+        // Org-en kan slette raskere, men ikke velge seg bort fra sletting.
+        const org = await pool.query<{ dager: number | null }>(
+          `SELECT nexus_lyd_slettefrist_dager AS dager
+             FROM organizations WHERE id = $1::uuid`,
+          [scope.organizationId]).catch(() => ({ rows: [] as { dager: number | null }[] }));
+        fristDager = gyldigFrist(org.rows[0]?.dager ?? null);
       }
       if (base64.length > 27_000_000) {
         res.status(413).json({ error: "dokument_for_stort" });
@@ -761,9 +786,9 @@ export function registerLeadgridCanvasRoutes(deps: {
            INSERT INTO leadgrid_canvas_dokumenter
              (id, notat_id, organization_id, user_id, navn, base64,
               storage_provider, storage_object_id, storage_key, size_bytes,
-              mime_type, checksum_sha256)
+              mime_type, checksum_sha256, slag, slettes_etter)
            SELECT $10, $11::uuid, $2, $3, $6, '', 'aws_s3', id, $5, $7,
-                  'application/pdf', $8
+                  $12, $8, $13, $14::timestamptz
              FROM stored
            ON CONFLICT (id) DO UPDATE SET
              navn = EXCLUDED.navn,
@@ -773,7 +798,9 @@ export function registerLeadgridCanvasRoutes(deps: {
              storage_key = EXCLUDED.storage_key,
              size_bytes = EXCLUDED.size_bytes,
              mime_type = EXCLUDED.mime_type,
-             checksum_sha256 = EXCLUDED.checksum_sha256
+             checksum_sha256 = EXCLUDED.checksum_sha256,
+             slag = EXCLUDED.slag,
+             slettes_etter = EXCLUDED.slettes_etter
            WHERE leadgrid_canvas_dokumenter.user_id = $3
              AND leadgrid_canvas_dokumenter.organization_id = $2
              AND leadgrid_canvas_dokumenter.notat_id = $11::uuid`,
@@ -793,6 +820,13 @@ export function registerLeadgridCanvasRoutes(deps: {
             }),
             dokId,
             req.params.id,
+            mimeForSlag(slag),
+            slag,
+            // §5: rå lyd og video har frist. En PDF av et tilbud har ikke —
+            // den er ikke en personopplysning på samme måte.
+            slag === "lyd" || slag === "video"
+              ? new Date(Date.now() + fristDager * 86_400_000).toISOString()
+              : null,
           ],
         );
       } catch (error) {
@@ -1003,6 +1037,31 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  /**
+   * Kjør slettefristen (§5). Beskyttet av samme cron-token som øvrige jobber.
+   *
+   * Eksponert som et endepunkt, ikke en intern timer, fordi etterlevelse
+   * skal kunne utløses og etterprøves — ikke bare skje.
+   */
+  app.post("/api/leadgrid/canvas/retensjon/kjor", async (req, res) => {
+    const token = String(req.headers["x-cron-token"] ?? "");
+    const forventet = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+    if (!forventet || token !== forventet) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    try {
+      await ensureSchema(pool);
+      const ut = await slettUtloptNexusLyd(pool);
+      console.log("[nexus-retensjon] slettet", ut.slettet, "objekter,",
+                  ut.bytes, "bytes,", ut.feilet, "feilet");
+      res.json(ut);
+    } catch (e) {
+      console.error("[nexus] retensjonskjøring feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   /**
    * Marker at notatet er sett, og svar med hvem andre som har sett det.
    *

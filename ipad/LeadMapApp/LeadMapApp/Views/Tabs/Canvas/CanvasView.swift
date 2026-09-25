@@ -84,6 +84,9 @@ struct CanvasView: View {
     // MARK: Medier
     @State private var lydSpiller = NexusLydSpiller()
     @State private var lydOpptaker = NexusLydOpptaker()
+    /// Transkripsjon på enheten. Hovedsporet: teksten lagres, lyden ikke.
+    @State private var referatMotor = LiveTranscriptionEngine()
+    @State private var referatStartet: Date?
     /// Hvilket lydobjekt spiller nå. Bare ett om gangen på en flate.
     @State private var aktivtLydObjekt: String?
     @State private var videoVelgerAapen = false
@@ -1834,20 +1837,20 @@ struct CanvasView: View {
             Divider()
             // Lyd, video og nettsider. Lyden først: den er den eneste av
             // dem man rekker å starte mens noen andre snakker.
-            // Lydopptak gates på leadbookLydopptak-entitlementet.
+            // Labelen sier hva som faktisk skjer.
             //
-            // docs/leadgrid-gdpr-lydopptak.md krever at GDPR-pakken er
-            // godkjent FØR ekte lyd skrus på, og nøkkelen åpnes først når
-            // org-admin har bekreftet alle fire §7-punktene. Uten den skal
-            // knappen være der, men inert — en manglende meny forteller
-            // ingenting om hvorfor.
+            // Uten GDPR-nøkkelen tas det opp et REFERAT: talen gjenkjennes
+            // på enheten, teksten lagres, lyden kastes. Med nøkkelen lagres
+            // lyden i tillegg. Å kalle begge «ta opp lyd» ville vært en
+            // påstand om at lyden finnes, og den ville vært usann.
             Button {
                 Task { await vekslLydopptak() }
             } label: {
-                Label(lydOpptaker.tarOpp ? "Stopp opptaket" : "Ta opp lyd",
-                      systemImage: lydOpptaker.tarOpp ? "stop.circle.fill" : "mic.fill")
+                Label(opptaksEtikett,
+                      systemImage: referatMotor.isRecording
+                          ? "stop.circle.fill"
+                          : (kanLagreLyd ? "mic.fill" : "text.bubble"))
             }
-            .disabled(!kanTaOppLyd)
             Button {
                 videoVelgerAapen = true
             } label: {
@@ -3588,6 +3591,12 @@ struct CanvasView: View {
         deler.append(contentsOf: notat.noder.map(\.tekst))
         deler.append(contentsOf: notat.objekter.compactMap(\.tittel))
         deler.append(contentsOf: notat.objekter.compactMap(\.detalj))
+        // Det som ble SAGT er like søkbart som det som ble skrevet — og når
+        // lyden ikke lagres, er teksten det eneste som står igjen av møtet.
+        deler.append(contentsOf: notat.objekter
+            .compactMap(\.referat)
+            .flatMap { $0 }
+            .map(\.tekst))
         let snapshotDrawing = try? PKDrawing(data: notat.drawingData)
         if let snapshotDrawing, !snapshotDrawing.bounds.isEmpty,
            let cg = snapshotDrawing
@@ -3792,30 +3801,50 @@ struct CanvasView: View {
     /// Start eller stopp lydopptak. Stopp laster opp bytes og legger kortet
     /// på flata med tidspunktet opptaket begynte — nøkkelen til blekk-synk.
     private func vekslLydopptak() async {
-        if lydOpptaker.tarOpp {
-            guard let resultat = lydOpptaker.stopp() else { return }
-            let dokId = UUID().uuidString
+        if referatMotor.isRecording {
+            // Stopp transkripsjonen først, så segmentene er komplette når
+            // objektet bygges.
+            referatMotor.stop()
+            let referat = referatMotor.segmenter.map {
+                Referatsegment(start: $0.start, varighet: $0.varighet, tekst: $0.tekst)
+            }
+            let varighet = Double(referatMotor.elapsedSeconds)
+            let startet = referatStartet ?? Date()
+            referatStartet = nil
+
+            // Lyden lagres BARE når org-en har åpnet GDPR-nøkkelen. Uten den
+            // beholder vi teksten og kaster lyden — det er hele poenget med
+            // «ingen rå lyd persisteres».
+            let lyd = kanLagreLyd ? lydOpptaker.stopp() : nil
+            if !kanLagreLyd { lydOpptaker.forkast() }
+
+            let dokId = lyd != nil ? UUID().uuidString : nil
             let navn = "Opptak \(Date().formatted(date: .omitted, time: .shortened))"
             objekter.append(CanvasObjekt(
                 type: CanvasObjektType.lyd.rawValue,
                 x: 430, y: 300,
                 tittel: navn,
                 dokId: dokId,
-                varighet: resultat.varighet,
-                opptakStartet: resultat.startet))
+                varighet: lyd?.varighet ?? varighet,
+                opptakStartet: lyd?.startet ?? startet,
+                referat: referat.isEmpty ? nil : referat))
             objektModus = true
-            // Filen beholdes til opplastingen har gått gjennom. Den er den
-            // eneste kopien av møtet.
-            ventendeOpplasting[dokId] = resultat.fil
-            await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data,
-                               slag: "lyd")
-        } else {
-            guard kanTaOppLyd else {
-                feilVedImport = "Lydopptak er ikke åpnet for organisasjonen "
-                    + "ennå. En leder må bekrefte GDPR-sjekklisten under "
-                    + "Leadbook → Lydopptak først."
-                return
+            markerUlagret()
+            if let lyd, let dokId {
+                ventendeOpplasting[dokId] = lyd.fil
+                await lastOppMedie(dokId: dokId, navn: navn, data: lyd.data, slag: "lyd")
             }
+            return
+        }
+        // Ikke i gang: start transkripsjonen.
+        //
+        // Den krever ikke GDPR-nøkkelen: ingen rå lyd lagres, og
+        // tekstbaserte notater er allerede i drift (fase 1 i pakken).
+        referatMotor.tillatSkyfallback = false
+        referatStartet = Date()
+        referatMotor.start()
+        // Lydfilen tas bare opp når den faktisk får lov til å bli lagret.
+        if kanLagreLyd {
             let ok = await lydOpptaker.start()
             if !ok { feilVedImport = "Mikrofonen er ikke tilgjengelig." }
         }
@@ -4481,8 +4510,16 @@ struct CanvasView: View {
         Task { await lagre(stille: true) }
     }
 
-    /// Åpnet først når org-en har bekreftet compliance-sjekklisten.
-    private var kanTaOppLyd: Bool {
+    private var opptaksEtikett: String {
+        if referatMotor.isRecording { return "Stopp opptaket" }
+        return kanLagreLyd ? "Ta opp lyd og referat" : "Ta opp referat"
+    }
+
+    /// Om selve LYDEN kan lagres. Transkripsjon krever ikke dette.
+    ///
+    /// Åpnes først når org-admin har bekreftet alle fire §7-punktene i
+    /// docs/leadgrid-gdpr-lydopptak.md.
+    private var kanLagreLyd: Bool {
         EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
     }
 

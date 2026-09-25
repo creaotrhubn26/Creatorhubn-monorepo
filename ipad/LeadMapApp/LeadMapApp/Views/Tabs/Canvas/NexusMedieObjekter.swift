@@ -279,6 +279,19 @@ final class NexusLydOpptaker: NSObject {
         return true
     }
 
+    /// Stopper og sletter opptaket uten å gi det tilbake.
+    ///
+    /// Brukes når org-en ikke har åpnet GDPR-nøkkelen: transkripsjonen
+    /// beholdes, lyden kastes. Det er hele forskjellen mellom «vi lagrer
+    /// ikke rå lyd» og «vi lagrer rå lyd, men later som vi ikke gjør det».
+    func forkast() {
+        ticker?.invalidate(); ticker = nil
+        opptaker?.stop()
+        if let url = filUrl { try? FileManager.default.removeItem(at: url) }
+        opptaker = nil; filUrl = nil; startet = nil
+        tarOpp = false; nivaa = 0
+    }
+
     /// Stopper og gir tilbake bytes, lengde, starttidspunkt og filen.
     ///
     /// Filen slettes IKKE her. Den er den eneste kopien til opplastingen har
@@ -310,6 +323,18 @@ enum NexusBlekkSynk {
         let t = skrevet.timeIntervalSince(opptakStartet)
         guard t >= -0.5, t <= varighet + 0.5 else { return nil }
         return max(0, t)
+    }
+
+    /// Hva som ble SAGT rundt et gitt sekund.
+    ///
+    /// Motsatt vei av strokIndekser: gitt et strøk, finn ytringen. Det er
+    /// den retningen som betyr noe i praksis — «hva ble sagt da jeg skrev
+    /// dette?» er spørsmålet man faktisk stiller.
+    static func segmentVed(_ tid: Double, i referat: [Referatsegment],
+                           vindu: Double = 4) -> Referatsegment? {
+        referat
+            .filter { $0.start - vindu <= tid && tid <= $0.start + $0.varighet + vindu }
+            .min { abs($0.start - tid) < abs($1.start - tid) }
     }
 
     /// Strøkene som ble skrevet innenfor `vindu` sekunder rundt `tid`.
