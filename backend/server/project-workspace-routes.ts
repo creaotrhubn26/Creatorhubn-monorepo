@@ -3309,16 +3309,13 @@ export function setupProjectWorkspaceRoutes(deps: ProjectWorkspaceRoutesDeps): v
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO project_photo_review(asset_id, project_id, review_status, updated_by, updated_at)
-         SELECT asset.id, $1, $3, $4, now()
-           FROM capture_assets asset
-           JOIN capture_sessions session ON session.id=asset.session_id
-          WHERE asset.id=ANY($2::uuid[]) AND session.project_id=$1
-         ON CONFLICT(asset_id) DO UPDATE SET project_id=EXCLUDED.project_id,
-           review_status=EXCLUDED.review_status, updated_by=EXCLUDED.updated_by, updated_at=now()`,
+      const statusWrite = await client.query(
+        `SELECT creatorhub_set_project_photo_review_status($1, $2::uuid[], $3, $4) AS affected`,
         [projectId, assetIds, status, userId],
       );
+      if (Number(statusWrite.rows[0]?.affected || 0) !== assetIds.length) {
+        throw new Error("photo_review_asset_scope_mismatch");
+      }
       if (createTasks && status === "needs_edit") {
         await client.query(
           `INSERT INTO project_board_tasks(project_id, crew_role, title, status, created_by, source_kind, source_id)

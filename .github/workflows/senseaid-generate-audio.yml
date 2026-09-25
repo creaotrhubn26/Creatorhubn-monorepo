@@ -9,8 +9,9 @@ name: SenseAid Explore lag Soniox-lyd
 # Nøklene ligger allerede i Render (CreatorHub-backenden), så jobben leser dem
 # derfra med RENDER_API_KEY i stedet for å kreve egne GitHub-secrets:
 # SENSEAID_SONIOX_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-# CREATORHUB_S3_BUCKET (påkrevd) og CREATORHUB_S3_REGION, SENSEAID_SONIOX_VOICE
-# (valgfrie). Verdiene maskeres i loggen. Bare lesing, aldri skriving til Render.
+# CREATORHUB_S3_BUCKET (påkrevd) og CREATORHUB_S3_REGION, SENSEAID_SONIOX_VOICE,
+# SENSEAID_SONIOX_REGION (valgfrie; Soniox-regionen er US når den mangler).
+# Verdiene maskeres i loggen. Bare lesing, aldri skriving til Render.
 #
 # Manuell trigger i Production-miljøet (samme database som seed-jobben). Kjør
 # «SenseAid Explore seed demo-innhold» først, så manusene finnes.
@@ -43,7 +44,10 @@ jobs:
     name: Lag Soniox-lyd for SenseAid Explore
     environment: Production
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Soniox lager lyd omtrent i sanntid (30–90 s per manus), og alle tre
+    # områdene har rundt 60 manus. Avbrudd er trygt: hvert manus lagres for
+    # seg, og en ny kjøring hopper over det som allerede har lyd.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,6 +125,7 @@ jobs:
           fetch_var CREATORHUB_S3_BUCKET required
           fetch_var CREATORHUB_S3_REGION optional
           fetch_var SENSEAID_SONIOX_VOICE optional
+          fetch_var SENSEAID_SONIOX_REGION optional
 
       # Samme installasjon som seed-jobben: dev-pakker (tsx) og optional-pakker
       # (esbuild-binæren) må med.

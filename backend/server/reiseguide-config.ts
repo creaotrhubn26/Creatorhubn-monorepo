@@ -18,6 +18,8 @@ export const SENSEAID_ENV = {
   sonioxApiKey: "SENSEAID_SONIOX_API_KEY",
   /** Valgfri: Soniox-stemmenavn (standard i reiseguide-soniox-tts.ts). */
   sonioxVoice: "SENSEAID_SONIOX_VOICE",
+  /** Valgfri: Soniox-region (eu, jp, us); standard er US (Daniel 24.09.2026). */
+  sonioxRegion: "SENSEAID_SONIOX_REGION",
   /** Valgfri: base-URL for lyd/bilder (standard er R2-bøtta bak /cdn/*). */
   mediaUrlBase: "REISEGUIDE_MEDIA_URL_BASE",
 } as const;

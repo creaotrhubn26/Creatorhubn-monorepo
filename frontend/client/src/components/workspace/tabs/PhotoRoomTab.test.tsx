@@ -77,4 +77,12 @@ describe('PhotoRoomTab unified review flow', () => {
     fireEvent.keyDown(search, { key: 'g' });
     expect(screen.getByAltText('photo-1.jpg')).toBeTruthy();
   });
+
+  it('gives filters accessible names without applying listbox-only state to image buttons', async () => {
+    render(<PhotoRoomTab projectId="project-1" />);
+    const firstPhoto = await screen.findByRole('button', { name: /photo-1\.jpg/i });
+    expect(firstPhoto).not.toHaveAttribute('aria-selected');
+    expect(screen.getByRole('combobox', { name: 'Alle statuser' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Sortering' })).toBeTruthy();
+  });
 });
