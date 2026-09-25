@@ -133,6 +133,32 @@ final class AppState {
     /// (>60s) som kan ha kommet fra en tidligere session-kø.
     var deepLinkPondusRequestedAt: Date?
 
+    // ── Nexus deep-link (kart/leadliste → Nexus) ──────────────────────
+    /// Et notat skal kunne starte der kunden er, ikke der notatfanen er.
+    /// Kartet er stedet selgeren allerede står når han bestemmer seg for at
+    /// noe må skrives ned; å be ham bytte fane og lete opp kunden på nytt er
+    /// å be ham gjøre samme valg to ganger.
+    var deepLinkNexusLeadId: String?
+    var deepLinkNexusSelskap: String?
+    var deepLinkNexusRequestedAt: Date?
+
+    /// Åpner Nexus på kundens notat, eller lager det hvis det ikke finnes.
+    ///
+    /// Notatets posisjon settes av Nexus fra enheten, ikke herfra: koblingen
+    /// «samme sted» handler om hvor notatet ble skrevet.
+    func aapneNexusFor(leadId: String?, selskap: String) {
+        deepLinkNexusLeadId = leadId
+        deepLinkNexusSelskap = selskap
+        deepLinkNexusRequestedAt = Date()
+        selectedSidebarItem = .canvas
+    }
+
+    func nullstillNexusDeepLink() {
+        deepLinkNexusLeadId = nil
+        deepLinkNexusSelskap = nil
+        deepLinkNexusRequestedAt = nil
+    }
+
     /// Backend notifications and copied links route here. LeadbookExamplesView
     /// consumes the id after it has fetched tenant-authorized detail.
     var deepLinkLeadbookExampleId: String?
@@ -478,6 +504,25 @@ final class AppState {
 
     /// Kun lead-fetch — billigere enn full refreshAll. Brukes av real-time-
     /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
+    /// Antall Nexus-notater per lead-ID.
+    ///
+    /// Gjør Nexus synlig fra leadlista og kartet. Tom til første oppslag, og
+    /// et lead uten notater mangler fra kartet i stedet for å stå med 0 —
+    /// et nulltall er støy på en rad som allerede har fem tall.
+    private(set) var nexusNotatAntall: [String: Int] = [:]
+
+    /// Henter notattallene. Stille: feiler den, viser vi ingen merker,
+    /// og det er en helt akseptabel tilstand.
+    func refreshNexusNotatAntall() async {
+        guard let api, let projectId = activeLeadgridProjectId else { return }
+        let organizationId = activeOrganizationId
+        guard let antall = try? await api.hentCanvasAntallPerLead(
+            projectId: projectId) else { return }
+        guard activeOrganizationId == organizationId,
+              activeLeadgridProjectId == projectId else { return }
+        nexusNotatAntall = antall
+    }
+
     func refreshLeads() async {
         guard let api else { return }
         let organizationId = activeOrganizationId
@@ -490,6 +535,9 @@ final class AppState {
                   activeProjectId == projectId else { return }
             self.leads = fresh
             self.leadsLoadState = .loaded
+            // Notattallene hører til den samme lista og hentes sammen med
+            // den, ikke i en egen runde brukeren må vente på.
+            Task { await self.refreshNexusNotatAntall() }
             if let actorUserId = currentUserId,
                let organizationId,
                let projectId {
