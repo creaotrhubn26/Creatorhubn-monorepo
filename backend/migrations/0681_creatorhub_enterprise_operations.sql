@@ -88,6 +88,51 @@ BEGIN
 END
 $enterprise_entitlement_backfill$;
 
+-- The feature-policy table also predates the canonical Enterprise model in
+-- some environments. Keep any incompatible relation intact for audit/recovery
+-- and create the exact contract consumed by the access service.
+DO $reconcile_enterprise_feature_permissions$
+BEGIN
+  IF to_regclass('public.enterprise_feature_permissions') IS NOT NULL
+     AND (
+       SELECT COUNT(*)
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'enterprise_feature_permissions'
+          AND column_name IN (
+            'organization_id',
+            'feature_id',
+            'permission_level',
+            'allowed_roles',
+            'created_by'
+          )
+     ) < 5 THEN
+    IF to_regclass('public.enterprise_feature_permissions_legacy_0681') IS NOT NULL THEN
+      RAISE EXCEPTION
+        'Cannot reconcile enterprise_feature_permissions: legacy target already exists';
+    END IF;
+
+    ALTER TABLE public.enterprise_feature_permissions
+      RENAME TO enterprise_feature_permissions_legacy_0681;
+  END IF;
+END
+$reconcile_enterprise_feature_permissions$;
+
+CREATE TABLE IF NOT EXISTS enterprise_feature_permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id VARCHAR(255) NOT NULL,
+  feature_id VARCHAR(255) NOT NULL,
+  permission_level VARCHAR(50) NOT NULL DEFAULT 'all',
+  allowed_roles TEXT[] NOT NULL DEFAULT ARRAY['admin', 'member', 'viewer']::TEXT[],
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by VARCHAR(255),
+  CONSTRAINT creatorhub_enterprise_feature_permissions_org_feature_key
+    UNIQUE (organization_id, feature_id)
+);
+CREATE INDEX IF NOT EXISTS idx_creatorhub_enterprise_feature_permissions_feature_0681
+  ON enterprise_feature_permissions(feature_id);
+
 INSERT INTO enterprise_feature_permissions
   (organization_id, feature_id, permission_level, allowed_roles, created_by)
 SELECT entitlement.organization_id, feature.feature_id,
