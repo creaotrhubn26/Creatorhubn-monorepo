@@ -63,6 +63,7 @@ struct PlayNearestPOIIntent: AppIntent {
         )
     }
 
+    @MainActor
     private func dialog(nb: String, en: String) -> IntentDialog {
         let bridgeLang = ReiseguideIntentBridge.shared.environment?.settings.uiLanguage
         return IntentDialog(stringLiteral: bridgeLang == "en" ? en : nb)
