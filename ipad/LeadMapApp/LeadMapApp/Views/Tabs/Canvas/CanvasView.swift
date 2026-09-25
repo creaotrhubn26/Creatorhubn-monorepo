@@ -385,6 +385,11 @@ struct CanvasView: View {
             konsumerNexusDeepLink()
         }
         .onAppear { konsumerNexusDeepLink() }
+        // Widgeten viser de nyeste notatene. Den kan ikke kalle API-et selv,
+        // så Nexus mater den via App Group-snapshotet hver gang lista endrer
+        // seg.
+        .onChange(of: notater.count) { _, _ in materWidget() }
+        .onChange(of: valgtId) { _, _ in materWidget() }
         .onChange(of: appState.activeOrganizationId) { _, _ in
             snapshotGjeldendeNotatForForrigeScope()
         }
@@ -4458,6 +4463,16 @@ struct CanvasView: View {
         // kundens. Det er riktig: stedkoblingen handler om hvor notatet ble
         // skrevet. Planlegger du fra kontoret, hører notatet hjemme der.
         Task { await lagre(stille: true) }
+    }
+
+    private func materWidget() {
+        appState.settSisteNexusNotater(
+            notater
+                .filter { $0.slettetAt == nil }
+                .map { WidgetSnapshot.NotatItem(
+                    tittel: $0.tittel.isEmpty ? "Uten tittel" : $0.tittel,
+                    selskap: $0.selskap,
+                    oppdatert: $0.oppdatert) })
     }
 
     private func aapneKundeminne(selskap: String, leadId: String?) {
