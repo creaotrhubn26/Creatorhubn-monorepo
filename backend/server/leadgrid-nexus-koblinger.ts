@@ -1,0 +1,329 @@
+/**
+ * Hva henger sammen med dette notatet?
+ *
+ * Nexus skal være et koblingspunkt, ikke et arkiv. Forskjellen er at et
+ * arkiv svarer når du spør, mens et koblingspunkt har svaret klart når du
+ * åpner det.
+ *
+ * Den feile måten å bygge dette på er en wiki: selgeren skriver
+ * [[Neras Direkte]] for å lage en lenke. Ingen gjør det med en Apple Pencil
+ * midt i et møte. Det hever skuldrene i stedet for å senke dem.
+ *
+ * Den riktige måten er at koblingene allerede finnes. Et notat vet hvilket
+ * lead det gjelder, hvor det ble skrevet, når, og av hvem. Fra det kan vi
+ * utlede nesten alt som er verdt å vise:
+ *
+ *   samme lead     de forrige møtene med samme kunde
+ *   samme sted     hva som ble skrevet på samme adresse
+ *   samme dag      møteloggen fra samme besøk
+ *   samme selskap  notater knyttet på navn før leadet fantes
+ *
+ * Null tastetrykk. Eksplisitte lenker finnes også, men de er unntaket —
+ * koblingen et menneske ser og systemet ikke kan gjette.
+ */
+import type { Pool } from "pg";
+import { getStoredEnrichment } from "./lead-brreg-service.js";
+
+export type KoblingKilde = "lead" | "sted" | "mote" | "selskap" | "manuell";
+
+export interface Kobling {
+  type: "notat" | "lead" | "mote";
+  id: string;
+  tittel: string;
+  /** Hvorfor denne dukket opp. Vises til brukeren — en kobling uten
+   *  begrunnelse er støy. */
+  kilde: KoblingKilde;
+  begrunnelse: string;
+  tidspunkt: string | null;
+  /** Sorteringsvekt. Høyere = nærmere. */
+  styrke: number;
+}
+
+/**
+ * Hvor nær «samme sted» er.
+ *
+ * Hundre meter, ikke ti: GPS på en iPad innendørs bommer med titalls meter,
+ * og to notater fra samme kontorbygg skal finne hverandre. Ikke tusen: da
+ * knytter vi sammen alt i et bysentrum, og listen blir verdiløs.
+ */
+export const SAMME_STED_METER = 100;
+
+/** Grader breddegrad per meter. Godt nok på norske breddegrader. */
+const METER_I_GRADER = 1 / 111_320;
+
+/**
+ * Hvor sannsynlig er det at denne personen er i rommet?
+ *
+ * Daglig leder tar møtet. Styreleder gjør det i små selskaper. Et vanlig
+ * styremedlem gjør det nesten aldri. Rekkefølgen betyr noe fordi lista skal
+ * kunne leses på et halvt sekund midt i en håndhilsning.
+ */
+export function personVekt(rolle: string): number {
+  const r = rolle.toLowerCase();
+  // Rollestrengene er BRREG sine egne, talt opp i produksjon:
+  // Styremedlem 154, Styrets leder 108, Daglig leder 99, Varamedlem 26,
+  // Innehaver 19, Kontaktperson 4, Deltaker med delt ansvar 3.
+  if (r.includes("daglig leder") || r.includes("adm. dir")) return 100;
+  if (r.includes("styrets leder") || r.includes("styreleder")) return 80;
+  if (r.includes("innehaver") || r.includes("deltaker")) return 75;
+  if (r.includes("kontaktperson")) return 70;
+  // Varamedlem må sjekkes før styremedlem — en vara møter sjelden.
+  if (r.includes("varamedlem")) return 10;
+  if (r.includes("styremedlem")) return 40;
+  return 20;
+}
+
+/** Maks antall personer vi viser. Et stort styre er ikke en møtedeltakerliste. */
+const MAKS_PERSONER = 6;
+
+function tekst(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function dato(v: unknown): string | null {
+  return v instanceof Date ? v.toISOString() : typeof v === "string" ? v : null;
+}
+
+/**
+ * Hvem du sannsynligvis sitter overfor.
+ *
+ * LinkedIn-innlogging svarer ikke på dette. Den gir `openid profile email`,
+ * altså din egen profil — navn, e-post, bilde. Motpartens tittel og selskap
+ * ligger bak `r_basicprofile`, som er forbeholdt LinkedIns partnerprogram,
+ * og selv med den må vi kjenne profil-URL-en hans på forhånd.
+ *
+ * Foretaksregisteret svarer derimot allerede. Roller-API-et gir daglig leder
+ * og styret med navn og rolle, og vi henter det inn i enrichment_data hver
+ * gang et lead berikes. Dataen har ligget der hele tiden — den har bare
+ * aldri blitt vist i notatet.
+ */
+export interface Person {
+  navn: string;
+  rolle: string;
+  /** Rangering: daglig leder først, så styreleder, så resten. */
+  vekt: number;
+}
+
+export interface KoblingInput {
+  organizationId: string;
+  projectId: string;
+  /** Eier av arbeidsflaten — brukes kun som fallback-scope mot lead-raden. */
+  userId: string;
+  notatId: string;
+  /** Maks per kategori, så ett lead med hundre notater ikke tar hele listen. */
+  perKategori?: number;
+}
+
+/**
+ * Finner alt som henger sammen med notatet.
+ *
+ * Hver spørring er avgrenset til organisasjon og prosjekt. Et notat skal
+ * aldri koble seg til noe i en annen kundes data.
+ */
+export async function koblingerFor(
+  pool: Pool,
+  input: KoblingInput,
+): Promise<{
+  koblinger: Kobling[];
+  personer: Person[];
+  notat: { id: string; tittel: string } | null;
+}> {
+  const grense = Math.min(Math.max(input.perKategori ?? 5, 1), 20);
+
+  const notatRad = await pool.query<{
+    id: string; tittel: string; lead_id: string | null; selskap: string | null;
+    lat: number | null; lon: number | null; created_at: Date;
+  }>(
+    `SELECT id::text, tittel, lead_id, selskap, lat, lon, created_at
+       FROM leadgrid_canvas_notater
+      WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+        AND slettet_at IS NULL`,
+    [input.notatId, input.organizationId, input.projectId],
+  );
+  const notat = notatRad.rows[0];
+  if (!notat) return { koblinger: [], personer: [], notat: null };
+
+  const ut: Kobling[] = [];
+
+  // 1. Samme lead — de sterkeste koblingene. Dette er historikken med
+  //    kunden du sitter hos akkurat nå.
+  if (notat.lead_id) {
+    const r = await pool.query<{ id: string; tittel: string; created_at: Date }>(
+      `SELECT id::text, tittel, created_at
+         FROM leadgrid_canvas_notater
+        WHERE lead_id = $1 AND id <> $2::uuid
+          AND organization_id = $3 AND project_id = $4 AND slettet_at IS NULL
+        ORDER BY created_at DESC LIMIT $5`,
+      [notat.lead_id, notat.id, input.organizationId, input.projectId, grense],
+    );
+    for (const rad of r.rows) {
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "lead", begrunnelse: "Samme kunde",
+        tidspunkt: dato(rad.created_at), styrke: 100,
+      });
+    }
+
+    // Møteloggen for samme lead. Notatet er skissen; loggen er avtalen.
+    const m = await pool.query<{ id: string; notat: string | null; created_at: Date }>(
+      `SELECT id::text, notat, created_at
+         FROM leadgrid_mote_logg
+        WHERE lead_id = $1 AND organization_id = $2 AND project_id = $3
+        ORDER BY created_at DESC LIMIT $4`,
+      [notat.lead_id, input.organizationId, input.projectId, grense],
+    );
+    for (const rad of m.rows) {
+      ut.push({
+        type: "mote", id: rad.id,
+        tittel: (tekst(rad.notat).split("\n")[0] || "Møte").slice(0, 90),
+        kilde: "mote", begrunnelse: "Møte med samme kunde",
+        tidspunkt: dato(rad.created_at), styrke: 80,
+      });
+    }
+  }
+
+  // 2. Samme sted. Fanger det leadkoblingen ikke gjør: to selskaper i samme
+  //    bygg, eller et notat skrevet før leadet var opprettet.
+  if (notat.lat != null && notat.lon != null) {
+    const d = SAMME_STED_METER * METER_I_GRADER;
+    const r = await pool.query<{ id: string; tittel: string; created_at: Date; meter: number }>(
+      `SELECT id::text, tittel, created_at,
+              round((point($1, $2) <-> point(lon, lat)) / $6) AS meter
+         FROM leadgrid_canvas_notater
+        WHERE id <> $3::uuid AND organization_id = $4 AND project_id = $5
+          AND slettet_at IS NULL AND lat IS NOT NULL AND lon IS NOT NULL
+          AND lat BETWEEN $7 - $8 AND $7 + $8
+          AND lon BETWEEN $1 - $9 AND $1 + $9
+        ORDER BY point($1, $2) <-> point(lon, lat) LIMIT $10`,
+      [notat.lon, notat.lat, notat.id, input.organizationId, input.projectId,
+       METER_I_GRADER, notat.lat, d, d / Math.max(Math.cos(notat.lat * Math.PI / 180), 0.01),
+       grense],
+    );
+    for (const rad of r.rows) {
+      const meter = Number(rad.meter);
+      if (!Number.isFinite(meter) || meter > SAMME_STED_METER) continue;
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "sted",
+        begrunnelse: meter < 10 ? "Samme adresse" : `${Math.round(meter)} m unna`,
+        tidspunkt: dato(rad.created_at), styrke: 60,
+      });
+    }
+  }
+
+  // 3. Samme selskapsnavn, uten lead. Fanger notater skrevet før kunden
+  //    ble opprettet som lead — der den første skissen ofte ligger.
+  if (notat.selskap) {
+    const r = await pool.query<{ id: string; tittel: string; created_at: Date }>(
+      `SELECT id::text, tittel, created_at
+         FROM leadgrid_canvas_notater
+        WHERE selskap = $1 AND id <> $2::uuid AND lead_id IS NULL
+          AND organization_id = $3 AND project_id = $4 AND slettet_at IS NULL
+        ORDER BY created_at DESC LIMIT $5`,
+      [notat.selskap, notat.id, input.organizationId, input.projectId, grense],
+    );
+    for (const rad of r.rows) {
+      ut.push({
+        type: "notat", id: rad.id, tittel: tekst(rad.tittel) || "Uten tittel",
+        kilde: "selskap", begrunnelse: `Samme selskap: ${notat.selskap}`,
+        tidspunkt: dato(rad.created_at), styrke: 50,
+      });
+    }
+  }
+
+  // 4. Eksplisitte lenker, begge veier. Et menneske så en sammenheng
+  //    systemet ikke kan gjette — den skal veie tyngst av alt.
+  const lenker = await pool.query<{
+    id: string; til_type: string; til_id: string; merknad: string | null;
+    created_at: Date; retning: string;
+  }>(
+    `SELECT id::text, til_type, til_id, merknad, created_at, 'ut' AS retning
+       FROM leadgrid_nexus_lenker
+      WHERE fra_notat_id = $1::uuid AND organization_id = $2
+     UNION ALL
+     SELECT id::text, 'notat', fra_notat_id::text, merknad, created_at, 'inn'
+       FROM leadgrid_nexus_lenker
+      WHERE til_type = 'notat' AND til_id = $1::text AND organization_id = $2`,
+    [input.notatId, input.organizationId],
+  );
+  for (const rad of lenker.rows) {
+    ut.push({
+      type: (rad.til_type as Kobling["type"]) ?? "notat",
+      id: rad.til_id,
+      tittel: tekst(rad.merknad) || "Koblet manuelt",
+      kilde: "manuell",
+      begrunnelse: rad.retning === "inn" ? "Peker hit" : "Koblet av deg",
+      tidspunkt: dato(rad.created_at),
+      styrke: 120,
+    });
+  }
+
+  // 5. Hvem du snakker med. Ikke en kobling mellom notater, men svaret på
+  //    det samme spørsmålet: hva henger sammen med dette notatet?
+  //    Rollene ligger allerede i enrichment_data fra da leadet ble beriket.
+  const personer: Person[] = [];
+  if (notat.lead_id) {
+    try {
+      const beriket = await getStoredEnrichment(pool, {
+        leadId: notat.lead_id,
+        workspaceOwnerUserId: input.userId,
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+      });
+      for (const kontakt of beriket?.contacts ?? []) {
+        const navn = tekst(kontakt?.name).trim();
+        const rolle = tekst(kontakt?.role).trim();
+        if (!navn) continue;
+        personer.push({ navn, rolle: rolle || "Rolle", vekt: personVekt(rolle) });
+      }
+      personer.sort((a, b) => b.vekt - a.vekt || a.navn.localeCompare(b.navn, "nb"));
+      personer.splice(MAKS_PERSONER);
+    } catch (e) {
+      // Et notat skal åpne seg selv om berikelsen er borte. Koblingene er
+      // hovedsaken; personlisten er et tillegg.
+      console.warn("[nexus] kunne ikke hente roller for lead", notat.lead_id, e);
+    }
+  }
+
+  // Samme mål kan dukke opp fra flere kilder — behold den sterkeste
+  // begrunnelsen, ikke fire linjer om samme notat.
+  const beste = new Map<string, Kobling>();
+  for (const k of ut) {
+    const nøkkel = `${k.type}:${k.id}`;
+    const finnes = beste.get(nøkkel);
+    if (!finnes || k.styrke > finnes.styrke) beste.set(nøkkel, k);
+  }
+
+  return {
+    notat: { id: notat.id, tittel: tekst(notat.tittel) || "Uten tittel" },
+    personer,
+    koblinger: [...beste.values()].sort(
+      (a, b) => b.styrke - a.styrke || (b.tidspunkt ?? "").localeCompare(a.tidspunkt ?? ""),
+    ),
+  };
+}
+
+/** Lager en eksplisitt kobling. Idempotent — samme kobling to ganger er én. */
+export async function lagKobling(
+  pool: Pool,
+  input: {
+    organizationId: string; fraNotatId: string;
+    tilType: "notat" | "lead" | "mote"; tilId: string;
+    merknad?: string | null; brukerId: string;
+  },
+): Promise<{ id: string; nyopprettet: boolean }> {
+  if (input.tilType === "notat" && input.tilId === input.fraNotatId) {
+    throw new Error("et_notat_kan_ikke_peke_paa_seg_selv");
+  }
+  const r = await pool.query<{ id: string; nyopprettet: boolean }>(
+    `INSERT INTO leadgrid_nexus_lenker
+       (organization_id, fra_notat_id, til_type, til_id, merknad, laget_av)
+     VALUES ($1, $2::uuid, $3, $4, $5, $6)
+     ON CONFLICT (fra_notat_id, til_type, til_id)
+       DO UPDATE SET merknad = COALESCE(EXCLUDED.merknad, leadgrid_nexus_lenker.merknad)
+     RETURNING id::text, (xmax = 0) AS nyopprettet`,
+    [input.organizationId, input.fraNotatId, input.tilType, input.tilId,
+     input.merknad ?? null, input.brukerId],
+  );
+  return r.rows[0];
+}
