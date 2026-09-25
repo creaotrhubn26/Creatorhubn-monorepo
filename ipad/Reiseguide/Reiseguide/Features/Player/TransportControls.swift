@@ -56,7 +56,7 @@ struct ProgressSlider: View {
     }
 }
 
-/// Transportkontroller (5.14): tilbake 15, spill/pause 72 pt, frem 15, hastighet.
+/// Transportkontroller (5.14): tilbake 15, spill/pause 72 pt (midt på), frem 15, hastighet.
 struct TransportControls: View {
     let isPlaying: Bool
     let rate: Double
@@ -69,51 +69,64 @@ struct TransportControls: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: AppSpacing.xxl) {
-            Button(action: onBack) {
-                Image(systemName: "gobackward.15")
-                    .font(.system(size: 32))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 56, height: 56)
+        // Spill/pause skal stå midt på skjermen. Hastighetsknappen ligger i en
+        // egen kolonne til høyre, og en like bred tom kolonne til venstre
+        // balanserer den, så den ikke skyver de tre hovedknappene mot venstre.
+        HStack(spacing: 0) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: 1)
+                .accessibilityHidden(true)
+            HStack(spacing: AppSpacing.xl) {
+                skipButton(systemImage: "gobackward.15", label: "player.back15", action: onBack)
+                playPauseButton
+                skipButton(systemImage: "goforward.15", label: "player.forward15", action: onForward)
             }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.back15"))
-
-            Button(action: onToggle) {
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(AppColor.onAccent)
-                    .frame(width: 72, height: 72)
-                    .background(AppColor.accent, in: Circle())
-                    .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
-                    .animation(reduceMotion ? nil : .default, value: isPlaying)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text(isPlaying ? "player.pause" : "player.play"))
-
-            Button(action: onForward) {
-                Image(systemName: "goforward.15")
-                    .font(.system(size: 32))
-                    .foregroundStyle(AppColor.textPrimary)
-                    .frame(width: 56, height: 56)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.forward15"))
-
-            Button(action: onRate) {
-                Text(rateLabel)
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(AppColor.textPrimary)
-                    .underline()
-                    // minWidth i stedet for fast bredde: teksten («1.25×») får
-                    // vokse med Dynamic Type i stedet for å bli klippet mot
-                    // knappene ved siden av (8.2).
-                    .frame(minWidth: 56, minHeight: AppSpacing.minTapTarget)
-            }
-            .buttonStyle(PressableButtonStyle())
-            .accessibilityLabel(Text("player.rate"))
-            .accessibilityValue(Text(rateSpoken))
+            rateButton
+                .frame(maxWidth: .infinity)
         }
+    }
+
+    private func skipButton(systemImage: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 32))
+                .foregroundStyle(AppColor.textPrimary)
+                .frame(width: 56, height: 56)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text(label))
+    }
+
+    private var playPauseButton: some View {
+        Button(action: onToggle) {
+            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(AppColor.onAccent)
+                // Trekanten ser venstreforskjøvet ut når den er geometrisk
+                // sentrert; flyttes litt til høyre (optisk sentrering).
+                .offset(x: isPlaying ? 0 : 2)
+                .frame(width: 72, height: 72)
+                .background(AppColor.accent, in: Circle())
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .animation(reduceMotion ? nil : .default, value: isPlaying)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text(isPlaying ? "player.pause" : "player.play"))
+    }
+
+    private var rateButton: some View {
+        Button(action: onRate) {
+            Text(rateLabel)
+                .font(.footnote.weight(.semibold).monospacedDigit())
+                .foregroundStyle(AppColor.textPrimary)
+                .underline()
+                // minWidth i stedet for fast bredde: teksten («1.25×») får
+                // vokse med Dynamic Type i stedet for å bli klippet (8.2).
+                .frame(minWidth: AppSpacing.minTapTarget, minHeight: AppSpacing.minTapTarget)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(Text("player.rate"))
+        .accessibilityValue(Text(rateSpoken))
     }
 
     private var rateLabel: String {
