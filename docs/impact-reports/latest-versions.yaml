@@ -7,53 +7,50 @@
 # Do not hand-edit version numbers — they come from the pinned Tier 1/2
 # sources named per entry. Update `checked_at` only via the agent run.
 
-bootstrap: true
-bootstrap_note: >
-  First run of this tracker (2026-08-09). No prior state existed, so no
-  impact assessment was performed this run — see 2026-08-09-impact.md.
-  Future runs diff against this file.
-
 vendors:
   blackmagic-resolve:
     product: DaVinci Resolve
     version: "21.0.4"
     source: "https://www.blackmagicdesign.com/api/support/latest-stable-version/davinci-resolve/mac"
     source_note: >
-      Primary source blocked by this session's network egress policy
-      (www.blackmagicdesign.com) at run time; version corroborated via
-      WebSearch (toolfarm.com, newsshooter.com, 2026-08-05 release coverage)
-      and matches the version already on record in
-      docs/evidence/2026-08-resolve-21-impact.yaml. Confidence: strong_evidence,
-      not Verified, per Freshness Rule (no live Tier 1 fetch this run).
-    checked_at: "2026-08-09"
+      Primary source again blocked by this session's network egress policy
+      (www.blackmagicdesign.com, CONNECT tunnel 403) at run time; version
+      corroborated via WebSearch (search summary citing techradar.com and
+      cgchannel.com coverage, "21.0.4 build 5" as of 2026-09-04) — unchanged
+      from the 2026-08-09 baseline. Confidence: strong_evidence, not Verified,
+      per Freshness Rule (no live Tier 1 fetch this run either).
+    checked_at: "2026-09-07"
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
     channel: stable
     version: "Xcode 26.6 (17F113)"
     source: "https://developer.apple.com/news/releases/rss/releases.rss (first Stable/GA title matching /Xcode \\d/, excluding beta/RC per release-monitor/SKILL.md Stable-vs-Preview rule)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-07"
     preview_channel_note: >
-      Xcode 27 beta 4 (27A5228h) is the current preview build (same feed).
-      Tracked here for awareness only, NOT as the diff-triggering baseline —
-      docs/evidence/2026-07-ios27-fm-symbols.yaml pins the project to the
-      iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Promote to
-      the primary `version` field once Xcode 27 leaves beta.
+      Xcode 27 beta 6 (27A5252f, 2026-08-10) is now the current preview
+      build (up from beta 4 noted 2026-08-09) — iOS/iPadOS/macOS 27 are at
+      beta 8 (2026-08-31) on the same feed. Tracked for awareness only, NOT
+      as the diff-triggering baseline — docs/evidence/2026-07-ios27-fm-symbols.yaml
+      pins the project to the iOS 26 / Xcode 26 FM surface until Xcode 27
+      ships stable. Promote to the primary `version` field once it does.
 
   moodle:
     product: Moodle LMS
     version: "v5.2.2"
     source: "https://api.github.com/repos/moodle/moodle/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-09-07"
 
   blender:
     product: Blender
-    version: "v5.2.0"
-    source: "https://api.github.com/repos/blender/blender/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    version: "v5.2.1"
+    previous_version: "v5.2.0"
+    source: "git ls-remote --tags https://github.com/blender/blender (filtered to ^v\\d+\\.\\d+(\\.\\d+)?$); GitHub API blocked for this unattached repo, ls-remote used instead"
+    checked_at: "2026-09-07"
 
   stripe-node:
     product: Stripe Node SDK
-    version: "v22.4.0"
-    source: "https://api.github.com/repos/stripe/stripe-node/releases/latest"
-    checked_at: "2026-08-09"
+    version: "v22.6.1"
+    previous_version: "v22.4.0"
+    source: "git ls-remote --tags https://github.com/stripe/stripe-node + raw.githubusercontent.com CHANGELOG.md at v22.6.1 (GitHub releases API blocked for this unattached repo)"
+    checked_at: "2026-09-07"
