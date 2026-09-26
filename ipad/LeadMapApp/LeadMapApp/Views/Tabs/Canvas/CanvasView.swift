@@ -49,6 +49,16 @@ struct CanvasView: View {
     @State private var kategori: CanvasKategori = .mote
     @State private var kobletLeadId: String?
     @State private var kobletSelskap: String?
+    /// Selskapet håndskriften nevner, men notatet ikke peker på.
+    ///
+    /// To situasjoner, samme sammenligning: notatet er ikke koblet til noen
+    /// (forslag), eller det er koblet til en ANNEN kunde (advarsel — man har
+    /// begynt å skrive i feil notat, og det oppdages ellers først når noen
+    /// leter etter møtet under feil kunde).
+    @State private var selskapsvarsel: Selskapsvarsel?
+    /// Navn brukeren har sagt fra om at ikke skal foreslås i dette notatet.
+    @State private var avvisteSelskap: Set<String> = []
+    @State private var selskapsvalgAapent = false
     @State private var drawing = PKDrawing()
     @State private var deltMedTeam = false
     @State private var sok = ""
@@ -122,8 +132,11 @@ struct CanvasView: View {
     /// eller slettet. Uten dette står kortet evig i «laster».
     @State private var notatUtilgjengelig: Set<String> = []
     /// Medier som ligger lokalt fordi opplastingen ikke gikk gjennom.
-    /// Nøkkel er dokId. Filene slettes først når de er trygt lagret.
-    @State private var ventendeOpplasting: [String: URL] = [:]
+    ///
+    /// Speil av NexusMedieKo, som holder bytesene og overlever at appen
+    /// lukkes. Denne mengden finnes bare for at kortene skal kunne vise at
+    /// noe mangler uten å spørre en actor per rendring.
+    @State private var ventendeOpplasting: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduserBevegelse
     /// Faner: flere notater åpne samtidig (session — bytt uten å miste noe;
     /// velg() auto-lagrer forrige notat stille).
@@ -412,6 +425,9 @@ struct CanvasView: View {
             konsumerNexusDeepLink()
         }
         .onAppear { konsumerNexusDeepLink() }
+        // Opptak som ikke kom gjennom sist. Køen overlever at appen lukkes,
+        // så dette er stedet de faktisk blir lastet opp.
+        .task { await tomMedieKo() }
         // Widgeten viser de nyeste notatene. Den kan ikke kalle API-et selv,
         // så Nexus mater den via App Group-snapshotet hver gang lista endrer
         // seg.
@@ -424,6 +440,8 @@ struct CanvasView: View {
             snapshotGjeldendeNotatForForrigeScope()
         }
         .onChange(of: scenePhase) { _, fase in
+            // Tilbake i forgrunnen er som regel også tilbake i dekning.
+            if fase == .active { Task { await tomMedieKo() } }
             if fase != .active {
                 _ = leggGjeldendeLagringIKo(stille: true)
                 // Avspilling skal ikke fortsette i bakgrunnen: lyden kommer
@@ -1470,6 +1488,27 @@ struct CanvasView: View {
             Text("Adressen legges som et kort på flata. Dobbelttrykk åpner "
                  + "den uten å forlate notatet.")
         }
+        .confirmationDialog(
+            selskapsvarsel.map { "Teksten nevner \($0.navn)" } ?? "",
+            isPresented: $selskapsvalgAapent, titleVisibility: .visible
+        ) {
+            if let varsel = selskapsvarsel {
+                Button("Koble notatet til \(varsel.navn)") {
+                    kobleTil(selskap: varsel.navn)
+                }
+                Button("Ikke foreslå dette her", role: .destructive) {
+                    avvisteSelskap.insert(varsel.navn)
+                    withAnimation(.easeOut(duration: 0.15)) { selskapsvarsel = nil }
+                }
+                Button("La stå", role: .cancel) {}
+            }
+        } message: {
+            if let varsel = selskapsvarsel, varsel.erAvvik {
+                Text("Notatet er koblet til \(kobletSelskap ?? "en annen kunde"). "
+                     + "Skriver du om \(varsel.navn), leter ingen etter møtet "
+                     + "der det ligger nå.")
+            }
+        }
         // Blekk-synk: lyden flytter seg, markeringen følger etter.
         .onChange(of: lydSpiller.posisjon) { _, _ in oppdaterBlekkSynk() }
         .onChange(of: aktivtLydObjekt) { _, _ in oppdaterBlekkSynk() }
@@ -2235,6 +2274,71 @@ struct CanvasView: View {
         }
     }
 
+    struct Selskapsvarsel: Equatable {
+        let navn: String
+        /// Sant når notatet allerede er koblet til noen andre.
+        let erAvvik: Bool
+    }
+
+    /// Ser etter et kundenavn i det som er skrevet.
+    ///
+    /// Teksten er OCR-en vi uansett lager ved lagring, så dette koster ingen
+    /// ekstra gjenkjenning — og ingen runde til serveren: leadlista ligger
+    /// allerede i minnet.
+    private func oppdaterSelskapsvarsel(fra tekst: String) {
+        let navn = appState.leads.map(\.name)
+        guard let treff = NexusSelskapstreff.avvik(
+                  tekst: tekst, koblet: kobletSelskap, blant: navn),
+              !avvisteSelskap.contains(treff) else {
+            if selskapsvarsel != nil { selskapsvarsel = nil }
+            return
+        }
+        let nytt = Selskapsvarsel(
+            navn: treff,
+            erAvvik: !(kobletSelskap ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+        if selskapsvarsel != nytt { selskapsvarsel = nytt }
+    }
+
+    /// Kobler notatet til kunden chipen foreslo.
+    private func kobleTil(selskap: String) {
+        kobletLeadId = appState.leads.first(where: { $0.name == selskap })?.id
+        kobletSelskap = selskap
+        withAnimation(.easeOut(duration: 0.15)) { selskapsvarsel = nil }
+        markerUlagret()
+    }
+
+    /// Chipen som sier hva teksten nevner.
+    ///
+    /// Den kobler ikke av seg selv. Et notat kan godt nevne en annen kunde
+    /// («samme som hos Neras») — derfor er trykket et valg, ikke en handling.
+    @ViewBuilder private var selskapsvarselChip: some View {
+        if let varsel = selskapsvarsel, kanRedigereValgtNotat {
+            let farge = varsel.erAvvik ? CvBrand.orange : CvBrand.blue
+            Button { selskapsvalgAapent = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: varsel.erAvvik
+                          ? "exclamationmark.triangle.fill" : "sparkles")
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Text(varsel.erAvvik
+                         ? "Nevner \(varsel.navn)"
+                         : "Koble til \(varsel.navn)?")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(farge)
+                .padding(.horizontal, 11).padding(.vertical, 6)
+                .background(farge.opacity(0.14), in: Capsule())
+                .overlay(Capsule().stroke(farge.opacity(0.4), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(varsel.erAvvik
+                ? "Notatet er koblet til \(kobletSelskap ?? "en annen kunde"), "
+                  + "men teksten nevner \(varsel.navn)"
+                : "Teksten nevner \(varsel.navn). Koble notatet til kunden?")
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+    }
+
     private var leadKobling: some View {
         Menu {
             if kobletLeadId != nil || kobletSelskap != nil {
@@ -2359,6 +2463,9 @@ struct CanvasView: View {
         kategori = n.kategori
         kobletLeadId = n.leadId
         kobletSelskap = n.selskap
+        // Varselet hører til notatet, ikke til editoren.
+        selskapsvarsel = nil
+        avvisteSelskap = []
         deltMedTeam = n.delt
         stempler = n.stempler
         tekstbokser = n.tekstbokser
@@ -2610,6 +2717,13 @@ struct CanvasView: View {
             }
             n.sokbarTekst = await byggSokbarTekst(for: n)
             guard request.scope == canvasDraftScope else { return }
+            // OCR-en er allerede gjort her. Å lete etter et kundenavn i den
+            // koster ingenting ekstra, og svaret er ferskt.
+            if n.id == valgtId {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    oppdaterSelskapsvarsel(fra: n.sokbarTekst)
+                }
+            }
             let persistenteDokumenter = n.dokumenter.map { d in
                 var kopi = d
                 kopi.base64 = ""
@@ -3867,11 +3981,19 @@ struct CanvasView: View {
                 samtykkeId: samtykkeId,
                 markorer: markorerNaa.isEmpty ? nil : markorerNaa))
             markorerNaa = []
+            // Tittel fra det som ble sagt. Blekk-tittelen tar øverste linje
+            // på arket; tale er en bedre kilde, fordi folk sier hva møtet
+            // handler om før de rekker å skrive det ned.
+            if tittel.trimmingCharacters(in: .whitespaces).isEmpty,
+               let fraTale = NexusTittelFraTale.tittel(fra: referat) {
+                tittel = fraTale
+            }
             objektModus = true
             markerUlagret()
             if let lyd, let dokId {
-                ventendeOpplasting[dokId] = lyd.fil
-                await lastOppMedie(dokId: dokId, navn: navn, data: lyd.data, slag: "lyd")
+                await lastOppMedie(dokId: dokId, navn: navn,
+                                   data: lyd.data, slag: "lyd")
+                try? FileManager.default.removeItem(at: lyd.fil)
             }
             return
         }
@@ -3905,30 +4027,72 @@ struct CanvasView: View {
     /// samme koden med et annet navn.
     private func lastOppMedie(dokId: String, navn: String, data: Data,
                               slag: String = "pdf") async {
-        guard let api = appState.api,
-              let prosjekt = appState.activeLeadgridProjectId,
+        guard let prosjekt = appState.activeLeadgridProjectId,
               let notatId = valgtId else { return }
+        // Kopien tas FØR forsøket, ikke etter at det feilet. Krasjer appen
+        // midt i opplastingen, er opptaket ellers borte.
+        await NexusMedieKo.delt.leggTil(
+            dokId: dokId, notatId: notatId, prosjektId: prosjekt,
+            navn: navn, slag: slag, data: data)
+        ventendeOpplasting.insert(dokId)
+        await sendMedie(dokId: dokId, notatId: notatId, prosjektId: prosjekt,
+                        navn: navn, slag: slag, data: data, siFra: true)
+    }
+
+    /// Ett opplastingsforsøk. Returnerer om det kom gjennom.
+    @discardableResult
+    private func sendMedie(dokId: String, notatId: String, prosjektId: String,
+                           navn: String, slag: String, data: Data,
+                           siFra: Bool) async -> Bool {
+        guard let api = appState.api else { return false }
         do {
             try await api.lastOppCanvasDokument(
-                notatId: notatId, dokId: dokId, projectId: prosjekt,
+                notatId: notatId, dokId: dokId, projectId: prosjektId,
                 navn: navn, base64: data.base64EncodedString(), slag: slag)
             // Først nå er den lokale kopien overflødig.
-            if let fil = ventendeOpplasting.removeValue(forKey: dokId) {
-                try? FileManager.default.removeItem(at: fil)
-            }
+            await NexusMedieKo.delt.fjern(dokId: dokId)
+            ventendeOpplasting.remove(dokId)
+            return true
         } catch {
-            feilVedImport = "\(navn) ligger foreløpig bare på iPaden. "
-                + "Velg kortet og trykk «Last opp på nytt» når du har dekning."
+            await NexusMedieKo.delt.bomTur(dokId: dokId)
+            if siFra {
+                feilVedImport = "\(navn) ligger foreløpig bare på iPaden. "
+                    + "Den lastes opp av seg selv når du har dekning igjen."
+            }
+            return false
+        }
+    }
+
+    /// Tømmer køen. Kjøres når flata åpnes og når appen kommer fram igjen —
+    /// da har man som regel nettopp fått dekning tilbake.
+    private func tomMedieKo() async {
+        let ventende = await NexusMedieKo.delt.ventende
+        ventendeOpplasting = Set(ventende.map(\.dokId))
+        guard NetworkMonitor.shared.isOnline else { return }
+        for medie in ventende {
+            guard let data = await NexusMedieKo.delt.bytes(for: medie) else {
+                // Bytesene er borte. Oppføringen lover et opptak som ikke
+                // finnes, og skal ikke bli liggende.
+                await NexusMedieKo.delt.fjern(dokId: medie.dokId)
+                ventendeOpplasting.remove(medie.dokId)
+                continue
+            }
+            await sendMedie(dokId: medie.dokId, notatId: medie.notatId,
+                            prosjektId: medie.prosjektId, navn: medie.navn,
+                            slag: medie.slag, data: data, siFra: false)
         }
     }
 
     /// Nytt forsøk på et medie som ble liggende igjen lokalt.
     private func lastOppPaaNytt(_ objekt: CanvasObjekt) async {
         guard let dokId = objekt.dokId,
-              let fil = ventendeOpplasting[dokId],
-              let data = try? Data(contentsOf: fil) else { return }
-        await lastOppMedie(dokId: dokId, navn: objekt.tittel ?? "Opptak",
-                           data: data, slag: "lyd")
+              let medie = await NexusMedieKo.delt.ventende
+                  .first(where: { $0.dokId == dokId }),
+              let data = await NexusMedieKo.delt.bytes(for: medie) else { return }
+        await sendMedie(dokId: dokId, notatId: medie.notatId,
+                        prosjektId: medie.prosjektId,
+                        navn: medie.navn, slag: medie.slag,
+                        data: data, siFra: true)
     }
 
     /// Hva som skjer når man åpner et objekt.
@@ -3946,7 +4110,7 @@ struct CanvasView: View {
         case .lyd:
             // Ligger opptaket fortsatt lokalt, er et nytt forsøk viktigere
             // enn å spille det av.
-            if let dokId = objekt.dokId, ventendeOpplasting[dokId] != nil {
+            if let dokId = objekt.dokId, ventendeOpplasting.contains(dokId) {
                 Task { await lastOppPaaNytt(objekt) }
             } else {
                 Task { await vekslLyd(objekt) }
@@ -4419,6 +4583,7 @@ struct CanvasView: View {
                                 .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
+                    selskapsvarselChip
                     leadKobling
                         .disabled(!kanRedigereValgtNotat)
                 }
@@ -5186,7 +5351,7 @@ struct CanvasView: View {
                 notatUtilgjengelig: objekt.refId.map {
                     notatUtilgjengelig.contains($0) } ?? false,
                 venterPaaOpplasting: objekt.dokId.map {
-                    ventendeOpplasting[$0] != nil } ?? false,
+                    ventendeOpplasting.contains($0) } ?? false,
                 onTrekkSamtykke: { Task { await trekkSamtykke(for: objekt) } },
                 onApne: { apneObjekt(objekt) })
         }
