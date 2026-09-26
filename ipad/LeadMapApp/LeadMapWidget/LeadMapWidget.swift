@@ -173,7 +173,41 @@ struct LeadMapWidgetView: View {
                     }
                 }
             }
+            // Nexus-notatene vises bare når de finnes. En tom seksjon med
+            // «ingen notater» ville brukt plass på å fortelle om en flate
+            // brukeren kanskje ikke vet at han har.
+            if let notater = entry.snapshot.nexusNotater, !notater.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("SIST I NEXUS")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    ForEach(Array(notater.prefix(3).enumerated()), id: \.offset) { _, n in
+                        notatRow(n)
+                    }
+                }
+            }
             Spacer()
+        }
+    }
+
+    private func notatRow(_ n: WidgetSnapshot.NotatItem) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "scribble.variable")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.purple)
+            Text(n.tittel)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            // Selskapet sier hvilken kunde notatet gjelder. Uten det er
+            // «Møte 25. sep» sant, men ubrukelig.
+            if let selskap = n.selskap, !selskap.isEmpty {
+                Text(selskap)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
     }
 

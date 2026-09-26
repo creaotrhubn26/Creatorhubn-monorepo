@@ -26,6 +26,29 @@ final class LiveTranscriptionEngine: ObservableObject {
     /// automatisk skybasert. UI-et viser ærlig banner.
     @Published var usingCloudFallback: Bool = false
 
+    /// Tillat at økten restartes mot Apples skytjeneste når den lokale
+    /// modellen mangler.
+    ///
+    /// Leadbook har alltid gjort dette, og beholder det. Nexus setter den
+    /// til FALSE: der er hele poenget at lyden aldri forlater enheten, og en
+    /// stille fallback til skyen ville brutt det uten at noen fikk vite det.
+    /// Feiler on-device der, skal økten feile synlig i stedet.
+    var tillatSkyfallback: Bool = true
+
+    /// Tidsstemplede segmenter fra gjenkjenningen.
+    ///
+    /// `transcript` er én lang streng og kan ikke si NÅR noe ble sagt.
+    /// Segmentene bærer tidspunktet, og det er dem blekk-synkingen binder
+    /// seg til når lyden ikke lagres.
+    @Published var segmenter: [Talesegment] = []
+
+    struct Talesegment: Codable, Hashable, Sendable {
+        /// Sekunder fra opptaket startet.
+        let start: Double
+        let varighet: Double
+        let tekst: String
+    }
+
     /// Har gjenkjenningen produsert noe tekst i det hele tatt denne økten?
     /// Styrer auto-fallbacken: feil FØR første tekst = modellproblem.
     private var receivedAnyText = false
@@ -104,6 +127,7 @@ final class LiveTranscriptionEngine: ObservableObject {
         }
         transcript = ""
         liveSegment = ""
+        segmenter = []
         elapsedSeconds = 0
         error = nil
         receivedAnyText = false
@@ -156,6 +180,7 @@ final class LiveTranscriptionEngine: ObservableObject {
         stop()
         transcript = ""
         liveSegment = ""
+        segmenter = []
         elapsedSeconds = 0
         audioLevel = 0
         error = nil
@@ -220,6 +245,17 @@ final class LiveTranscriptionEngine: ObservableObject {
         if let result {
             let text = result.bestTranscription.formattedString
             if !text.isEmpty { receivedAnyText = true }
+            // Tidsstemplene ligger på segmentene, ikke på strengen. De
+            // hentes ved hvert FINAL-resultat: delresultater blir skrevet om
+            // fortløpende, og da ville tidspunktene flyttet på seg.
+            if result.isFinal {
+                let nye = result.bestTranscription.segments
+                    .filter { !$0.substring.trimmingCharacters(in: .whitespaces).isEmpty }
+                    .map { Talesegment(start: $0.timestamp,
+                                       varighet: $0.duration,
+                                       tekst: $0.substring) }
+                segmenter.append(contentsOf: nye)
+            }
             if result.isFinal {
                 if !transcript.isEmpty { transcript += " " }
                 transcript += text
@@ -232,7 +268,7 @@ final class LiveTranscriptionEngine: ObservableObject {
             let nsErr = err as NSError
             // Kode 1110 = "No speech detected" — ignorer, brukeren har bare ikke begynt å snakke
             guard nsErr.code != 1110 else { return }
-            if isRecording && !receivedAnyText && !didAutoFallback
+            if isRecording && tillatSkyfallback && !receivedAnyText && !didAutoFallback
                 && recognizer.supportsOnDeviceRecognition {
                 // On-device feilet før et eneste ord kom gjennom — typisk
                 // manglende/korrupt nb-NO-modell. Restart samme økt skybasert.

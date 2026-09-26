@@ -731,6 +731,8 @@ struct ObjektView: View {
     var notatUtilgjengelig: Bool = false
     /// Mediet ligger fortsatt lokalt — opplastingen gikk ikke gjennom.
     var venterPaaOpplasting: Bool = false
+    /// Lagret lyd som kan trekkes tilbake.
+    var onTrekkSamtykke: (() -> Void)? = nil
     /// Åpne det som ligger i objektet: notatet, videoen, nettsiden.
     var onApne: (() -> Void)? = nil
 
@@ -828,6 +830,8 @@ struct ObjektView: View {
                 spiller: lydSpiller ?? NexusLydSpiller(),
                 harBlekkSynk: objekt.opptakStartet != nil,
                 venterPaaOpplasting: venterPaaOpplasting,
+                kanTrekkes: objekt.dokId != nil && !venterPaaOpplasting,
+                trekkSamtykke: onTrekkSamtykke,
                 valgt: erValgt,
                 startEllerPause: { onApne?() },
                 sokTil: { lydSpiller?.sokTil($0) })
