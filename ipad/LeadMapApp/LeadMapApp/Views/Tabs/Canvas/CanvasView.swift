@@ -49,6 +49,16 @@ struct CanvasView: View {
     @State private var kategori: CanvasKategori = .mote
     @State private var kobletLeadId: String?
     @State private var kobletSelskap: String?
+    /// Selskapet håndskriften nevner, men notatet ikke peker på.
+    ///
+    /// To situasjoner, samme sammenligning: notatet er ikke koblet til noen
+    /// (forslag), eller det er koblet til en ANNEN kunde (advarsel — man har
+    /// begynt å skrive i feil notat, og det oppdages ellers først når noen
+    /// leter etter møtet under feil kunde).
+    @State private var selskapsvarsel: Selskapsvarsel?
+    /// Navn brukeren har sagt fra om at ikke skal foreslås i dette notatet.
+    @State private var avvisteSelskap: Set<String> = []
+    @State private var selskapsvalgAapent = false
     @State private var drawing = PKDrawing()
     @State private var deltMedTeam = false
     @State private var sok = ""
@@ -1470,6 +1480,27 @@ struct CanvasView: View {
             Text("Adressen legges som et kort på flata. Dobbelttrykk åpner "
                  + "den uten å forlate notatet.")
         }
+        .confirmationDialog(
+            selskapsvarsel.map { "Teksten nevner \($0.navn)" } ?? "",
+            isPresented: $selskapsvalgAapent, titleVisibility: .visible
+        ) {
+            if let varsel = selskapsvarsel {
+                Button("Koble notatet til \(varsel.navn)") {
+                    kobleTil(selskap: varsel.navn)
+                }
+                Button("Ikke foreslå dette her", role: .destructive) {
+                    avvisteSelskap.insert(varsel.navn)
+                    withAnimation(.easeOut(duration: 0.15)) { selskapsvarsel = nil }
+                }
+                Button("La stå", role: .cancel) {}
+            }
+        } message: {
+            if let varsel = selskapsvarsel, varsel.erAvvik {
+                Text("Notatet er koblet til \(kobletSelskap ?? "en annen kunde"). "
+                     + "Skriver du om \(varsel.navn), leter ingen etter møtet "
+                     + "der det ligger nå.")
+            }
+        }
         // Blekk-synk: lyden flytter seg, markeringen følger etter.
         .onChange(of: lydSpiller.posisjon) { _, _ in oppdaterBlekkSynk() }
         .onChange(of: aktivtLydObjekt) { _, _ in oppdaterBlekkSynk() }
@@ -2235,6 +2266,71 @@ struct CanvasView: View {
         }
     }
 
+    struct Selskapsvarsel: Equatable {
+        let navn: String
+        /// Sant når notatet allerede er koblet til noen andre.
+        let erAvvik: Bool
+    }
+
+    /// Ser etter et kundenavn i det som er skrevet.
+    ///
+    /// Teksten er OCR-en vi uansett lager ved lagring, så dette koster ingen
+    /// ekstra gjenkjenning — og ingen runde til serveren: leadlista ligger
+    /// allerede i minnet.
+    private func oppdaterSelskapsvarsel(fra tekst: String) {
+        let navn = appState.leads.map(\.name)
+        guard let treff = NexusSelskapstreff.avvik(
+                  tekst: tekst, koblet: kobletSelskap, blant: navn),
+              !avvisteSelskap.contains(treff) else {
+            if selskapsvarsel != nil { selskapsvarsel = nil }
+            return
+        }
+        let nytt = Selskapsvarsel(
+            navn: treff,
+            erAvvik: !(kobletSelskap ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+        if selskapsvarsel != nytt { selskapsvarsel = nytt }
+    }
+
+    /// Kobler notatet til kunden chipen foreslo.
+    private func kobleTil(selskap: String) {
+        kobletLeadId = appState.leads.first(where: { $0.name == selskap })?.id
+        kobletSelskap = selskap
+        withAnimation(.easeOut(duration: 0.15)) { selskapsvarsel = nil }
+        markerUlagret()
+    }
+
+    /// Chipen som sier hva teksten nevner.
+    ///
+    /// Den kobler ikke av seg selv. Et notat kan godt nevne en annen kunde
+    /// («samme som hos Neras») — derfor er trykket et valg, ikke en handling.
+    @ViewBuilder private var selskapsvarselChip: some View {
+        if let varsel = selskapsvarsel, kanRedigereValgtNotat {
+            let farge = varsel.erAvvik ? CvBrand.orange : CvBrand.blue
+            Button { selskapsvalgAapent = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: varsel.erAvvik
+                          ? "exclamationmark.triangle.fill" : "sparkles")
+                        .font(.appScaled(size: 10, weight: .bold))
+                    Text(varsel.erAvvik
+                         ? "Nevner \(varsel.navn)"
+                         : "Koble til \(varsel.navn)?")
+                        .font(.appScaled(size: 11, weight: .bold))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(farge)
+                .padding(.horizontal, 11).padding(.vertical, 6)
+                .background(farge.opacity(0.14), in: Capsule())
+                .overlay(Capsule().stroke(farge.opacity(0.4), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(varsel.erAvvik
+                ? "Notatet er koblet til \(kobletSelskap ?? "en annen kunde"), "
+                  + "men teksten nevner \(varsel.navn)"
+                : "Teksten nevner \(varsel.navn). Koble notatet til kunden?")
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        }
+    }
+
     private var leadKobling: some View {
         Menu {
             if kobletLeadId != nil || kobletSelskap != nil {
@@ -2359,6 +2455,9 @@ struct CanvasView: View {
         kategori = n.kategori
         kobletLeadId = n.leadId
         kobletSelskap = n.selskap
+        // Varselet hører til notatet, ikke til editoren.
+        selskapsvarsel = nil
+        avvisteSelskap = []
         deltMedTeam = n.delt
         stempler = n.stempler
         tekstbokser = n.tekstbokser
@@ -2610,6 +2709,13 @@ struct CanvasView: View {
             }
             n.sokbarTekst = await byggSokbarTekst(for: n)
             guard request.scope == canvasDraftScope else { return }
+            // OCR-en er allerede gjort her. Å lete etter et kundenavn i den
+            // koster ingenting ekstra, og svaret er ferskt.
+            if n.id == valgtId {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    oppdaterSelskapsvarsel(fra: n.sokbarTekst)
+                }
+            }
             let persistenteDokumenter = n.dokumenter.map { d in
                 var kopi = d
                 kopi.base64 = ""
@@ -3867,6 +3973,13 @@ struct CanvasView: View {
                 samtykkeId: samtykkeId,
                 markorer: markorerNaa.isEmpty ? nil : markorerNaa))
             markorerNaa = []
+            // Tittel fra det som ble sagt. Blekk-tittelen tar øverste linje
+            // på arket; tale er en bedre kilde, fordi folk sier hva møtet
+            // handler om før de rekker å skrive det ned.
+            if tittel.trimmingCharacters(in: .whitespaces).isEmpty,
+               let fraTale = NexusTittelFraTale.tittel(fra: referat) {
+                tittel = fraTale
+            }
             objektModus = true
             markerUlagret()
             if let lyd, let dokId {
@@ -4419,6 +4532,7 @@ struct CanvasView: View {
                                 .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
+                    selskapsvarselChip
                     leadKobling
                         .disabled(!kanRedigereValgtNotat)
                 }
