@@ -48,5 +48,10 @@ export function resolveLinkedInRedirectUri(
   if (!host) return null;
   const forwardedProto = readStringValue(req.headers["x-forwarded-proto"]);
   const protocol = forwardedProto ?? req.protocol ?? "http";
-  return `${protocol}://${host}/api/auth/linkedin/callback`;
+  // Stien må matche ruta som faktisk finnes. Fallbacken bygget
+  // «/api/auth/linkedin/callback», mens linkedin-login-routes.ts
+  // registrerer «/api/auth/linkedin/login-callback». Resultatet var at
+  // LinkedIn avviste adressen som uregistrert — og hadde den blitt
+  // registrert, ville den truffet 404.
+  return `${protocol}://${host}/api/auth/linkedin/login-callback`;
 }
