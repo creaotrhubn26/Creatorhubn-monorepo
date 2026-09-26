@@ -1,5 +1,6 @@
 #include "ReviewConsole_Describe.hpp"
 
+#include "AAXIdentity.hpp"
 #include "ReviewConsole_Algorithm.hpp"
 #include "ReviewConsole_Parameters.hpp"
 
@@ -15,10 +16,10 @@
 namespace {
 
 constexpr AAX_CEffectID EffectId = "com.creatorhub.protools.review-console";
-constexpr AAX_CTypeID ManufacturerId = 'CrHb';
-constexpr AAX_CTypeID ProductId = 'ChRC';
-constexpr AAX_CTypeID MonoNativeId = 'ChR1';
-constexpr AAX_CTypeID StereoNativeId = 'ChR2';
+constexpr AAX_CTypeID ManufacturerId = CREATORHUB_AAX_MANUFACTURER_ID;
+constexpr AAX_CTypeID ProductId = CREATORHUB_AAX_PRODUCT_ID;
+constexpr AAX_CTypeID MonoNativeId = CREATORHUB_AAX_MONO_NATIVE_ID;
+constexpr AAX_CTypeID StereoNativeId = CREATORHUB_AAX_STEREO_NATIVE_ID;
 
 AAX_Result FirstFailure(AAX_Result current, AAX_Result candidate) {
     return current == AAX_SUCCESS ? candidate : current;

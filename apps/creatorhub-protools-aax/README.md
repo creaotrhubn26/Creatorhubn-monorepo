@@ -57,9 +57,38 @@ with AAX Validator. A normal Pro Tools installation requires Avid/PACE wrapping
 and signing plus the corresponding iLok authorization. Those proprietary
 credentials and tools must stay in the protected release environment.
 
-The `CrHb`/`ChRC`/`ChR1`/`ChR2` type IDs in the wrapper are provisional
-development IDs. Replace them with the values allocated or approved by Avid
-before commercial distribution.
+The default `CrHb`/`ChRC`/`ChR1`/`ChR2` type IDs are provisional development
+IDs. A production build must provide the values registered or approved by Avid
+and explicitly mark that approval at configure time:
+
+```bash
+cmake -S apps/creatorhub-protools-aax \
+  -B build/creatorhub-protools-aax-release \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCREATORHUB_BUILD_AAX_PLUGIN=ON \
+  -DCREATORHUB_AAX_SDK_ROOT=/absolute/path/to/aax-sdk \
+  -DCREATORHUB_AAX_MANUFACTURER_ID=ABCD \
+  -DCREATORHUB_AAX_PRODUCT_ID=EFGH \
+  -DCREATORHUB_AAX_MONO_NATIVE_ID=IJKL \
+  -DCREATORHUB_AAX_STEREO_NATIVE_ID=MNOP \
+  -DCREATORHUB_AAX_IDS_AVID_APPROVED=ON \
+  -DCREATORHUB_AAX_AVID_APPROVAL_REFERENCE=AVID-CASE-ID
+```
+
+The build embeds those values in both the binary and a signed release-identity
+manifest. The PACE release script refuses to wrap a bundle whose manifest is
+missing or whose IDs are still marked as development-only. Do not set the
+approval flag until Avid has confirmed the IDs in writing.
+
+The identity gate can be checked independently of PACE/iLok readiness:
+
+```bash
+scripts/release-protools-aax-macos.sh identity \
+  "/absolute/path/CreatorHub Review Console.aaxplugin"
+```
+
+CI also verifies the development, approved and invalid identity configurations
+with `scripts/test-protools-aax-release-identity.sh`.
 
 ## Release readiness and PACE signing
 

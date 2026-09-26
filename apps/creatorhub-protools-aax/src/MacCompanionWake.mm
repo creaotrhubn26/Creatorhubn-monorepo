@@ -60,12 +60,13 @@ bool LaunchCompanionInBackground(std::string& errorMessage) {
     NSDictionary* configuration = @{
         NSWorkspaceLaunchConfigurationArguments: @[@"--background"]
     };
-    const BOOL launched = [workspace launchApplicationAtURL:applicationUrl
-                                                    options:NSWorkspaceLaunchWithoutActivation
-                                              configuration:configuration
-                                                      error:&launchError];
+    NSRunningApplication* launchedApplication =
+        [workspace launchApplicationAtURL:applicationUrl
+                                  options:NSWorkspaceLaunchWithoutActivation
+                            configuration:configuration
+                                    error:&launchError];
 #pragma clang diagnostic pop
-    if (!launched) {
+    if (!launchedApplication) {
         NSString* description = launchError.localizedDescription ?: @"ukjent oppstartsfeil";
         errorMessage = std::string([description UTF8String]);
         return false;

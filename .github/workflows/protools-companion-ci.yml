@@ -55,6 +55,9 @@ jobs:
           cmake --build build/creatorhub-protools-aax --config Release
           ctest --test-dir build/creatorhub-protools-aax -C Release --output-on-failure
 
+      - name: Verify AAX production identity guard
+        run: bash scripts/test-protools-aax-release-identity.sh
+
   windows:
     name: Windows x64 build and tests
     runs-on: windows-2025
