@@ -754,6 +754,32 @@ fn stop_watching(
 
 const TRAY_ICON_ID: &str = "protools-companion-tray";
 
+fn background_start_requested<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    args.into_iter()
+        .any(|argument| argument.as_ref() == "--background")
+}
+
+fn show_main_window(handle: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = handle.set_activation_policy(tauri::ActivationPolicy::Regular);
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn hide_main_window(handle: &AppHandle) {
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.hide();
+    }
+    #[cfg(target_os = "macos")]
+    let _ = handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
+}
+
 fn setup_tray(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
@@ -776,12 +802,7 @@ fn setup_tray(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         )
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
+            "show" => show_main_window(app),
             "quit" => app.exit(0),
             _ => {}
         })
@@ -795,10 +816,7 @@ fn setup_tray(handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 if matches!(button, tauri::tray::MouseButton::Left)
                     && matches!(button_state, tauri::tray::MouseButtonState::Up)
                 {
-                    if let Some(window) = tray.app_handle().get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    show_main_window(tray.app_handle());
                 }
             }
         })
@@ -884,6 +902,7 @@ fn start_session_awareness(app: AppHandle, cfg: SharedConfig) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let background_start = background_start_requested(std::env::args_os());
     let mut loaded = config::load();
     let ipc_start_error = config::ensure_local_ipc_secret(&mut loaded).err();
     let ipc_ready = ipc_start_error.is_none();
@@ -912,6 +931,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             setup_tray(app.handle())?;
+            if background_start {
+                hide_main_window(app.handle());
+            } else {
+                show_main_window(app.handle());
+            }
             start_command_polling(app.handle().clone(), startup_cfg.clone());
             start_session_awareness(app.handle().clone(), startup_cfg.clone());
             if ipc_ready {
@@ -945,7 +969,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.hide();
+                hide_main_window(window.app_handle());
             }
         })
         .manage(cfg)
@@ -984,8 +1008,20 @@ pub fn run() {
             start_watching,
             stop_watching
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                show_main_window(handle);
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (handle, event);
+        });
 }
 
 #[cfg(test)]
@@ -1018,5 +1054,20 @@ mod tests {
                 .as_deref()
                 .is_some_and(|path| !path.trim().is_empty());
         assert!(should_auto_watch);
+    }
+
+    #[test]
+    fn background_mode_is_only_enabled_by_explicit_flag() {
+        assert!(background_start_requested([
+            "creatorhub-protools-companion",
+            "--background"
+        ]));
+        assert!(!background_start_requested([
+            "creatorhub-protools-companion",
+            "--foreground"
+        ]));
+        assert!(!background_start_requested([
+            "creatorhub-protools-companion"
+        ]));
     }
 }
