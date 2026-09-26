@@ -43,13 +43,15 @@ Den kanoniske flyten er:
 | Desktop hardening | ✅ lokalt | Device-token og separat AAX-IPC-hemmelighet ligger i OS-nøkkelring, CSP er låst, appen har tray/autostart, offline feedback-cache, sanitert diagnostikk og Companion-spesifikk signert updater. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
-| Desktop-distribusjon | ✅ | Companion 0.3.1 har Developer ID-signerte/notariserte macOS-installerere og Authenticode-signerte Windows EXE/MSI. Sound Room oppdager OS/arkitektur, og installere + Tauri-oppdateringer leveres fra CreatorHub sin private S3-distribusjon gjennom validerte, kortlivede URL-er. |
+| Desktop-distribusjon | ✅ | Companion 0.3.2 har Developer ID-signerte/notariserte macOS-installerere og Authenticode-signerte Windows EXE/MSI. Sound Room oppdager OS/arkitektur, og installere + Tauri-oppdateringer leveres fra CreatorHub sin private S3-distribusjon gjennom validerte, kortlivede URL-er. |
 
 ### Produsent-UX og driftshardening 26. september 2026
 
-- Companion `0.3.2` og AAX Review Console `0.3.1` er de lokale
-  release-kandidatene for denne leveransen. `0.3.1` er fortsatt siste offentlig
-  publiserte Companion inntil den plattformsignerte CI-releasen fullføres.
+- Companion `0.3.2` ble offentlig publisert 26. september 2026. Både macOS
+  Apple Silicon/Intel og Windows x64 ble bygget, signert, installasjonstestet og
+  synket til CreatorHub S3 før `latest.json` ble flyttet atomisk. AAX Review
+  Console `0.3.1` er installert og Developer ID-signert lokalt; offentlig
+  distribusjon venter fortsatt på PACE Eden-wrapping og permanent Avid plugin-ID.
 - Sound Room velger høyeste `version_number` ved første åpning og etter en ny
   Companion-bounce. «Du lytter til», «Nyeste» og «Godkjent» er separate,
   synlige begreper; et eldre manuelt valg beholdes under vanlige refresh-kall.
