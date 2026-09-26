@@ -176,6 +176,18 @@ final class LiveTranscriptionEngine: ObservableObject {
         isPaused = false
     }
 
+    /// Fjerner alle segmenter som starter etter `grense` sekunder.
+    ///
+    /// Brukes av «glem de siste minuttene». Transkripsjonen er det eneste
+    /// som KAN klippes presist: segmentene bærer tidspunkt.
+    func klippBort(etter grense: Double) {
+        segmenter.removeAll { $0.start >= grense }
+        // `transcript` er én streng uten tidspunkt og kan ikke klippes
+        // presist. Den bygges derfor opp igjen fra segmentene som står.
+        transcript = segmenter.map(\.tekst).joined(separator: " ")
+        liveSegment = ""
+    }
+
     func reset() {
         stop()
         transcript = ""

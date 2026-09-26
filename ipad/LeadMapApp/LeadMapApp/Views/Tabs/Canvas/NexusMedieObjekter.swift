@@ -279,6 +279,24 @@ final class NexusLydOpptaker: NSObject {
         return true
     }
 
+    /// Kaster lyden som er tatt opp så langt, og starter på nytt.
+    ///
+    /// Dette er «glem de siste minuttene» for lyd-modus. En AAC-fil kan
+    /// ikke klippes bakfra mens den skrives, så den eneste ÆRLIGE måten å
+    /// fjerne innholdet på er å kaste hele filen og begynne forfra.
+    ///
+    /// Alternativet — å markere et tidsvindu som «slettet» og hoppe over
+    /// det ved avspilling — ville latt bytene ligge. Det er ikke sletting,
+    /// det er å skjule. En kunde som nevner en sykdom skal ikke måtte stole
+    /// på at avspilleren respekterer et flagg.
+    ///
+    /// Prisen er at lyden fra før klippet også går tapt. Referatet beholder
+    /// alt utenfor vinduet, så møtet er ikke borte — men stemmen er.
+    func kastOgStartPaaNytt() async -> Bool {
+        forkast()
+        return await start()
+    }
+
     /// Stopper og sletter opptaket uten å gi det tilbake.
     ///
     /// Brukes når org-en ikke har åpnet GDPR-nøkkelen: transkripsjonen
@@ -450,6 +468,10 @@ struct NexusLydKort: View {
 struct NexusOpptakBanner: View {
     let startet: Date
     let nivaa: Double
+    /// «Glem de siste to minuttene» — for når kunden nevner noe som ikke
+    /// skulle vært tatt opp. Den hører hjemme HER, i banneret selgeren
+    /// allerede ser på, ikke i en meny han må lete i mens samtalen går.
+    var glemSiste: (() -> Void)? = nil
     let stopp: () -> Void
 
     @State private var naa = Date()
@@ -475,6 +497,19 @@ struct NexusOpptakBanner: View {
             Text(gaatt)
                 .font(.appScaled(size: 13, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
+
+            if let glemSiste {
+                Button(action: glemSiste) {
+                    Text("Glem 2 min")
+                        .font(.appScaled(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 11)
+                        .frame(height: 34)
+                        .background(.white.opacity(0.18), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Glem de siste to minuttene av opptaket")
+            }
 
             Button(action: stopp) {
                 Text("Stopp")

@@ -27,7 +27,9 @@ for minimal friksjon og er alt i drift.
 - **Databehandler**: Creatorhub AS (Leadgrid) — krever oppdatert
   databehandleravtale (DPA) som dekker lydopptak, transkripsjon og
   underleverandører.
-- **Underleverandører som må inn i DPA-en**: Backblaze B2 (lagring),
+- **Underleverandører som må inn i DPA-en**: AWS S3 (lagring — RETTET
+  2026-09-26; dokumentet sa tidligere Backblaze B2, men Leadgrid-lagringen
+  gikk over til S3 og Nexus-lyd har aldri vært innom B2),
   OpenAI (Whisper-transkripsjon), Anthropic (analyse), Render (drift),
   Neon (metadata). Dataflyt utenfor EØS → SCC-er må verifiseres per leverandør.
 
@@ -108,7 +110,7 @@ upåvirket og kan brukes i dag.
 
 ## 5. Lagring og sletting
 
-- Lyd: B2, kryptert i ro, presigned URL-er med kort levetid (samme mønster
+- Lyd: AWS S3, kryptert i ro, presigned URL-er med kort levetid (samme mønster
   som Academy-video).
 - **Retention**: rå lyd slettes automatisk etter **90 dager** (konfigurerbart
   per org, aldri lenger enn 12 mnd). Transkript består kun hvis det er
