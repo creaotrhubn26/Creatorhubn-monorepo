@@ -101,12 +101,47 @@ private func kildeFarge(_ kilde: String) -> Color {
     default: return CvBrand.textSecondary
     }
 }
+/// Overskrift per kilde.
+///
+/// Én flat liste skjuler at kildene er ulike. «Samme kunde» og «40 m unna»
+/// er to forskjellige påstander om hvorfor noe henger sammen, og selgeren
+/// vurderer dem ulikt — den ene er et faktum, den andre et sammentreff.
+private func kildeTittel(_ kilde: String) -> String {
+    switch kilde {
+    case "referert": return "Peker hit"
+    case "lead": return "Samme kunde"
+    case "person": return "Samme person"
+    case "mote": return "Møter"
+    case "sted": return "I nærheten"
+    case "selskap": return "Samme selskap"
+    case "samtidig": return "Skrevet samtidig"
+    case "manuell": return "Koblet av deg"
+    default: return "Annet"
+    }
+}
 
 struct NexusKoblingerPanel: View {
     let store: NexusKoblingerStore
     /// Dra ut på flata — eller tapp for å legge til.
     let leggPaaFlata: (NexusKoblingDTO) -> Void
     let apne: (NexusKoblingDTO) -> Void
+
+    /// Koblingene gruppert etter kilde, sterkeste gruppe først.
+    ///
+    /// Rekkefølgen kommer fra styrken backenden gir, som nå læres av hva
+    /// folk faktisk åpner. Den er altså ikke satt fast her, og kan endre seg
+    /// uten at denne filen røres.
+    private var grupper: [(kilde: String, rader: [NexusKoblingDTO])] {
+        var samlet: [String: [NexusKoblingDTO]] = [:]
+        for k in store.koblinger { samlet[k.kilde, default: []].append(k) }
+        return samlet
+            .map { (kilde: $0.key, rader: $0.value) }
+            .sorted { a, b in
+                let sa = a.rader.map(\.styrke).max() ?? 0
+                let sb = b.rader.map(\.styrke).max() ?? 0
+                return sa == sb ? a.kilde < b.kilde : sa > sb
+            }
+    }
 
     var body: some View {
         List {
@@ -130,15 +165,14 @@ struct NexusKoblingerPanel: View {
                 } header: {
                     Text("Sannsynlig i rommet")
                 } footer: {
-                    // Sier hvor det kommer fra, så ingen tror vi har gjettet.
                     Text("Daglig leder og styret, fra Foretaksregisteret.")
                 }
             }
 
-            Section {
-                if store.laster && store.koblinger.isEmpty {
-                    // Skjelett, ikke spinner: lista har en form, og formen
-                    // skal ikke forsvinne mens innholdet kommer.
+            if store.laster && store.koblinger.isEmpty {
+                // Skjelett, ikke spinner: lista har en form, og formen skal
+                // ikke forsvinne mens innholdet kommer.
+                Section("Funnet av seg selv") {
                     ForEach(0..<3, id: \.self) { i in
                         HStack(spacing: 11) {
                             Circle().fill(Color.white.opacity(0.07))
@@ -151,9 +185,12 @@ struct NexusKoblingerPanel: View {
                             }
                         }
                         .frame(minHeight: 44)
+                        .listRowBackground(CvBrand.card)
                         .accessibilityHidden(true)
                     }
-                } else if let feil = store.feil {
+                }
+            } else if let feil = store.feil {
+                Section {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(feil)
                             .font(.appScaled(size: 14, weight: .semibold))
@@ -163,8 +200,11 @@ struct NexusKoblingerPanel: View {
                             .foregroundStyle(CvBrand.textSecondary)
                     }
                     .padding(.vertical, 4)
-                } else if store.koblinger.isEmpty {
-                    // Tom er en ekte tilstand, ikke en feil.
+                    .listRowBackground(CvBrand.card)
+                }
+            } else if store.koblinger.isEmpty {
+                // Tom er en ekte tilstand, ikke en feil.
+                Section("Funnet av seg selv") {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Ingenting koblet ennå")
                             .font(.appScaled(size: 14, weight: .semibold))
@@ -175,79 +215,74 @@ struct NexusKoblingerPanel: View {
                             .foregroundStyle(CvBrand.textSecondary)
                     }
                     .padding(.vertical, 4)
-                } else {
-                    ForEach(store.koblinger) { k in
-                        HStack(spacing: 12) {
-                            Button { apne(k) } label: {
-                                HStack(spacing: 11) {
-                                    // Ikonet bærer kilden. Fargen er det
-                                    // eneste mettede i raden, og den betyr
-                                    // noe: hvorfor dukket denne opp?
-                                    Image(systemName: kildeIkon(k.kilde))
-                                        .font(.appScaled(size: 14, weight: .semibold))
-                                        .foregroundStyle(kildeFarge(k.kilde))
-                                        .frame(width: 26)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(k.tittel)
-                                            .font(.appScaled(size: 15, weight: .semibold))
-                                            .lineLimit(1)
-                                        Text(k.begrunnelse)
-                                            .font(.appScaled(size: 12))
-                                            .foregroundStyle(CvBrand.textSecondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .frame(minHeight: 44)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if k.type == "notat" {
-                                // Bare notater kan bo på flata. Knappen er
-                                // 44×44 — den treffes stående, med hanske.
-                                Button { leggPaaFlata(k) } label: {
-                                    Image(systemName: "plus.rectangle.on.rectangle")
-                                        .font(.appScaled(size: 16, weight: .semibold))
-                                        .foregroundStyle(CvBrand.purpleLight)
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Legg «\(k.tittel)» på flata")
-                            }
-                        }
-                        // Dra rett ut på flata. Knappen gjør det samme for
-                        // den som ikke oppdager draget — to veier til samme
-                        // sted, ingen av dem skjult.
-                        .draggable(
-                            NexusNotatReferanse(notatId: k.id, tittel: k.tittel)
-                        ) {
-                            // Dra-bildet: det brukeren ser henge i fingeren.
-                            Label(k.tittel, systemImage: "doc.text.fill")
-                                .font(.appScaled(size: 13, weight: .semibold))
-                                .padding(.horizontal, 12).padding(.vertical, 9)
-                                .background(CvBrand.cardHi,
-                                            in: RoundedRectangle(cornerRadius: 10))
-                        }
-                        .listRowBackground(CvBrand.card)
-                    }
+                    .listRowBackground(CvBrand.card)
                 }
-            } header: {
-                Text("Funnet av seg selv")
-            } footer: {
-                if !store.koblinger.isEmpty {
-                    Text("Utledet fra kunde, sted og møte. Ingenting av dette "
-                         + "er skrevet inn for hånd.")
+            } else {
+                ForEach(Array(grupper.enumerated()), id: \.element.kilde) { i, gruppe in
+                    Section {
+                        ForEach(gruppe.rader) { k in rad(k) }
+                    } header: {
+                        Text(kildeTittel(gruppe.kilde))
+                    } footer: {
+                        // Fotnoten hører til HELE lista, ikke hver gruppe.
+                        if i == grupper.count - 1 {
+                            Text("Utledet fra kunde, sted og møte. Ingenting "
+                                 + "av dette er skrevet inn for hånd.")
+                        }
+                    }
                 }
             }
         }
         .listStyle(.insetGrouped)
         // Appens palett, ikke systemets: panelet ligger oppå Nexus-flata og
-        // skal høre til der. Uten dette blir lista nesten svart mot den
-        // lilla-tonede bakgrunnen.
+        // skal høre til der.
         .scrollContentBackground(.hidden)
         .background(CvBrand.bg)
         .environment(\.defaultMinListRowHeight, 44)
+    }
+
+    @ViewBuilder private func rad(_ k: NexusKoblingDTO) -> some View {
+        HStack(spacing: 12) {
+            Button { apne(k) } label: {
+                HStack(spacing: 11) {
+                    Image(systemName: kildeIkon(k.kilde))
+                        .font(.appScaled(size: 14, weight: .semibold))
+                        .foregroundStyle(kildeFarge(k.kilde))
+                        .frame(width: 26)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(k.tittel)
+                            .font(.appScaled(size: 15, weight: .semibold))
+                            .lineLimit(1)
+                        Text(k.begrunnelse)
+                            .font(.appScaled(size: 12))
+                            .foregroundStyle(CvBrand.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if k.type == "notat" {
+                Button { leggPaaFlata(k) } label: {
+                    Image(systemName: "plus.rectangle.on.rectangle")
+                        .font(.appScaled(size: 16, weight: .semibold))
+                        .foregroundStyle(CvBrand.purpleLight)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Legg «\(k.tittel)» på flata")
+            }
+        }
+        .draggable(NexusNotatReferanse(notatId: k.id, tittel: k.tittel)) {
+            Label(k.tittel, systemImage: "doc.text.fill")
+                .font(.appScaled(size: 13, weight: .semibold))
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .listRowBackground(CvBrand.card)
     }
 }

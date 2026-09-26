@@ -87,6 +87,8 @@ struct CanvasView: View {
     /// Transkripsjon på enheten. Hovedsporet: teksten lagres, lyden ikke.
     @State private var referatMotor = LiveTranscriptionEngine()
     @State private var referatStartet: Date?
+    /// Merker satt under det pågående opptaket, i sekunder fra start.
+    @State private var markorerNaa: [Double] = []
     /// §4: samtykke må være logget FØR mikrofonen starter i lyd-modus.
     /// Hard gate, ikke advarsel — dokumentet er eksplisitt på det.
     @State private var samtykkeArkAapent = false
@@ -97,11 +99,25 @@ struct CanvasView: View {
     @State private var videoVelgerAapen = false
     @State private var videoValg: PhotosPickerItem?
     @State private var videoSomSpilles: URL?
+    /// Sekundet videoen skal åpne på. Satt av blekk-synkingen.
+    @State private var videoStart: Double = 0
     @State private var nettsideDialogAapen = false
     @State private var nettsideUtkast = ""
     @State private var nettsideSomVises: URL?
     /// Strøkene som ble skrevet der lyden står nå — blekk-synkingen.
     @State private var opplystStrok: Set<Int> = []
+    @State private var referatBobleVed: CGPoint = .zero
+    /// Ytringen som hører til strøket brukeren nettopp tappet på.
+    ///
+    /// «Dra i lyden og se blekket» er pent. «Tapp på det jeg krotet ned og
+    /// fortell meg hva han sa» er grunnen til at man tar opp i det hele tatt.
+    @State private var sagtDaJegSkrev: Referatsegment?
+    /// Klippet som gikk da strøket ble skrevet.
+    ///
+    /// Samme mekanikk som lyden: kameraet tidsstempler klippet, PencilKit
+    /// tidsstempler strøket. Skrev man mens det ble filmet, finner vi
+    /// sekundet — og da er skissen en inngang til opptaket.
+    @State private var filmetDaJegSkrev: Filmtreff?
     /// Notat-ID-er kortene peker på som ikke finnes her: ikke lastet ned,
     /// eller slettet. Uten dette står kortet evig i «laster».
     @State private var notatUtilgjengelig: Set<String> = []
@@ -381,6 +397,8 @@ struct CanvasView: View {
                 NexusOpptakBanner(
                     startet: startet, nivaa: lydOpptaker.nivaa,
                     glemSiste: { Task { await glemSiste() } },
+                    settMarkor: { settMarkor() },
+                    antallMarkorer: markorerNaa.count,
                     stopp: { Task { await vekslLydopptak() } })
                     .padding(.top, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -1437,16 +1455,10 @@ struct CanvasView: View {
             NexusSafari(url: url).ignoresSafeArea()
         }
         .fullScreenCover(item: $videoSomSpilles) { url in
-            VideoPlayer(player: AVPlayer(url: url))
-                .ignoresSafeArea()
-                .overlay(alignment: .topTrailing) {
-                    Button { videoSomSpilles = nil } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(.white, .black.opacity(0.5))
-                    }
-                    .padding()
-                }
+            NexusVideoSpiller(url: url, start: videoStart) {
+                videoSomSpilles = nil
+                videoStart = 0
+            }
         }
         .alert("Nettside", isPresented: $nettsideDialogAapen) {
             TextField("leadgrid.no", text: $nettsideUtkast)
@@ -3852,7 +3864,9 @@ struct CanvasView: View {
                 varighet: lyd?.varighet ?? varighet,
                 opptakStartet: lyd?.startet ?? startet,
                 referat: referat.isEmpty ? nil : referat,
-                samtykkeId: samtykkeId))
+                samtykkeId: samtykkeId,
+                markorer: markorerNaa.isEmpty ? nil : markorerNaa))
+            markorerNaa = []
             objektModus = true
             markerUlagret()
             if let lyd, let dokId {
@@ -3878,6 +3892,7 @@ struct CanvasView: View {
     private func startReferat(medLyd: Bool = false) async {
         referatMotor.tillatSkyfallback = false
         referatStartet = Date()
+        markorerNaa = []
         referatMotor.start()
         if medLyd {
             let ok = await lydOpptaker.start()
@@ -3965,7 +3980,7 @@ struct CanvasView: View {
         lydSpiller.startEllerPause()
     }
 
-    private func spillVideo(_ objekt: CanvasObjekt) async {
+    private func spillVideo(_ objekt: CanvasObjekt, fra start: Double = 0) async {
         guard let dokId = objekt.dokId, let api = appState.api,
               let prosjekt = appState.activeLeadgridProjectId,
               let svar = try? await api.hentCanvasDokument(
@@ -3977,6 +3992,7 @@ struct CanvasView: View {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("nexus-\(dokId).mov")
         try? data.write(to: url)
+        videoStart = start
         videoSomSpilles = url
     }
 
@@ -4020,6 +4036,9 @@ struct CanvasView: View {
         // minnet, falt kortet tilbake til et filmikon hver gang notatet ble
         // åpnet på nytt.
         let miniatyr = await NexusVideo.miniatyrBase64(for: data)
+        // Kameraets eget tidsstempel. Har klippet et, kan blekket synkes mot
+        // det uten at vi lagrer noe ekstra per strøk.
+        let tattOpp = await NexusVideo.tattOpp(for: data)
         objekter.append(CanvasObjekt(
             id: objektId,
             type: CanvasObjektType.video.rawValue,
@@ -4027,7 +4046,8 @@ struct CanvasView: View {
             bildeBase64: miniatyr,
             tittel: "Video",
             dokId: dokId,
-            varighet: varighet))
+            varighet: varighet,
+            opptakStartet: tattOpp))
         objektModus = true
         await lastOppMedie(dokId: dokId, navn: "Video", data: data, slag: "video")
     }
@@ -4574,6 +4594,8 @@ struct CanvasView: View {
         let gaatt = Date().timeIntervalSince(start)
         let grense = max(0, gaatt - sekunder)
         referatMotor.klippBort(etter: grense)
+        // Merkene i vinduet peker på noe som ikke finnes lenger.
+        markorerNaa.removeAll { $0 >= grense }
         if lydOpptaker.tarOpp {
             _ = await lydOpptaker.kastOgStartPaaNytt()
             feilVedImport = "De siste \(Int(sekunder / 60)) minuttene er borte "
@@ -4609,6 +4631,86 @@ struct CanvasView: View {
             feilVedImport = "Fikk ikke slettet opptaket. Prøv igjen, eller "
                 + "meld fra til en leder — kunden har trukket samtykket."
         }
+    }
+
+    /// Setter et merke i opptaket der man står nå.
+    private func settMarkor() {
+        guard let start = referatStartet else { return }
+        markorerNaa.append(Date().timeIntervalSince(start))
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Klippet som gikk idet et strøk ble skrevet.
+    struct Filmtreff: Equatable {
+        let objektId: String
+        let tittel: String
+        /// Sekundet i klippet.
+        let tid: Double
+    }
+
+    /// Slår opp hva som skjedde der brukeren tappet — hva som ble sagt, eller
+    /// hva som ble filmet.
+    ///
+    /// Gjør ingenting når notatet verken har referat eller et klipp som
+    /// dekker strøket. Da er et tapp bare et tapp, og en boble ville vært støy.
+    private func slaOppReferat(ved punkt: CGPoint) {
+        let arkpunkt = CGPoint(x: punkt.x / effektivDokumentZoom,
+                               y: punkt.y / effektivDokumentZoom)
+        guard let i = NexusBlekkSynk.strokNaer(arkpunkt, i: drawing),
+              drawing.strokes.indices.contains(i) else {
+            tomReferatboble()
+            return
+        }
+        let strok = drawing.strokes[i]
+        let ytring = objekter.lazy.compactMap { objekt -> Referatsegment? in
+            guard objekt.type == CanvasObjektType.lyd.rawValue,
+                  let referat = objekt.referat, !referat.isEmpty,
+                  let startet = objekt.opptakStartet else { return nil }
+            return NexusBlekkSynk.sagtDa(strok, opptakStartet: startet,
+                                         varighet: objekt.varighet ?? 0,
+                                         referat: referat)
+        }.first
+        // Lyden går foran: er ytringen der, er den mer presis enn «se
+        // klippet». Videoen er svaret når det ikke ble sagt noe — man filmet
+        // taket og skrev ned hva man så.
+        let klipp = ytring == nil ? filmetDa(strok) : nil
+        guard ytring != nil || klipp != nil else {
+            tomReferatboble()
+            return
+        }
+        referatBobleVed = punkt
+        withAnimation(reduserBevegelse ? nil : .easeOut(duration: 0.18)) {
+            sagtDaJegSkrev = ytring
+            filmetDaJegSkrev = klipp
+            // Strøket lyser mens boblen står, så man ser hvilket det gjelder.
+            opplystStrok = [i]
+        }
+    }
+
+    private func tomReferatboble() {
+        guard sagtDaJegSkrev != nil || filmetDaJegSkrev != nil else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            sagtDaJegSkrev = nil
+            filmetDaJegSkrev = nil
+            opplystStrok = []
+        }
+    }
+
+    /// Videoklippet som gikk da strøket ble skrevet.
+    ///
+    /// Krever at klippet vet når det ble filmet — `NexusVideo.tattOpp` leser
+    /// kameraets eget tidsstempel. Mangler det, får klippet ingen synk.
+    private func filmetDa(_ strok: PKStroke) -> Filmtreff? {
+        objekter.lazy.compactMap { objekt -> Filmtreff? in
+            guard objekt.type == CanvasObjektType.video.rawValue,
+                  objekt.dokId != nil,
+                  let startet = objekt.opptakStartet,
+                  let varighet = objekt.varighet, varighet > 0,
+                  let tid = NexusBlekkSynk.lydtid(for: strok, opptakStartet: startet,
+                                                  varighet: varighet) else { return nil }
+            return Filmtreff(objektId: objekt.id,
+                             tittel: objekt.tittel ?? "Video", tid: tid)
+        }.first
     }
 
     private func materWidget() {
@@ -4929,6 +5031,10 @@ struct CanvasView: View {
                             height: Self.logiskSidehoyde * CGFloat(sider)
                                 * effektivDokumentZoom,
                             alignment: .topLeading)
+                        // Tapp på blekket når et opptak finnes: vis hva som
+                        // ble sagt akkurat da. Gesten legges på ARKET, ikke
+                        // på PencilKit — den skal ikke stjele et pennestrøk.
+                        .onTapGesture { punkt in slaOppReferat(ved: punkt) }
                         .dropDestination(for: Data.self, action: handterBildeDrop)
                         // Notat sluppet fra koblingspanelet: kortet havner
                         // DER fingeren slapp, ikke i en fast posisjon. Man
@@ -4981,6 +5087,7 @@ struct CanvasView: View {
             canvasTankekartKoblinger
             canvasPencilLag
             blekkSynkLag
+            referatBobleLag
             canvasStempelLag
             canvasFigurLag
             canvasNodeLag
@@ -5122,6 +5229,71 @@ struct CanvasView: View {
                                value: opplystStrok)
             }
         }
+    }
+
+    /// Øyeblikket bak strøket, vist der brukeren tappet: hva som ble sagt,
+    /// eller hvilket klipp som gikk.
+    @ViewBuilder private var referatBobleLag: some View {
+        if let segment = sagtDaJegSkrev {
+            referatBoble(stempel: "Sagt da du skrev dette", farge: CvBrand.green) {
+                Text("«\(segment.tekst)»")
+                    .font(.appScaled(size: 13))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .allowsHitTesting(false)
+        } else if let klipp = filmetDaJegSkrev {
+            referatBoble(stempel: "Filmet da du skrev dette", farge: CvBrand.blue) {
+                Button {
+                    guard let objekt = objekter.first(where: { $0.id == klipp.objektId })
+                    else { return }
+                    tomReferatboble()
+                    Task { await spillVideo(objekt, fra: klipp.tid) }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.appScaled(size: 18))
+                        Text("Se klippet \(klokkeslett(klipp.tid)) inn")
+                            .font(.appScaled(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(height: 30)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    "Spill \(klipp.tittel) fra \(Int(klipp.tid)) sekunder")
+            }
+        }
+    }
+
+    /// Selve boblen. Stemplet forteller hvilken kilde svaret kom fra, så man
+    /// ikke tror lyden sa noe den ikke sa.
+    @ViewBuilder private func referatBoble<Innhold: View>(
+        stempel: String, farge: Color,
+        @ViewBuilder innhold: () -> Innhold
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(stempel)
+                .font(.appScaled(size: 9, weight: .bold))
+                .tracking(0.8)
+                .foregroundStyle(farge)
+            innhold()
+        }
+        .padding(.horizontal, 13).padding(.vertical, 10)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(CvBrand.cardHi, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13)
+            .stroke(farge.opacity(0.45), lineWidth: 1))
+        .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+        .position(x: min(Self.logiskSidebredde - 180, max(180, referatBobleVed.x)),
+                  y: max(70, referatBobleVed.y - 70))
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+    }
+
+    private func klokkeslett(_ t: Double) -> String {
+        let s = Int(t.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     private var canvasPencilLag: some View {

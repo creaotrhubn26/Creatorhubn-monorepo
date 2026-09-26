@@ -168,7 +168,9 @@ struct NexusVisning: View {
                         VStack(alignment: .leading, spacing: 18) {
                             NexusOpptakBanner(
                                 startet: Date().addingTimeInterval(-143),
-                                nivaa: 0.6, stopp: {})
+                                nivaa: 0.6,
+                                glemSiste: {}, settMarkor: {},
+                                antallMarkorer: 3, stopp: {})
                             HStack(alignment: .top, spacing: 18) {
                                 VStack(alignment: .leading, spacing: 7) {
                                     NexusNotatKort(
@@ -220,6 +222,25 @@ struct NexusVisning: View {
                                 url: "https://proff.no/selskap/neras-direkte",
                                 tittel: "Neras Direkte AS — regnskap",
                                 skala: 1.0, apne: {})
+                        }
+                    }
+
+                    seksjon("Arket som spør",
+                            "Befaring og lead åpnet før på blankt ark — de to "
+                            + "typene der man står hos kunden og skal huske å "
+                            + "spørre om fire ting. Nå står spørsmålene der.") {
+                        HStack(alignment: .top, spacing: 18) {
+                            ForEach([CanvasPapir.befaring, .leadkort]) { papir in
+                                VStack(alignment: .leading, spacing: 7) {
+                                    PapirView(papir: papir)
+                                        .frame(width: 300, height: 220)
+                                        .background(CvBrand.card,
+                                                    in: RoundedRectangle(cornerRadius: 14))
+                                        .overlay(RoundedRectangle(cornerRadius: 14)
+                                            .stroke(CvBrand.stroke, lineWidth: 1))
+                                    merkelapp(papir.etikett)
+                                }
+                            }
                         }
                     }
 
