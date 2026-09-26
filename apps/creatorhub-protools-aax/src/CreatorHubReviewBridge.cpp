@@ -44,15 +44,17 @@ constexpr Socket InvalidSocket = -1;
 void CloseSocket(Socket socket) { close(socket); }
 #endif
 
-void ConfigureTimeouts(Socket socket) {
+void ConfigureTimeouts(Socket socket, bool longRunning) {
 #if defined(_WIN32)
-    constexpr DWORD timeoutMs = 5000;
-    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
-    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+    const DWORD receiveTimeoutMs = longRunning ? 180000 : 5000;
+    constexpr DWORD sendTimeoutMs = 5000;
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&receiveTimeoutMs), sizeof(receiveTimeoutMs));
+    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&sendTimeoutMs), sizeof(sendTimeoutMs));
 #else
-    constexpr timeval timeout{5, 0};
-    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    const timeval receiveTimeout{longRunning ? 180 : 5, 0};
+    constexpr timeval sendTimeout{5, 0};
+    setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, sizeof(receiveTimeout));
+    setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &sendTimeout, sizeof(sendTimeout));
 #if defined(SO_NOSIGPIPE)
     constexpr int noSigPipe = 1;
     setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
@@ -103,7 +105,10 @@ std::string CreatorHubReviewBridge::Send(
 #endif
         throw std::runtime_error("socket creation failed");
     }
-    ConfigureTimeouts(socketHandle);
+    // A review export includes Pro Tools bounce, QC, private S3 upload and
+    // server-side registration. It runs on a worker thread and legitimately
+    // takes longer than the five-second timeout used by interactive actions.
+    ConfigureTimeouts(socketHandle, action == "send_review");
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port_);

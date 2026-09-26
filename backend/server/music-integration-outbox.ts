@@ -87,3 +87,25 @@ export async function drainMusicOutbox(pool: PoolLike, limit = 25): Promise<{ at
   const pending = await pool.query(`SELECT COUNT(*)::int AS count FROM creatorhub_music_sync_outbox WHERE status IN ('pending','processing')`);
   return { attempted: claimed.rows.length, delivered, pending: Number(pending.rows[0]?.count || 0) };
 }
+
+export async function retryMusicOutboxForUser(pool: PoolLike, userId: string, limit = 10): Promise<{ attempted: number; delivered: number; pending: number }> {
+  await ensureMusicOutboxSchema(pool);
+  const claimed = await pool.query(
+    `WITH due AS (
+       SELECT id FROM creatorhub_music_sync_outbox
+        WHERE user_id=$1 AND status IN ('pending','processing','dead_letter')
+          AND (locked_at IS NULL OR locked_at<NOW()-INTERVAL '5 minutes')
+        ORDER BY created_at ASC FOR UPDATE SKIP LOCKED LIMIT $2
+     )
+     UPDATE creatorhub_music_sync_outbox o SET status='processing',locked_at=NOW(),updated_at=NOW()
+       FROM due WHERE o.id=due.id RETURNING o.*`,
+    [userId, Math.max(1, Math.min(50, limit))],
+  );
+  let delivered = 0;
+  for (const row of claimed.rows) if ((await deliver(pool, row)).synced) delivered += 1;
+  const pending = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM creatorhub_music_sync_outbox WHERE user_id=$1 AND status IN ('pending','processing','dead_letter')`,
+    [userId],
+  );
+  return { attempted: claimed.rows.length, delivered, pending: Number(pending.rows[0]?.count || 0) };
+}

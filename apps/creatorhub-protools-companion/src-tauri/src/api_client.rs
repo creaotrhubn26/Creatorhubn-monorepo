@@ -1,6 +1,10 @@
 //! HTTP-klient mot CreatorHub-backendens Pro Tools Companion-API.
 //! Alle companion-kall autentiserer med device-token (Bearer) fra paring.
 
+use std::collections::HashMap;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 fn base(api_base: &str) -> String {
@@ -302,14 +306,56 @@ pub async fn list_delivery_jobs(
         .unwrap_or_else(|| Value::Array(vec![])))
 }
 
-/// POST /api/protools/sessions/:id/bounce/presign → (upload_url, file_url, storage_key)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BounceUploadTicket {
+    pub object_id: String,
+    pub strategy: String,
+    #[serde(default)]
+    pub upload_url: Option<String>,
+    #[serde(default)]
+    pub part_size: Option<u64>,
+    #[serde(default)]
+    pub part_count: Option<u64>,
+    #[serde(default)]
+    pub required_headers: HashMap<String, String>,
+    #[serde(default)]
+    pub already_uploaded: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BouncePartRequest {
+    pub part_number: u64,
+    pub checksum_sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedBouncePart {
+    pub part_number: u64,
+    pub upload_url: String,
+    #[serde(default)]
+    pub required_headers: HashMap<String, String>,
+}
+
+fn upload_header_allowed(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "content-type" | "x-amz-sdk-checksum-algorithm" | "x-amz-checksum-sha256"
+    )
+}
+
+/// POST /api/protools/sessions/:id/bounce/presign → private Sound Room upload ticket.
 pub async fn presign_bounce(
     api_base: &str,
     token: &str,
     session_id: &str,
     file_name: &str,
     size_bytes: u64,
-) -> Result<(String, String, String), String> {
+    checksum_sha256: &str,
+    client_event_id: &str,
+) -> Result<BounceUploadTicket, String> {
     let resp = client()
         .post(format!(
             "{}/api/protools/sessions/{}/bounce/presign",
@@ -317,38 +363,39 @@ pub async fn presign_bounce(
             session_id
         ))
         .bearer_auth(token)
-        .json(&json!({ "fileName": file_name, "sizeBytes": size_bytes, "mimeType": "audio/wav" }))
+        .json(&json!({
+            "fileName": file_name,
+            "sizeBytes": size_bytes,
+            "mimeType": "audio/wav",
+            "checksumSha256": checksum_sha256,
+            "clientEventId": client_event_id,
+        }))
         .send()
         .await
         .map_err(|e| format!("Nettverksfeil: {}", e))?;
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    let v: Value = resp
-        .json()
+    resp.json()
         .await
-        .map_err(|e| format!("Ugyldig svar: {}", e))?;
-    let upload = v
-        .get("uploadUrl")
-        .and_then(|x| x.as_str())
-        .ok_or("Mangler uploadUrl")?;
-    let file = v
-        .get("fileUrl")
-        .and_then(|x| x.as_str())
-        .ok_or("Mangler fileUrl")?;
-    let key = v
-        .get("storageKey")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    Ok((upload.to_string(), file.to_string(), key))
+        .map_err(|e| format!("Ugyldig opplastingsbillett: {}", e))
 }
 
-/// PUT bytes til presignert URL.
-pub async fn put_bytes(upload_url: &str, bytes: Vec<u8>) -> Result<(), String> {
-    let resp = client()
-        .put(upload_url)
-        .header("Content-Type", "audio/wav")
+/// PUT bytes to a private object-store ticket. Only the checksum headers in the
+/// backend contract are forwarded; cloud credentials can never be injected.
+pub async fn put_bytes(
+    upload_url: &str,
+    required_headers: &HashMap<String, String>,
+    bytes: Vec<u8>,
+) -> Result<Option<String>, String> {
+    let mut request = client().put(upload_url);
+    for (name, value) in required_headers {
+        if !upload_header_allowed(name) {
+            return Err(format!("Ugyldig opplastingsheader: {}", name));
+        }
+        request = request.header(name, value);
+    }
+    let resp = request
         .body(bytes)
         .send()
         .await
@@ -356,7 +403,78 @@ pub async fn put_bytes(upload_url: &str, bytes: Vec<u8>) -> Result<(), String> {
     if !resp.status().is_success() {
         return Err(err_body(resp).await);
     }
-    Ok(())
+    Ok(resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string))
+}
+
+/// Stream a single-part upload from disk. This keeps long 24-bit mixes out of
+/// memory and uses the same allow-listed headers as multipart uploads.
+pub async fn put_file(
+    upload_url: &str,
+    required_headers: &HashMap<String, String>,
+    path: &Path,
+    size_bytes: u64,
+) -> Result<Option<String>, String> {
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| format!("Kunne ikke åpne lydfilen: {}", error))?;
+    let stream = tokio_util::io::ReaderStream::new(file);
+    let mut request = client()
+        .put(upload_url)
+        .header(reqwest::header::CONTENT_LENGTH, size_bytes)
+        .body(reqwest::Body::wrap_stream(stream));
+    for (name, value) in required_headers {
+        if !upload_header_allowed(name) {
+            return Err(format!("Ugyldig opplastingsheader: {}", name));
+        }
+        request = request.header(name, value);
+    }
+    let resp = request
+        .send()
+        .await
+        .map_err(|error| format!("Opplasting feilet: {}", error))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    Ok(resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string))
+}
+
+/// POST /api/protools/sessions/:id/bounce/:objectId/parts
+pub async fn sign_bounce_parts(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    object_id: &str,
+    parts: &[BouncePartRequest],
+) -> Result<Vec<SignedBouncePart>, String> {
+    let resp = client()
+        .post(format!(
+            "{}/api/protools/sessions/{}/bounce/{}/parts",
+            base(api_base),
+            session_id,
+            object_id
+        ))
+        .bearer_auth(token)
+        .json(&json!({ "parts": parts }))
+        .send()
+        .await
+        .map_err(|e| format!("Nettverksfeil: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(err_body(resp).await);
+    }
+    let value: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ugyldig delsvar: {}", e))?;
+    serde_json::from_value(value.get("parts").cloned().unwrap_or(Value::Array(vec![])))
+        .map_err(|e| format!("Ugyldige opplastingsdeler: {}", e))
 }
 
 /// POST /api/protools/sessions/:id/bounce/complete
@@ -430,6 +548,37 @@ pub async fn feedback_action(
     resp.json()
         .await
         .map_err(|e| format!("Ugyldig svar: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn private_upload_ticket_matches_sound_room_contract() {
+        let ticket: BounceUploadTicket = serde_json::from_value(json!({
+            "objectId": "object-1",
+            "strategy": "single",
+            "uploadUrl": "https://storage.example/upload",
+            "requiredHeaders": {
+                "content-type": "audio/wav",
+                "x-amz-sdk-checksum-algorithm": "SHA256",
+                "x-amz-checksum-sha256": "base64-checksum"
+            }
+        }))
+        .unwrap();
+        assert_eq!(ticket.object_id, "object-1");
+        assert_eq!(ticket.strategy, "single");
+        assert_eq!(ticket.required_headers.len(), 3);
+    }
+
+    #[test]
+    fn private_upload_forwards_only_contract_headers() {
+        assert!(upload_header_allowed("content-type"));
+        assert!(upload_header_allowed("X-Amz-Checksum-Sha256"));
+        assert!(!upload_header_allowed("authorization"));
+        assert!(!upload_header_allowed("cookie"));
+    }
 }
 
 pub async fn create_realtime_ticket(

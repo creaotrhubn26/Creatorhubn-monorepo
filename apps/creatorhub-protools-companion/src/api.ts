@@ -85,6 +85,7 @@ export interface BounceResult {
   file_name: string;
   size_bytes: number;
   checksum: string;
+  idempotent: boolean;
   qc_report: AudioQcReport;
 }
 
@@ -182,6 +183,10 @@ export interface FeedbackTask {
 export interface FeedbackInbox {
   project: { id: string; title: string; status: string } | null;
   version: { id: string; version_label: string; version_number: number; status: string } | null;
+  latestVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;
+  activeReviewVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;
+  approvedVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;
+  versionsWithOpenFeedback: Array<{ id: string; version_label: string; version_number: number; status: string; open_comment_count: number }>;
   comments: FeedbackComment[];
   approvals: FeedbackApproval[];
   tasks: FeedbackTask[];
@@ -240,7 +245,7 @@ export const previewSessionRecall = (snapshot: SessionSnapshot) =>
 export const recallSessionSnapshot = (snapshot: SessionSnapshot) =>
   invoke<SessionRecallResult>("recall_session_snapshot", { snapshot });
 export const listExportSources = () => invoke<{ execution: string; sources: Array<{ name: string; sourceType: string }> }>("list_export_sources");
-export const sendToReview = (fileName: string, source: string | null) => invoke<BounceResult>("send_to_review", { fileName, source });
+export const sendToReview = (fileName: string, source: string | null, forceNewVersion = false) => invoke<BounceResult>("send_to_review", { fileName, source, forceNewVersion });
 export const runDelivery = (preset: string, outputDirectory: string, outputs: DeliveryOutput[]) =>
   invoke<DeliveryResult>("run_delivery", { preset, outputDirectory, outputs });
 export const listDeliveryJobs = () => invoke<DeliveryJob[]>("list_delivery_jobs");

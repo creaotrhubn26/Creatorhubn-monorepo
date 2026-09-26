@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Alert, Box, Button, Chip, FormControlLabel, Stack, Switch, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Collapse, FormControlLabel, Stack, Switch, Typography } from "@mui/material";
 import SecurityOutlined from "@mui/icons-material/SecurityOutlined";
 import UpdateOutlined from "@mui/icons-material/UpdateOutlined";
 import ContentCopy from "@mui/icons-material/ContentCopy";
+import CheckCircle from "@mui/icons-material/CheckCircle";
+import WarningAmber from "@mui/icons-material/WarningAmber";
 import * as api from "./api";
 import type { AppState } from "./api";
 
@@ -16,6 +18,7 @@ export function OperationsPanel({ state, report }: {
   const [update, setUpdate] = useState<{ available: boolean; current_version: string; version: string | null; notes: string | null } | null>(null);
   const [diagnostics, setDiagnostics] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showTechnical, setShowTechnical] = useState(false);
 
   useEffect(() => { void api.autostartStatus().then(setAutostart).catch(() => undefined); }, []);
 
@@ -80,12 +83,39 @@ export function OperationsPanel({ state, report }: {
       </Typography>
       {state.last_feedback_sync_error && <Alert severity="warning" sx={{ mt: 1 }}>Offline-cache brukes: {state.last_feedback_sync_error}</Alert>}
       <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-        <Button variant="outlined" onClick={() => void loadDiagnostics()} sx={{ color: ORANGE, borderColor: ORANGE }}>Vis diagnostikk</Button>
+        <Button variant="outlined" onClick={() => void loadDiagnostics()} sx={{ color: ORANGE, borderColor: ORANGE, minHeight: 40 }}>Sjekk at alt virker</Button>
         {diagnostics && <Button startIcon={<ContentCopy />} onClick={() => void copyDiagnostics()} sx={{ color: ORANGE }}>Kopier</Button>}
       </Stack>
-      {diagnostics && <Box component="pre" sx={{ fontSize: 10.5, p: 1, mt: 1, maxHeight: 240, overflow: "auto", bgcolor: "#08111f", borderRadius: 1.5 }}>{JSON.stringify(diagnostics, null, 2)}</Box>}
+      {diagnostics && <DiagnosticSummary diagnostics={diagnostics} />}
+      {diagnostics && <Button size="small" onClick={() => setShowTechnical((value) => !value)} sx={{ mt: .7, color: "text.secondary", textTransform: "none" }}>
+        {showTechnical ? "Skjul tekniske detaljer" : "Vis tekniske detaljer"}
+      </Button>}
+      <Collapse in={showTechnical && Boolean(diagnostics)}>
+        {diagnostics && <Box component="pre" sx={{ fontSize: 10.5, p: 1, mt: .5, maxHeight: 240, overflow: "auto", bgcolor: "#08111f", borderRadius: 1.5 }}>{JSON.stringify(diagnostics, null, 2)}</Box>}
+      </Collapse>
     </Box>
   </Stack>;
+}
+
+function DiagnosticSummary({ diagnostics }: { diagnostics: Record<string, unknown> }) {
+  const checks = Array.isArray(diagnostics.checks) ? diagnostics.checks as Array<{ id: string; label: string; status: "ok" | "warning" | "error"; message: string }> : [];
+  const errors = checks.filter((check) => check.status === "error").length;
+  return (
+    <Box sx={{ mt: 1.2 }} aria-live="polite">
+      <Alert severity={errors ? "warning" : "success"} sx={{ mb: 1 }}>
+        {errors ? `${errors} ting må ordnes. Følg teksten under.` : "Alt viktig er klart for bruk."}
+      </Alert>
+      <Stack spacing={.7}>
+        {checks.map((check) => {
+          const color = check.status === "ok" ? "#5fb88a" : check.status === "warning" ? "#e1b85a" : "#e0606a";
+          return <Stack key={check.id} direction="row" spacing={1} sx={{ p: 1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,.025)", alignItems: "flex-start" }}>
+            {check.status === "ok" ? <CheckCircle sx={{ color, fontSize: 19 }} /> : <WarningAmber sx={{ color, fontSize: 19 }} />}
+            <Box><Typography sx={{ fontSize: 12.5, fontWeight: 800 }}>{check.label}</Typography><Typography sx={{ fontSize: 11.5, color: "text.secondary" }}>{check.message}</Typography></Box>
+          </Stack>;
+        })}
+      </Stack>
+    </Box>
+  );
 }
 
 function formatEpoch(value: string | null) {

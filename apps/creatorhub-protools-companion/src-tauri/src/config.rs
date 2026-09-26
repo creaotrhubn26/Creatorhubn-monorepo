@@ -162,6 +162,19 @@ fn keyring_set(account: &str, secret: &str) -> Result<(), String> {
         .map_err(|error| format!("Lagre i OS-nøkkelring: {}", error))
 }
 
+fn keyring_value_needs_update(current: Option<&str>, desired: &str) -> bool {
+    current != Some(desired)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn keyring_set_if_changed(account: &str, secret: &str) -> Result<(), String> {
+    let current = keyring_get(account)?;
+    if keyring_value_needs_update(current.as_deref(), secret) {
+        keyring_set(account, secret)?;
+    }
+    Ok(())
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn keyring_delete(account: &str) -> Result<(), String> {
     match keyring_entry(account)?.delete_credential() {
@@ -202,7 +215,7 @@ pub fn save(cfg: &AppConfig) -> Result<(), String> {
             .as_deref()
             .filter(|value| !value.trim().is_empty())
         {
-            keyring_set(DEVICE_TOKEN_ACCOUNT, token)?;
+            keyring_set_if_changed(DEVICE_TOKEN_ACCOUNT, token)?;
             persisted.device_token = None;
         }
         if let Some(secret) = cfg
@@ -210,7 +223,10 @@ pub fn save(cfg: &AppConfig) -> Result<(), String> {
             .as_deref()
             .filter(|value| !value.trim().is_empty())
         {
-            keyring_set(LOCAL_IPC_ACCOUNT, secret)?;
+            // Rewriting an unchanged generic-password item resets the macOS
+            // access list. That made every AAX action prompt Pro Tools for the
+            // login password again, even after the user chose Always Allow.
+            keyring_set_if_changed(LOCAL_IPC_ACCOUNT, secret)?;
             persisted.local_ipc_secret = None;
         }
     }
@@ -274,6 +290,13 @@ mod tests {
     fn unknown_fields_ignored() {
         let c: AppConfig = serde_json::from_str(r#"{"api_base":"https://x","future":1}"#).unwrap();
         assert_eq!(c.api_base, "https://x");
+    }
+
+    #[test]
+    fn unchanged_keyring_values_are_not_rewritten() {
+        assert!(!keyring_value_needs_update(Some("same"), "same"));
+        assert!(keyring_value_needs_update(Some("old"), "new"));
+        assert!(keyring_value_needs_update(None, "new"));
     }
 
     #[test]

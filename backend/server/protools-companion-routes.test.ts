@@ -77,6 +77,13 @@ function createPool() {
     if (sql.includes("SELECT id FROM audio_review_versions")) {
       return { rows: [{ id: "version-1" }], rowCount: 1 };
     }
+    if (sql.includes("FROM audio_review_versions v WHERE v.project_id")) {
+      return { rows: [
+        { id: "version-3", version_label: "Mix V3", version_number: 3, status: "under_review", open_comment_count: 2 },
+        { id: "version-2", version_label: "Mix V2", version_number: 2, status: "approved", open_comment_count: 0 },
+        { id: "version-1", version_label: "Mix V1", version_number: 1, status: "superseded", open_comment_count: 1 },
+      ], rowCount: 3 };
+    }
     if (sql.includes("FROM protools_companion_markers") && sql.includes("order_index")) {
       return {
         rows: [{ name: "Chorus", start_seconds: 32, end_seconds: 48, color: null, order_index: 0 }],
@@ -240,7 +247,17 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
       .get("/api/protools/sessions/session-1/feedback")
       .set("authorization", "Bearer trr_desk_test");
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ comments: [], approvals: [], tasks: [] });
+    expect(response.body).toMatchObject({
+      version: { id: "version-3", version_label: "Mix V3" },
+      latestVersion: { id: "version-3" },
+      activeReviewVersion: { id: "version-3" },
+      approvedVersion: { id: "version-2" },
+      versionsWithOpenFeedback: [
+        expect.objectContaining({ id: "version-3", open_comment_count: 2 }),
+        expect.objectContaining({ id: "version-1", open_comment_count: 1 }),
+      ],
+      comments: [], approvals: [], tasks: [],
+    });
     expect(response.body.generatedAt).toEqual(expect.any(String));
   });
 });
