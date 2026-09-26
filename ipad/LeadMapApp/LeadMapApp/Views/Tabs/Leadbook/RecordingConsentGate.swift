@@ -63,6 +63,13 @@ struct RecordingConsentGateSheet: View {
     @Environment(AppState.self) private var appState
     @State private var customerLabel: String = ""
     @State private var customerConfirmed = false
+    /// Hvor mange fra kundesiden er i rommet.
+    ///
+    /// Opptaket fanger alle. Samtykke fra den ene du snakker med dekker
+    /// ikke kollegaen ved siden av, og i ettertid kan vi ikke vurdere
+    /// grunnlaget uten å vite at det var flere.
+    @State private var tilstedeAntall: Int = 1
+    @State private var alleSamtykket = false
     @State private var isSaving = false
     @State private var error: String?
 
@@ -94,12 +101,38 @@ struct RecordingConsentGateSheet: View {
                             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.stroke, lineWidth: 1))
                     }
 
+                    // Opptaket fanger alle i rommet. Samtykke fra den ene du
+                    // snakker med dekker ikke kollegaen ved siden av.
+                    Stepper(value: $tilstedeAntall, in: 1...20) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(LBrand.textSecondary)
+                            Text(tilstedeAntall == 1
+                                 ? "Én person fra kunden i rommet"
+                                 : "\(tilstedeAntall) personer fra kunden i rommet")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+
                     Toggle(isOn: $customerConfirmed) {
                         Text("Kunden har muntlig bekreftet samtykke — PÅ opptaket")
                             .font(.appScaled(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .tint(LBrand.green)
+
+                    // Vises bare når den betyr noe. Ved én person er den
+                    // samme spørsmål to ganger.
+                    if tilstedeAntall > 1 {
+                        Toggle(isOn: $alleSamtykket) {
+                            Text("ALLE \(tilstedeAntall) har hørt opplesningen og sagt ja")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .tint(LBrand.green)
+                    }
 
                     if let error {
                         Text(error).font(.appScaled(size: 12)).foregroundStyle(LBrand.red)
@@ -139,7 +172,10 @@ struct RecordingConsentGateSheet: View {
             .opacity(customerConfirmed ? 1 : 0.55)
         }
         .buttonStyle(.plain)
-        .disabled(!customerConfirmed || isSaving)
+        // Er de flere enn én, må begge bekreftelsene stå. Backenden avviser
+        // det også, men knappen skal ikke la selgeren prøve.
+        .disabled(!customerConfirmed || isSaving
+                  || (tilstedeAntall > 1 && !alleSamtykket))
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(LBrand.bg.opacity(0.95).overlay(Rectangle().fill(LBrand.stroke).frame(height: 1), alignment: .top))
     }
@@ -157,7 +193,9 @@ struct RecordingConsentGateSheet: View {
             let consent = try await api.leadbookLogRecordingConsent(
                 projectId: requestedProjectId,
                 consentVersion: versjon,
-                customerLabel: customerLabel
+                customerLabel: customerLabel,
+                tilstedeAntall: tilstedeAntall,
+                alleTilstedeSamtykket: tilstedeAntall == 1 || alleSamtykket
             )
             guard consent.projectId == requestedProjectId,
                   appState.activeOrganizationId == requestedOrganizationId,

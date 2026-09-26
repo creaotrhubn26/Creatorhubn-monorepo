@@ -377,15 +377,16 @@ struct CanvasView: View {
         // Opptaksindikatoren ligger over ALT. Den skal ikke kunne skjules
         // bak en meny, en sheet eller en scroll.
         .overlay(alignment: .top) {
-            if lydOpptaker.tarOpp, let startet = lydOpptaker.startet {
+            if referatMotor.isRecording, let startet = referatStartet {
                 NexusOpptakBanner(
                     startet: startet, nivaa: lydOpptaker.nivaa,
+                    glemSiste: { Task { await glemSiste() } },
                     stopp: { Task { await vekslLydopptak() } })
                     .padding(.top, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: lydOpptaker.tarOpp)
+        .animation(.easeOut(duration: 0.2), value: referatMotor.isRecording)
         .task(id: canvasDraftScope) { await lastInn() }
         // Deep-link fra kartet eller leadlista: åpne kundens notat, eller
         // lag det. Ignorerer gamle forespørsler, som Pondus-deep-linken.
@@ -4555,6 +4556,33 @@ struct CanvasView: View {
     /// docs/leadgrid-gdpr-lydopptak.md.
     private var kanLagreLyd: Bool {
         EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
+    }
+
+    /// «Glem de siste to minuttene.»
+    ///
+    /// DPIA-utkastet §5 punkt 2: en kunde kan nevne sykdom, gjeld eller en
+    /// tredjeperson uoppfordret. Art. 9 har strengere krav, og selgeren må
+    /// kunne fjerne det UTEN å avbryte møtet for å rydde etterpå.
+    ///
+    /// Referatet klippes presist: segmentene bærer tidspunkt, så alt nyere
+    /// enn grensen forsvinner. Lyden kan ikke klippes bakfra mens den
+    /// skrives, så den kastes i sin helhet og opptaket starter på nytt.
+    /// Det koster lyden fra før vinduet også — men et markert «hopp over
+    /// dette»-flagg ville latt bytene ligge, og det er ikke sletting.
+    private func glemSiste(sekunder: Double = 120) async {
+        guard referatMotor.isRecording, let start = referatStartet else { return }
+        let gaatt = Date().timeIntervalSince(start)
+        let grense = max(0, gaatt - sekunder)
+        referatMotor.klippBort(etter: grense)
+        if lydOpptaker.tarOpp {
+            _ = await lydOpptaker.kastOgStartPaaNytt()
+            feilVedImport = "De siste \(Int(sekunder / 60)) minuttene er borte "
+                + "fra referatet, og hele lydopptaket er kastet. "
+                + "Opptaket fortsetter fra nå."
+        } else {
+            feilVedImport = "De siste \(Int(sekunder / 60)) minuttene er "
+                + "fjernet fra referatet."
+        }
     }
 
     /// §4 punkt 4: kunden ber om at opptaket slettes.
