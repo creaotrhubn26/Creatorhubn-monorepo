@@ -25,11 +25,55 @@ export interface LinkedInOauthClient {
   complete: boolean;
 }
 
-export function resolveLinkedInOauthClient(env: EnvLike = process.env): LinkedInOauthClient {
-  const clientId = readStringValue(env.ROLE_ROOM_LINKEDIN_CLIENT_ID ?? env.LINKEDIN_CLIENT_ID);
-  const clientSecret = readStringValue(
-    env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET ?? env.LINKEDIN_CLIENT_SECRET,
-  );
+/**
+ * Hvilket produkt innloggingen gjelder.
+ *
+ * Rutene skiller i dag på «web» og «ios» — altså ENHET, ikke produkt. Men
+ * det er produktet som avgjør hvilken LinkedIn-app som skal brukes, fordi
+ * samtykkeskjermen viser appens navn og logo. Logger en Leadgrid-selger inn
+ * gjennom Role Room sin app, blir han bedt om tilgang av et produkt han
+ * ikke bruker.
+ */
+export type LinkedInProdukt = "leadgrid" | "roleroom";
+
+export function resolveLinkedInOauthClient(
+  produkt: LinkedInProdukt = "roleroom",
+  env: EnvLike = process.env,
+): LinkedInOauthClient {
+  // Nøklene velges PARVIS, ikke felt for felt.
+  //
+  // Første forsøk lot id og hemmelighet falle tilbake hver for seg. Da kan
+  // man ende med id fra Leadgrid-appen og hemmelighet fra Role Room-appen —
+  // LinkedIn avviser utvekslingen, og feilmeldingen sier ingenting om
+  // hvorfor. Min egen test fanget det.
+  //
+  // Rekkefølgen: produktets egen app, så den delte, så den andres. Det
+  // siste leddet er stygt og står der med vilje: et miljø som bare har
+  // ROLE_ROOM_*-nøklene hadde fungerende innlogging før denne endringen.
+  // Feil merkenavn på samtykkeskjermen er dårlig. Ingen innlogging er verre.
+  const kjeder: ReadonlyArray<readonly [string | undefined, string | undefined]> =
+    produkt === "leadgrid"
+      ? [
+          [env.LEADGRID_LINKEDIN_CLIENT_ID, env.LEADGRID_LINKEDIN_CLIENT_SECRET],
+          [env.LINKEDIN_CLIENT_ID, env.LINKEDIN_CLIENT_SECRET],
+          [env.ROLE_ROOM_LINKEDIN_CLIENT_ID, env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET],
+        ]
+      : [
+          [env.ROLE_ROOM_LINKEDIN_CLIENT_ID, env.ROLE_ROOM_LINKEDIN_CLIENT_SECRET],
+          [env.LINKEDIN_CLIENT_ID, env.LINKEDIN_CLIENT_SECRET],
+        ];
+
+  let clientId: string | null = null;
+  let clientSecret: string | null = null;
+  for (const [id, hemmelighet] of kjeder) {
+    const i = readStringValue(id);
+    const h = readStringValue(hemmelighet);
+    if (i && h) { clientId = i; clientSecret = h; break; }
+    // Et halvt konfigurert ledd skal rapporteres som ufullstendig, ikke
+    // lappes med biter fra neste app.
+    if (i || h) { clientId = i; clientSecret = h; break; }
+  }
+
   return { clientId, clientSecret, complete: Boolean(clientId && clientSecret) };
 }
 
