@@ -67,6 +67,7 @@ import {
   upsertMusicArtifact,
   validateCompanionCommand,
 } from "./music-artifact-lineage.js";
+import { retryMusicOutboxForUser } from "./music-integration-outbox.js";
 import {
   issueUserEventsTicket,
   USER_EVENTS_TICKET_TTL_MS,
@@ -978,16 +979,18 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const sess = await ownedSession(d.userId, req.params.id);
     if (!sess) return res.status(404).json({ error: "session_not_found" });
     if (!sess.audio_review_project_id) {
-      return res.json({ project: null, version: null, comments: [], approvals: [], tasks: [], brief: null, decisions: [], signoffs: [], generatedAt: new Date().toISOString() });
+      return res.json({ project: null, version: null, latestVersion: null, activeReviewVersion: null, approvedVersion: null, versionsWithOpenFeedback: [], comments: [], approvals: [], tasks: [], brief: null, decisions: [], signoffs: [], generatedAt: new Date().toISOString() });
     }
     try {
       const projectId = String(sess.audio_review_project_id);
-      const [project, version, comments, approvals, tasks, brief, decisions, signoffs] = await Promise.all([
+      const [project, versions, comments, approvals, tasks, brief, decisions, signoffs] = await Promise.all([
         pool.query(`SELECT id,title,status,updated_at FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]),
         pool.query(
-          `SELECT id,version_label,version_number,status,created_at
-             FROM audio_review_versions WHERE project_id=$1::uuid
-            ORDER BY (status='under_review') DESC,version_number DESC LIMIT 1`,
+          `SELECT v.id,v.version_label,v.version_number,v.status,v.created_at,
+                  COALESCE((SELECT COUNT(*)::int FROM audio_review_comments c
+                             WHERE c.version_id=v.id AND c.status<>'resolved'),0) AS open_comment_count
+             FROM audio_review_versions v WHERE v.project_id=$1::uuid
+            ORDER BY v.version_number DESC`,
           [projectId],
         ),
         pool.query(
@@ -1032,9 +1035,16 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
           [projectId],
         ),
       ]);
+      const latestVersion = versions.rows[0] || null;
+      const activeReviewVersion = versions.rows.find((row: any) => row.status === "under_review") || null;
+      const approvedVersion = versions.rows.find((row: any) => row.status === "approved") || null;
       res.json({
         project: project.rows[0] || null,
-        version: version.rows[0] || null,
+        version: activeReviewVersion || latestVersion,
+        latestVersion,
+        activeReviewVersion,
+        approvedVersion,
+        versionsWithOpenFeedback: versions.rows.filter((row: any) => Number(row.open_comment_count || 0) > 0),
         comments: comments.rows,
         approvals: approvals.rows,
         tasks: tasks.rows,
@@ -1650,13 +1660,27 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
               MAX(delivered_at) AS last_delivered_at,MAX(last_error) FILTER (WHERE status='pending') AS last_error
          FROM protools_easeverse_sync_outbox WHERE user_id=$1`, [session?.user_id || s.userId],
     ).catch(() => ({ rows: [{ pending_count: 0, last_delivered_at: null, last_error: null }] }));
+    const referenceSync = await pool.query(
+      `SELECT COUNT(*) FILTER (WHERE status IN ('pending','processing','dead_letter'))::int AS pending_count,
+              MAX(delivered_at) AS last_delivered_at,
+              MAX(last_error) FILTER (WHERE status IN ('pending','processing','dead_letter')) AS last_error
+         FROM creatorhub_music_sync_outbox WHERE user_id=$1`, [session?.user_id || s.userId],
+    ).catch(() => ({ rows: [{ pending_count: 0, last_delivered_at: null, last_error: null }] }));
+    const markerSync = sync.rows[0] || { pending_count: 0, last_delivered_at: null, last_error: null };
+    const approvedReferenceSync = referenceSync.rows[0] || { pending_count: 0, last_delivered_at: null, last_error: null };
     res.json({
       paired: dev.rows.length > 0 || Boolean(session),
       device: dev.rows[0] || null,
       devices: dev.rows,
       session, markers, bounces, artifacts, commands,
       playhead: session?.playhead || null,
-      sync: sync.rows[0] || { pending_count: 0, last_delivered_at: null, last_error: null },
+      sync: {
+        pending_count: Number(markerSync.pending_count || 0) + Number(approvedReferenceSync.pending_count || 0),
+        last_delivered_at: approvedReferenceSync.last_delivered_at || markerSync.last_delivered_at,
+        last_error: approvedReferenceSync.last_error || markerSync.last_error,
+        markers: markerSync,
+        approved_reference: approvedReferenceSync,
+      },
     });
   });
 
@@ -1731,7 +1755,18 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
   app.post("/api/protools/web/retry-sync", async (req, res) => {
     const s = requireUserSession(req, res); if (!s) return;
     try {
-      res.json(await retryEaseVerseSync(pool, s.userId, intOrNull(req.body?.limit) || 10));
+      const limit = intOrNull(req.body?.limit) || 10;
+      const [markers, approvedReference] = await Promise.all([
+        retryEaseVerseSync(pool, s.userId, limit),
+        retryMusicOutboxForUser(pool, s.userId, limit),
+      ]);
+      res.json({
+        attempted: Number(markers.attempted || 0) + approvedReference.attempted,
+        delivered: Number(markers.delivered || 0) + approvedReference.delivered,
+        pending: Number(markers.pending || 0) + approvedReference.pending,
+        markers,
+        approvedReference,
+      });
     } catch (error) {
       console.error("[protools-companion] retry sync:", error);
       res.status(503).json({ error: "sync_retry_failed" });

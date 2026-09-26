@@ -50,6 +50,17 @@ export function ReviewConsole({ feedback, refresh, report }: {
         <Button size="small" onClick={() => void refresh()} sx={{ color: ORANGE }}>Oppdater</Button>
       </Stack>
 
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <VersionState label="Nyeste miks" value={feedback?.latestVersion?.version_label} tone="#ff8c00" />
+        <VersionState label="Til vurdering" value={feedback?.activeReviewVersion?.version_label} tone="#e1b85a" />
+        <VersionState label="Godkjent" value={feedback?.approvedVersion?.version_label} tone="#5fb88a" />
+      </Stack>
+      {(feedback?.versionsWithOpenFeedback?.length || 0) > 1 && (
+        <Alert severity="info">
+          Åpne kommentarer finnes på {feedback!.versionsWithOpenFeedback.map((version) => `${version.version_label} (${version.open_comment_count})`).join(", ")}.
+        </Alert>
+      )}
+
       <Waveform comments={feedback?.comments || []} duration={Math.max(1, ...((feedback?.comments || []).map((comment) => comment.timecode_seconds + 10)))} />
 
       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
@@ -125,6 +136,15 @@ export function ReviewConsole({ feedback, refresh, report }: {
         {!feedback?.comments.length && <Typography sx={{ fontSize: 12.5, color: "text.secondary" }}>Ingen kommentarer ennå.</Typography>}
       </Stack>
     </Stack>
+  );
+}
+
+function VersionState({ label, value, tone }: { label: string; value?: string; tone: string }) {
+  return (
+    <Box sx={{ flex: 1, p: 1.1, borderRadius: 1.5, bgcolor: "rgba(255,255,255,.025)", border: "1px solid rgba(255,255,255,.07)" }}>
+      <Typography sx={{ fontSize: 10.5, color: "text.secondary", fontWeight: 700 }}>{label}</Typography>
+      <Typography sx={{ fontSize: 13, color: value ? tone : "text.secondary", fontWeight: 800 }}>{value || "Ingen"}</Typography>
+    </Box>
   );
 }
 
