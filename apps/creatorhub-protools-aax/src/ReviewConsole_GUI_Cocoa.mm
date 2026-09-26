@@ -2,8 +2,7 @@
 
 #include "ReviewConsole_GUI_Cocoa.hpp"
 
-#include "CreatorHubReviewBridge.hpp"
-#include "MacCredentialStore.hpp"
+#include "MacCompanionWake.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -198,9 +197,7 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
         NSString* summary = nil;
         BOOL succeeded = NO;
         try {
-            const std::string secret = creatorhub::aax::ReadLocalIpcSecretFromKeychain();
-            creatorhub::CreatorHubReviewBridge bridge(secret);
-            const std::string response = bridge.Send(
+            const std::string response = creatorhub::aax::SendWithCompanionWake(
                 RequestId(),
                 std::string([actionCopy UTF8String]),
                 std::string([payloadCopy UTF8String]));
@@ -217,8 +214,8 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_requestInFlight = NO;
             self->_status.stringValue = succeeded
-                ? @"Ferdig · tilkoblet CreatorHub Companion"
-                : @"Dette gikk ikke. Åpne Companion og velg «Sjekk at alt virker».";
+                ? @"Ferdig · CreatorHub er tilkoblet"
+                : @"CreatorHub-motoren kunne ikke kobles til. Se tekniske detaljer.";
             self->_status.textColor = succeeded
                 ? [NSColor colorWithCalibratedRed:0.25 green:0.78 blue:0.48 alpha:1.0]
                 : [NSColor systemOrangeColor];
