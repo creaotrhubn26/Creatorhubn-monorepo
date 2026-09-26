@@ -7,11 +7,11 @@
 # Do not hand-edit version numbers — they come from the pinned Tier 1/2
 # sources named per entry. Update `checked_at` only via the agent run.
 
-bootstrap: true
+bootstrap: false
 bootstrap_note: >
-  First run of this tracker (2026-08-09). No prior state existed, so no
-  impact assessment was performed this run — see 2026-08-09-impact.md.
-  Future runs diff against this file.
+  First run 2026-08-09 established the baseline (see 2026-08-09-impact.md).
+  2026-08-31 is the first diffing run: blender and stripe-node moved; see
+  2026-08-31-impact.md.
 
 vendors:
   blackmagic-resolve:
@@ -20,40 +20,52 @@ vendors:
     source: "https://www.blackmagicdesign.com/api/support/latest-stable-version/davinci-resolve/mac"
     source_note: >
       Primary source blocked by this session's network egress policy
-      (www.blackmagicdesign.com) at run time; version corroborated via
-      WebSearch (toolfarm.com, newsshooter.com, 2026-08-05 release coverage)
-      and matches the version already on record in
+      (www.blackmagicdesign.com) at run time, again on 2026-08-31. Version
+      corroborated via WebSearch (cgchannel.com, videohelp.com, techspot.com —
+      21.0.4 build 5 listed on Blackmagic's live support feed as of
+      2026-08-25) — unchanged from the version on record in
       docs/evidence/2026-08-resolve-21-impact.yaml. Confidence: strong_evidence,
       not Verified, per Freshness Rule (no live Tier 1 fetch this run).
-    checked_at: "2026-08-09"
+    checked_at: "2026-08-31"
 
   xcode-apple-sdk:
     product: Xcode / Apple SDK
     channel: stable
     version: "Xcode 26.6 (17F113)"
     source: "https://developer.apple.com/news/releases/rss/releases.rss (first Stable/GA title matching /Xcode \\d/, excluding beta/RC per release-monitor/SKILL.md Stable-vs-Preview rule)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-08-31"
     preview_channel_note: >
-      Xcode 27 beta 4 (27A5228h) is the current preview build (same feed).
-      Tracked here for awareness only, NOT as the diff-triggering baseline —
-      docs/evidence/2026-07-ios27-fm-symbols.yaml pins the project to the
-      iOS 26 / Xcode 26 FM surface until Xcode 27 ships stable. Promote to
-      the primary `version` field once Xcode 27 leaves beta.
+      Xcode 27 beta 6 (27A5252f) is now the current preview build (up from
+      beta 4 on 2026-08-09, same feed). Tracked here for awareness only, NOT
+      as the diff-triggering baseline — docs/evidence/2026-07-ios27-fm-symbols.yaml
+      pins the project to the iOS 26 / Xcode 26 FM surface until Xcode 27
+      ships stable. Promote to the primary `version` field once Xcode 27
+      leaves beta.
 
   moodle:
     product: Moodle LMS
     version: "v5.2.2"
     source: "https://api.github.com/repos/moodle/moodle/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    checked_at: "2026-08-31"
 
   blender:
     product: Blender
-    version: "v5.2.0"
-    source: "https://api.github.com/repos/blender/blender/tags (git ls-remote --tags, filtered to ^v\\d+\\.\\d+(\\.\\d+)?$)"
-    checked_at: "2026-08-09"
+    version: "v5.2.1"
+    previous_version: "v5.2.0"
+    source: "git ls-remote --tags https://github.com/blender/blender (filtered to ^v\\d+\\.\\d+(\\.\\d+)?$; GitHub REST API blocked for this unattached repo, ls-remote used instead)"
+    checked_at: "2026-08-31"
+    note: >
+      LTS maintenance release (2026-08-25), bugfix-only. See
+      docs/evidence/2026-08-blender-bpy-timers-leak.yaml — GO_WITH_TESTS.
 
   stripe-node:
     product: Stripe Node SDK
-    version: "v22.4.0"
-    source: "https://api.github.com/repos/stripe/stripe-node/releases/latest"
-    checked_at: "2026-08-09"
+    version: "v22.6.0"
+    previous_version: "v22.4.0"
+    source: "git ls-remote --tags https://github.com/stripe/stripe-node (GitHub REST API blocked for this unattached repo, ls-remote used instead; changelog cross-checked via raw.githubusercontent.com/stripe/stripe-node/master/CHANGELOG.md)"
+    checked_at: "2026-08-31"
+    note: >
+      Tracked upstream latest only — repo's actual pin is stripe ^19.3.0
+      (backend/package.json), a pre-existing 3-major gap. See
+      docs/evidence/2026-08-stripe-node-major-gap.yaml — HOLD on a direct
+      jump; staged migration recommended as separate work.
