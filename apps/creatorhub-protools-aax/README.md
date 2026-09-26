@@ -52,6 +52,37 @@ The `CrHb`/`ChRC`/`ChR1`/`ChR2` type IDs in the wrapper are provisional
 development IDs. Replace them with the values allocated or approved by Avid
 before commercial distribution.
 
+## Release readiness and PACE signing
+
+Run the read-only preflight before attempting a commercial macOS release:
+
+```bash
+scripts/release-protools-aax-macos.sh check \
+  "/absolute/path/CreatorHub Review Console.aaxplugin"
+```
+
+It fails closed unless the universal bundle, physical iLok, PACE License
+Support service, wrapper cache, Apple signature and PACE tooling license are
+all available. It never accepts an iLok password on the command line.
+
+After Avid has approved the permanent type IDs and PACE has deposited the
+`PACE Licensing` tool license, create a new output bundle with values supplied
+through the release environment:
+
+```bash
+PACE_ACCOUNT_ID="your-ilok-account" \
+PACE_WRAP_CONFIG_GUID="your-approved-wrap-config-guid" \
+APPLE_SIGNING_IDENTITY="Developer ID Application: Your Company (TEAMID)" \
+scripts/release-protools-aax-macos.sh wrap \
+  "/absolute/path/CreatorHub Review Console.aaxplugin" \
+  "/absolute/output/CreatorHub Review Console.aaxplugin"
+```
+
+The command stages a copy, refuses to overwrite an existing output, asks PACE
+to wrap and sign it, and then requires both PACE verification and strict Apple
+code-signature verification. Run AAX Validator against that exact output before
+publishing it.
+
 The host-neutral adapter remains small enough to compile on macOS and Windows
 without linking the PTSL SDK inside Pro Tools. The current native Review Console
 view is implemented for macOS; Windows continues to use the Companion desktop
