@@ -229,8 +229,15 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
                 .get("source")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            serde_json::to_value(processing::send_to_review(cfg, app, file_name, source).await?)
-                .map_err(|error| error.to_string())
+            let force_new_version = request
+                .payload
+                .get("forceNewVersion")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            serde_json::to_value(
+                processing::send_to_review(cfg, app, file_name, source, force_new_version).await?,
+            )
+            .map_err(|error| error.to_string())
         }
         _ => Err("unsupported_action".into()),
     }

@@ -46,6 +46,7 @@ import {
 import { nextRecallStatus, recallPayloadFromComment } from '@/lib/soundRoomRecall';
 import SoundRoomOperatingPanel from '@/components/sound-room/SoundRoomOperatingPanel';
 import { uploadSoundRoomFile } from '@/lib/soundRoomUpload';
+import { latestApprovedSoundRoomVersion, newestSoundRoomVersion, sortSoundRoomVersionsNewest } from '@/lib/soundRoomVersions';
 
 /* ── Tema ──────────────────────────────────────────────────────────────── */
 const BG = '#0A0A0B', PANEL = '#131316', PANEL2 = '#0F0F11', BORDER = 'rgba(255,255,255,0.08)';
@@ -184,13 +185,17 @@ export default function AudioShowcasePage() {
   };
 
   /* ── Datahenting ── */
-  const loadProject = React.useCallback(async () => {
+  const loadProject = React.useCallback(async (selectLatest = false) => {
     if (!projectId) { setLoading(false); return; }
     try {
       const d = await apiRequest(`/api/audio-showcases/${projectId}`);
-      setProject(d.project); setVersions(d.versions || []); setMembers(d.members || []); setTasks(d.tasks || []); setEaseverseTrack(d.easeverseTrack || null); setCanEdit(d.access?.canEdit !== false);
-      const cur = (d.versions || []).find((v: any) => v.status !== 'superseded') || (d.versions || [])[(d.versions || []).length - 1];
-      setCurrentVid((prev) => prev || cur?.id || '');
+      const nextVersions = Array.isArray(d.versions) ? d.versions : [];
+      const newest = newestSoundRoomVersion(nextVersions);
+      setProject(d.project); setVersions(nextVersions); setMembers(d.members || []); setTasks(d.tasks || []); setEaseverseTrack(d.easeverseTrack || null); setCanEdit(d.access?.canEdit !== false);
+      // Always open the numerically newest mix on first load. A new Pro Tools
+      // bounce should also become visible immediately, while a manual choice
+      // of an older version remains stable during ordinary refreshes.
+      setCurrentVid((prev) => selectLatest || !nextVersions.some((version: any) => version.id === prev) ? (newest?.id || '') : prev);
     } catch { /* not found */ } finally { setLoading(false); }
   }, [projectId]);
   const loadVersion = React.useCallback(async (vid: string) => {
@@ -210,7 +215,7 @@ export default function AudioShowcasePage() {
     enabled: Boolean(wsBack),
     onEvent: (event) => {
       if (event.kind !== 'sound-room.updated' || event.projectId !== wsBack) return;
-      void loadProject();
+      void loadProject(event.reason === 'version');
       void loadVersion(currentVid);
       void loadProTools();
     },
@@ -252,6 +257,8 @@ export default function AudioShowcasePage() {
   }, [currentVid, loadVersion, loadProTools]);
 
   const currentVersion = versions.find((v) => v.id === currentVid);
+  const latestVersion = React.useMemo(() => newestSoundRoomVersion(versions), [versions]);
+  const approvedVersion = React.useMemo(() => latestApprovedSoundRoomVersion(versions), [versions]);
   const prevVersion = React.useMemo(() => {
     if (!currentVersion) return null;
     return [...versions].filter((v) => v.version_number < currentVersion.version_number).sort((a, b) => b.version_number - a.version_number)[0] || null;
@@ -603,7 +610,7 @@ export default function AudioShowcasePage() {
     return (rank[a.status] ?? 3) - (rank[b.status] ?? 3)
       || String(b.created_at || '').localeCompare(String(a.created_at || ''));
   });
-  const orderedVersions = [...versions].sort((a, b) => Number(b.version_number || 0) - Number(a.version_number || 0));
+  const orderedVersions = sortSoundRoomVersionsNewest(versions);
   const displayedVersions = showAllVersions ? orderedVersions : orderedVersions.slice(0, 4);
   const specsLine = currentVersion ? [currentVersion.sample_rate && `${(currentVersion.sample_rate / 1000).toFixed(0)} kHz`, currentVersion.bit_depth && `${currentVersion.bit_depth} bit`, currentVersion.channels === 2 ? 'Stereo' : currentVersion.channels === 1 ? 'Mono' : null].filter(Boolean).join('  ·  ') : '';
 
@@ -888,6 +895,24 @@ export default function AudioShowcasePage() {
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.7fr 1fr' }, gap: 2.5 }}>
             {/* Versjoner */}
             <Box sx={{ bgcolor: PANEL, border: `1px solid ${BORDER}`, borderRadius: '16px', p: 2.5 }}>
+              <Box sx={{ mb: 1.5, p: 1.5, borderRadius: '12px', bgcolor: 'rgba(255,107,53,0.07)', border: `1px solid ${currentVersion?.id !== latestVersion?.id ? 'rgba(224,169,85,.38)' : 'rgba(255,107,53,.24)'}` }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ fontSize: '0.72rem', color: MUTED, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>Du lytter til</Typography>
+                    <Typography sx={{ fontSize: '0.95rem', fontWeight: 800 }}>{currentVersion?.version_label || 'Ingen miks valgt'}</Typography>
+                    <Typography sx={{ fontSize: '0.72rem', color: MUTED }}>
+                      {latestVersion ? `Nyeste er ${latestVersion.version_label}` : 'Ingen versjoner ennå'}
+                      {approvedVersion ? ` · Godkjent: ${approvedVersion.version_label}` : ' · Ingen godkjent miks ennå'}
+                    </Typography>
+                  </Box>
+                  {currentVersion && latestVersion && currentVersion.id !== latestVersion.id && (
+                    <Button variant="contained" onClick={() => { setComparisonMode(false); setAbActive(false); setCurrentVid(latestVersion.id); }}
+                      sx={{ bgcolor: ACCENT, color: '#150d05', fontWeight: 800, textTransform: 'none', borderRadius: '10px', minHeight: 40, '&:hover': { bgcolor: '#ff855a' } }}>
+                      Gå til nyeste miks
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
               <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
                 <Typography sx={{ fontWeight: 700, flex: 1 }}>Versjoner</Typography>
                 <Button
@@ -906,7 +931,8 @@ export default function AudioShowcasePage() {
                   const cCount = detail.comments.length && active ? detail.comments.length : (v.comment_count ?? null);
                   return (
                     <Box key={v.id} role="button" tabIndex={0} aria-current={active ? 'true' : undefined} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setComparisonMode(false); setAbActive(false); setCurrentVid(v.id); } }} onClick={() => { setComparisonMode(false); setAbActive(false); setCurrentVid(v.id); }} sx={{ minWidth: 0, p: 1.5, borderRadius: '12px', cursor: 'pointer', border: `1.5px solid ${active ? ACCENT : BORDER}`, bgcolor: active ? 'rgba(255,107,53,0.06)' : 'transparent', '&:focus-visible': { outline: `2px solid ${ACCENT}`, outlineOffset: 2 } }}>
-                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75, minWidth: 0 }}><Typography noWrap title={v.version_label} sx={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{active && <Chip label="Aktiv" size="small" sx={{ height: 17, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 700 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
+                      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75, minWidth: 0 }}><Typography noWrap title={v.version_label} sx={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: '0.88rem' }}>{v.version_label}</Typography>{v.id === latestVersion?.id && <Chip label="Nyeste" size="small" sx={{ height: 19, fontSize: '0.62rem', bgcolor: 'rgba(255,107,53,.16)', color: ACCENT, fontWeight: 800 }} />}{active && <Chip label="Spilles" size="small" sx={{ height: 19, fontSize: '0.62rem', bgcolor: ACCENT, color: '#150d05', fontWeight: 800 }} />}{v.status === 'approved' && <CheckCircle sx={{ fontSize: 15, color: '#5fb88a' }} />}</Stack>
+                      {v.protools_bounce_id && <Typography sx={{ fontSize: '0.66rem', color: '#8ea0b8', mb: 0.5 }}>Fra Pro Tools Companion</Typography>}
                       <Typography sx={{ fontSize: '0.68rem', color: MUTED, mb: 1 }}>{v.created_at ? new Date(v.created_at).toLocaleDateString('no-NO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</Typography>
                       <Box sx={{ height: 30, borderRadius: '6px', mb: 1, background: active ? 'repeating-linear-gradient(90deg,#FF6B35 0 2px,transparent 2px 4px)' : 'repeating-linear-gradient(90deg,rgba(245,242,234,0.25) 0 2px,transparent 2px 4px)', opacity: 0.8 }} />
                       <Stack direction="row" alignItems="center" justifyContent="space-between"><Stack direction="row" alignItems="center" spacing={0.5}><ChatBubbleOutline sx={{ fontSize: 13, color: MUTED }} /><Typography sx={{ fontSize: '0.7rem', color: MUTED }}>{cCount ?? 0}</Typography></Stack><Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: statusColor }}>{statusLabel}</Typography></Stack>

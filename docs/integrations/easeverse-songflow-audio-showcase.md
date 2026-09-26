@@ -1,7 +1,7 @@
 # Integrasjon: EaseVerse ⇄ Workspace/Sound Room ⇄ Pro Tools Companion
 
 > Implementert arkitektur og driftsrunbook for den samlede musikkprodusentflyten.
-> Sist oppdatert: 2026-09-14.
+> Sist oppdatert: 2026-09-26.
 
 ## 1. Mål
 
@@ -35,7 +35,7 @@ Den kanoniske flyten er:
 | Sign-off og levering | ✅ | Rollebasert mix/master/delivery-sign-off og atomiske, nummererte leveringsmanifest gjør beslutning og overlevering eksplisitt. |
 | Auth-recovery | ✅ | 401 og auth-relaterte 403-responser ugyldiggjør den lokale CreatorHub-sesjonen og viser felles innlogging på nytt; rollebaserte 403-responser logger ikke brukeren ut. |
 | Companion-feedback | ✅ | Companion viser kommentarer, oppgaver, revisjonsbrief, beslutningsrom og sign-off, kan locate/svare/løse, og reagerer på den brukeravgrensede WebSocket-strømmen; 60 sekunders polling er kun fallback. |
-| DAW Review Console | ✅ / SDK-grense | Companion 0.3 har samlet Review Console og en autentisert loopback-protokoll/C++17-adapter for en tynn AAX-visning. Selve `.aaxplugin`-wrapperen krever fortsatt Avid AAX SDK, Avid-signering og iLok. |
+| DAW Review Console | ✅ lokalt / PACE-grense | Universal `.aaxplugin` bygges mot Avid AAX SDK, består AAX Validator og bruker autentisert loopback til Companion. Offentlig distribusjon krever fortsatt produksjons-wrapping med PACE Eden og Avids permanente plugin-ID. |
 | Ett-trykks-review og QC | ✅ | Companion tar pre-publish snapshot, eksporterer valgt PTSL-kilde, analyserer faktisk WAV med EBU R128/true peak/clipping/stillhet og publiserer deretter ny review-versjon. |
 | Session Snapshot / Recall | ✅ | Fingerprintet spor-, playlist-, routing- og bouncekildetilstand lagres tenant-/session-scopet og kobles til review-versjonen. Recall avviser feil sesjon, forhåndsviser endringer og gjenoppretter mute/solo/aktiv/synlig/mappe-status etter et automatisk recovery-snapshot; playlistmål, pluginparametre, automasjon og routing rapporteres eksplisitt som dokumentert, men ikke automatisk gjenopprettet. |
 | Stem-/leveransefabrikk | ✅ | Label/sync/custom krever eksplisitt buss per fil; stem-profil bruker alle oppdagede eksportkilder. Bare QC-godkjente, session-eide bounces kan bli Sound Room-manifest. |
@@ -43,7 +43,33 @@ Den kanoniske flyten er:
 | Desktop hardening | ✅ lokalt | Device-token og separat AAX-IPC-hemmelighet ligger i OS-nøkkelring, CSP er låst, appen har tray/autostart, offline feedback-cache, sanitert diagnostikk og Companion-spesifikk signert updater. |
 | Realtime-sikkerhet | ✅ | Web-klienten henter en tilfeldig 30-sekunders engangsticket før WebSocket-oppkobling; OAuth-token legges ikke i URL-en. |
 | Legacy EaseVerse-paring | ✅ | Gamle Clerk-/lokale Companion-kort er fjernet fra aktiv EaseVerse-UI. Paring administreres i Workspace/Sound Room. |
-| Desktop-distribusjon | ✅ | Companion 0.3.1 har Developer ID-signerte/notariserte macOS-installerere og Authenticode-signerte Windows EXE/MSI. Sound Room oppdager OS/arkitektur, og installere + Tauri-oppdateringer leveres fra CreatorHub sin private S3-distribusjon gjennom validerte, kortlivede URL-er. |
+| Desktop-distribusjon | ✅ | Companion 0.3.2 har Developer ID-signerte/notariserte macOS-installerere og Authenticode-signerte Windows EXE/MSI. Sound Room oppdager OS/arkitektur, og installere + Tauri-oppdateringer leveres fra CreatorHub sin private S3-distribusjon gjennom validerte, kortlivede URL-er. |
+
+### Produsent-UX og driftshardening 26. september 2026
+
+- Companion `0.3.2` ble offentlig publisert 26. september 2026. Både macOS
+  Apple Silicon/Intel og Windows x64 ble bygget, signert, installasjonstestet og
+  synket til CreatorHub S3 før `latest.json` ble flyttet atomisk. AAX Review
+  Console `0.3.1` er installert og Developer ID-signert lokalt; offentlig
+  distribusjon venter fortsatt på PACE Eden-wrapping og permanent Avid plugin-ID.
+- Sound Room velger høyeste `version_number` ved første åpning og etter en ny
+  Companion-bounce. «Du lytter til», «Nyeste» og «Godkjent» er separate,
+  synlige begreper; et eldre manuelt valg beholdes under vanlige refresh-kall.
+- Workspace-forhåndsvisningen bruker samme sorteringsregel, viser de fire
+  nyeste miksene og merker filer som kom fra Pro Tools Companion.
+- Feedback-innboksen skiller `latestVersion`, `activeReviewVersion`,
+  `approvedVersion` og alle versjoner som fortsatt har åpne kommentarer.
+- Review-opplasting bruker SHA-256 som innholdsidentitet. Identisk lyd lager
+  ikke en ny versjon uten at brukeren eksplisitt velger «Lag ny likevel».
+- WAV-QC og hashing leser filen sekvensielt, single-upload strømmes fra disk,
+  og multipart holder bare én del i minnet. Samme hendelses-ID gjenopptar en
+  avbrutt server-side opplasting etter app- eller maskinomstart.
+- Companion og AAX viser menneskelige trinn og resultater i stedet for rå JSON.
+  Tekniske detaljer finnes fortsatt bak et eksplisitt valg.
+- «Sjekk at alt virker» gir en enkel sjekkliste for konto, Pro Tools, Sound
+  Room, EaseVerse, eksportmappe, AAX-bro og bakgrunnskø uten å eksponere tokens.
+- Godkjente keeper-/masterreferanser og markørmetadata har separate durable
+  EaseVerse-outboxer, men én samlet status og én eksplisitt retry i Sound Room.
 
 ## 3. Systemkart og ansvar
 

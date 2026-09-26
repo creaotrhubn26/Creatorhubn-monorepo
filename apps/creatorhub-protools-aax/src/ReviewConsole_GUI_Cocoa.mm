@@ -47,6 +47,44 @@ NSString* JsonString(NSString* value) {
     return [array substringWithRange:NSMakeRange(1, array.length - 2)];
 }
 
+NSString* ActionLabel(NSString* action) {
+    if ([action isEqualToString:@"send_review"]) return @"Sender miksen trygt til Sound Room";
+    if ([action isEqualToString:@"feedback"]) return @"Henter de nyeste kommentarene";
+    if ([action isEqualToString:@"snapshot"]) return @"Sikrer Pro Tools-sesjonen";
+    if ([action isEqualToString:@"locate"]) return @"Flytter avspillingshodet";
+    if ([action isEqualToString:@"mark"]) return @"Lager markør i Pro Tools";
+    if ([action isEqualToString:@"resolve"]) return @"Markerer kommentaren som løst";
+    if ([action isEqualToString:@"reply"]) return @"Sender svaret til Sound Room";
+    return @"Sjekker tilkoblingen";
+}
+
+NSString* FriendlySummary(NSString* action, NSDictionary* json) {
+    NSDictionary* result = [json[@"result"] isKindOfClass:[NSDictionary class]] ? json[@"result"] : json;
+    if ([action isEqualToString:@"send_review"]) {
+        NSNumber* version = result[@"version_number"] ?: result[@"versionNumber"];
+        BOOL duplicate = [result[@"idempotent"] boolValue];
+        if (version) return duplicate
+            ? [NSString stringWithFormat:@"Denne lyden finnes allerede som Mix V%@. Ingen kopi ble laget.", version]
+            : [NSString stringWithFormat:@"Ferdig! Mix V%@ er klar i Sound Room.", version];
+        return @"Ferdig! Miksen er klar i Sound Room.";
+    }
+    if ([action isEqualToString:@"feedback"]) {
+        NSArray* comments = [result[@"comments"] isKindOfClass:[NSArray class]] ? result[@"comments"] : @[];
+        NSDictionary* version = [result[@"version"] isKindOfClass:[NSDictionary class]] ? result[@"version"] : nil;
+        return [NSString stringWithFormat:@"%@ · %lu kommentar%@ hentet.", version[@"version_label"] ?: @"Sound Room", (unsigned long)comments.count, comments.count == 1 ? @"" : @"er"];
+    }
+    if ([action isEqualToString:@"state"]) {
+        NSString* session = result[@"sessionName"] ?: result[@"session_name"];
+        return session.length ? [NSString stringWithFormat:@"Alt er klart for «%@».", session] : @"Companion er tilkoblet. Velg en sesjon for å fortsette.";
+    }
+    if ([action isEqualToString:@"snapshot"]) return @"Session-snapshot er lagret. Du kan trygt gå tilbake senere.";
+    if ([action isEqualToString:@"locate"]) return @"Avspillingshodet er flyttet til kommentaren.";
+    if ([action isEqualToString:@"mark"]) return @"Markøren er lagt til i Pro Tools.";
+    if ([action isEqualToString:@"resolve"]) return @"Kommentaren er markert som løst.";
+    if ([action isEqualToString:@"reply"]) return @"Svaret er sendt til Sound Room.";
+    return @"Handlingen er fullført.";
+}
+
 NSButton* MakeButton(NSString* title, id target, SEL action, NSRect frame) {
     NSButton* button = [[[NSButton alloc] initWithFrame:frame] autorelease];
     [button setTitle:title];
@@ -73,7 +111,9 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
 @interface CreatorHubReviewController : NSViewController {
 @private
     NSTextField* _status;
+    NSTextField* _summary;
     NSTextView* _output;
+    NSScrollView* _detailsScroll;
     NSTextField* _commentId;
     NSTextField* _seconds;
     NSTextField* _reply;
@@ -121,17 +161,24 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
     [root addSubview:_reply];
     [root addSubview:MakeButton(@"Svar", self, @selector(replyPressed:), NSMakeRect(522, 248, 72, 29))];
 
-    NSScrollView* scroll = [[[NSScrollView alloc] initWithFrame:NSMakeRect(24, 20, 672, 214)] autorelease];
-    scroll.hasVerticalScroller = YES;
-    scroll.borderType = NSBezelBorder;
-    _output = [[[NSTextView alloc] initWithFrame:scroll.bounds] autorelease];
+    _summary = MakeLabel(@"Velg en handling. Her får du en enkel forklaring på resultatet.", NSMakeRect(24, 190, 672, 44), 13, YES);
+    _summary.maximumNumberOfLines = 2;
+    _summary.lineBreakMode = NSLineBreakByWordWrapping;
+    [root addSubview:_summary];
+    [root addSubview:MakeButton(@"Tekniske detaljer", self, @selector(toggleDetailsPressed:), NSMakeRect(548, 160, 148, 25))];
+
+    _detailsScroll = [[[NSScrollView alloc] initWithFrame:NSMakeRect(24, 20, 672, 134)] autorelease];
+    _detailsScroll.hasVerticalScroller = YES;
+    _detailsScroll.borderType = NSBezelBorder;
+    _detailsScroll.hidden = YES;
+    _output = [[[NSTextView alloc] initWithFrame:_detailsScroll.bounds] autorelease];
     _output.editable = NO;
     _output.selectable = YES;
     _output.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
     _output.textColor = [NSColor textColor];
     _output.backgroundColor = [NSColor textBackgroundColor];
-    scroll.documentView = _output;
-    [root addSubview:scroll];
+    _detailsScroll.documentView = _output;
+    [root addSubview:_detailsScroll];
 
     [self setView:root];
     [self performSelector:@selector(refreshPressed:) withObject:nil afterDelay:0.05];
@@ -141,12 +188,14 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
 - (void)runAction:(NSString*)action payload:(NSString*)payload {
     if (_requestInFlight) return;
     _requestInFlight = YES;
-    _status.stringValue = [NSString stringWithFormat:@"Utfører %@ …", action];
+    _status.stringValue = [NSString stringWithFormat:@"%@ … dette kan ta noen minutter.", ActionLabel(action)];
+    _summary.stringValue = @"Du kan fortsette å jobbe. Vi sier tydelig fra når det er ferdig.";
     NSString* actionCopy = [action copy];
     NSString* payloadCopy = [(payload ?: @"{}") copy];
     [self retain];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSString* display = nil;
+        NSString* summary = nil;
         BOOL succeeded = NO;
         try {
             const std::string secret = creatorhub::aax::ReadLocalIpcSecretFromKeychain();
@@ -159,6 +208,7 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
             NSData* responseData = [NSData dataWithBytes:response.data() length:response.size()];
             NSDictionary* json = [NSJSONSerialization JSONObjectWithData:responseData options:0 error:nil];
             succeeded = [json isKindOfClass:[NSDictionary class]] && [json[@"ok"] boolValue];
+            if (succeeded) summary = [FriendlySummary(actionCopy, json) copy];
         } catch (const std::exception& error) {
             display = [[NSString alloc] initWithUTF8String:error.what()];
         } catch (...) {
@@ -167,18 +217,25 @@ NSTextField* MakeLabel(NSString* value, NSRect frame, CGFloat size, BOOL bold) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_requestInFlight = NO;
             self->_status.stringValue = succeeded
-                ? @"Tilkoblet CreatorHub Companion"
-                : @"Handlingen feilet – se svaret under";
+                ? @"Ferdig · tilkoblet CreatorHub Companion"
+                : @"Dette gikk ikke. Åpne Companion og velg «Sjekk at alt virker».";
             self->_status.textColor = succeeded
                 ? [NSColor colorWithCalibratedRed:0.25 green:0.78 blue:0.48 alpha:1.0]
                 : [NSColor systemOrangeColor];
             self->_output.string = display ?: @"Tomt svar";
+            self->_summary.stringValue = summary ?: (display ?: @"Ukjent feil");
             [display release];
+            [summary release];
             [actionCopy release];
             [payloadCopy release];
             [self release];
         });
     });
+}
+
+- (void)toggleDetailsPressed:(id)sender {
+    (void)sender;
+    _detailsScroll.hidden = !_detailsScroll.hidden;
 }
 
 - (void)refreshPressed:(id)sender { (void)sender; [self runAction:@"state" payload:@"{}"]; }
