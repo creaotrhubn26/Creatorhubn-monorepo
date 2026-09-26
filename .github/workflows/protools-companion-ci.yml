@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'apps/creatorhub-protools-companion/**'
+      - 'apps/creatorhub-protools-aax/**'
       - '.github/workflows/protools-companion-ci.yml'
   workflow_dispatch:
 
@@ -11,6 +12,49 @@ permissions:
   contents: read
 
 jobs:
+  macos:
+    name: macOS background engine and AAX bridge
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/creatorhub-protools-companion/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/creatorhub-protools-companion/src-tauri
+
+      - name: Install locked frontend dependencies
+        working-directory: apps/creatorhub-protools-companion
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck frontend
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run typecheck
+
+      - name: Test native core
+        working-directory: apps/creatorhub-protools-companion/src-tauri
+        run: cargo test --locked
+
+      - name: Build hidden-capable macOS application
+        working-directory: apps/creatorhub-protools-companion
+        run: npm run tauri -- build --no-bundle
+
+      - name: Build and test AAX bridge and signed-app wake boundary
+        run: |
+          cmake -S apps/creatorhub-protools-aax -B build/creatorhub-protools-aax -DBUILD_TESTING=ON
+          cmake --build build/creatorhub-protools-aax --config Release
+          ctest --test-dir build/creatorhub-protools-aax -C Release --output-on-failure
+
   windows:
     name: Windows x64 build and tests
     runs-on: windows-2025
@@ -43,6 +87,13 @@ jobs:
       - name: Test native core
         working-directory: apps/creatorhub-protools-companion/src-tauri
         run: cargo test --locked
+
+      - name: Test AAX host-neutral bridge
+        shell: pwsh
+        run: |
+          cmake -S apps/creatorhub-protools-aax -B build/creatorhub-protools-aax -DBUILD_TESTING=ON
+          cmake --build build/creatorhub-protools-aax --config Release
+          ctest --test-dir build/creatorhub-protools-aax -C Release --output-on-failure
 
       - name: Build native Windows application
         working-directory: apps/creatorhub-protools-companion

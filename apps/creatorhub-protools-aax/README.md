@@ -9,6 +9,15 @@ and PTSL. The AAX process only connects to `127.0.0.1:31417`, authenticates with
 the separate local Review Console credential and sends protocol v1 messages.
 The CreatorHub cloud device token never crosses this boundary.
 
+On macOS the Review Console automatically wakes the installed Companion in
+background mode if the loopback listener is unavailable. It waits up to six
+seconds for the authenticated listener and otherwise fails closed with a clear
+diagnostic. The Tauri window is therefore optional during normal Pro Tools use;
+it remains available from the menu bar for pairing, settings and diagnostics.
+Before launch, the plug-in verifies that the discovered app has bundle ID
+`com.creatorhub.protools-companion` and a valid Apple signature from Creatorhub
+AS team `9TAUZCPK95`; an unsigned or look-alike app is rejected.
+
 Supported actions are `health`, `state`, `feedback`, `locate`, `mark`,
 `resolve`, `reply`, `snapshot` and `send_review`. Every connection carries one
 newline-delimited JSON request and receives one response before closing.

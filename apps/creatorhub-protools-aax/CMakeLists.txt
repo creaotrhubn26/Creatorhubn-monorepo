@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CreatorHubReviewConsole VERSION 0.3.1 LANGUAGES CXX)
+project(CreatorHubReviewConsole VERSION 0.3.2 LANGUAGES CXX)
 
 include(CTest)
 
@@ -12,6 +12,23 @@ target_include_directories(creatorhub-review-bridge PUBLIC src)
 
 if(WIN32)
   target_link_libraries(creatorhub-review-bridge PRIVATE ws2_32)
+endif()
+
+if(APPLE)
+  enable_language(OBJCXX)
+  add_library(creatorhub-mac-companion-wake STATIC
+    src/MacCredentialStore.hpp
+    src/MacCredentialStore.mm
+    src/MacCompanionWake.hpp
+    src/MacCompanionWake.mm
+  )
+  target_include_directories(creatorhub-mac-companion-wake PUBLIC src)
+  target_link_libraries(creatorhub-mac-companion-wake PUBLIC
+    creatorhub-review-bridge
+    "-framework Cocoa"
+    "-framework Security"
+  )
+  target_compile_features(creatorhub-mac-companion-wake PUBLIC cxx_std_17)
 endif()
 
 if(CREATORHUB_BUILD_AAX_PLUGIN)
@@ -45,7 +62,9 @@ if(CREATORHUB_BUILD_AAX_PLUGIN)
     src/ReviewConsole_Parameters.hpp
   )
   set_source_files_properties(src/ReviewConsolePages.xml PROPERTIES HEADER_FILE_ONLY TRUE)
-  target_link_libraries(creatorhub-review-console-aax PRIVATE creatorhub-review-bridge)
+  if(NOT APPLE)
+    target_link_libraries(creatorhub-review-console-aax PRIVATE creatorhub-review-bridge)
+  endif()
   target_compile_features(creatorhub-review-console-aax PRIVATE cxx_std_17)
 
   if(BUILD_TESTING)
@@ -58,10 +77,7 @@ if(CREATORHUB_BUILD_AAX_PLUGIN)
   endif()
 
   if(APPLE)
-    enable_language(OBJCXX)
     target_sources(creatorhub-review-console-aax PRIVATE
-      src/MacCredentialStore.hpp
-      src/MacCredentialStore.mm
       src/ReviewConsole_GUI_Cocoa.hpp
       src/ReviewConsole_GUI_Cocoa.mm
       "${CREATORHUB_AAX_SDK_ROOT}/Extensions/GUI/AAX_CEffectGUI_Cocoa.mm"
@@ -71,23 +87,10 @@ if(CREATORHUB_BUILD_AAX_PLUGIN)
     )
     target_compile_definitions(creatorhub-review-console-aax PRIVATE CREATORHUB_AAX_COCOA_GUI=1)
     target_link_libraries(creatorhub-review-console-aax PRIVATE
+      creatorhub-mac-companion-wake
       "-framework Cocoa"
       "-framework Security"
     )
-
-    if(BUILD_TESTING)
-      add_executable(creatorhub-review-console-ipc-smoke
-        tests/keychain_ipc_smoke.mm
-        src/MacCredentialStore.mm
-      )
-      target_include_directories(creatorhub-review-console-ipc-smoke PRIVATE src)
-      target_link_libraries(creatorhub-review-console-ipc-smoke PRIVATE
-        creatorhub-review-bridge
-        "-framework Foundation"
-        "-framework Security"
-      )
-      target_compile_features(creatorhub-review-console-ipc-smoke PRIVATE cxx_std_17)
-    endif()
   endif()
 endif()
 
@@ -96,4 +99,10 @@ if(BUILD_TESTING)
   add_executable(creatorhub-review-bridge-test tests/bridge_test.cpp)
   target_link_libraries(creatorhub-review-bridge-test PRIVATE creatorhub-review-bridge Threads::Threads)
   add_test(NAME creatorhub-review-bridge-contract COMMAND creatorhub-review-bridge-test)
+
+  if(APPLE)
+    add_executable(creatorhub-review-console-ipc-smoke tests/keychain_ipc_smoke.mm)
+    target_link_libraries(creatorhub-review-console-ipc-smoke PRIVATE creatorhub-mac-companion-wake)
+    target_compile_features(creatorhub-review-console-ipc-smoke PRIVATE cxx_std_17)
+  endif()
 endif()
