@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CreatorHubReviewConsole VERSION 0.3.0 LANGUAGES CXX)
+project(CreatorHubReviewConsole VERSION 0.3.1 LANGUAGES CXX)
 
 include(CTest)
 

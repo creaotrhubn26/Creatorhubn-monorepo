@@ -1,6 +1,6 @@
 //! Kjerneflyten: les Pro Tools-eksport → push til backend.
 
-use std::io::Cursor;
+use std::io::{Cursor, Read, Seek};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -8,7 +8,8 @@ use ebur128::{EbuR128, Mode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::api_client;
 use crate::config;
@@ -38,7 +39,27 @@ pub struct BounceResult {
     pub file_name: String,
     pub size_bytes: u64,
     pub checksum: String,
+    pub idempotent: bool,
     pub qc_report: AudioQcReport,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct TransferProgress {
+    stage: String,
+    percent: u8,
+    message: String,
+}
+
+fn emit_transfer(app: &AppHandle, stage: &str, percent: u8, message: &str) {
+    let _ = app.emit(
+        "companion://transfer-progress",
+        TransferProgress {
+            stage: stage.into(),
+            percent: percent.min(100),
+            message: message.into(),
+        },
+    );
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -73,6 +94,7 @@ pub struct UploadContext {
     pub delivery_job_id: Option<String>,
     pub delivery_kind: Option<String>,
     pub register_as_review: bool,
+    pub force_new_version: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,12 +119,14 @@ pub(crate) struct WavMetadata {
     pub(crate) duration_seconds: f64,
 }
 
+#[cfg(test)]
 fn little_u16(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_le_bytes(
         bytes.get(offset..offset + 2)?.try_into().ok()?,
     ))
 }
 
+#[cfg(test)]
 fn little_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
@@ -114,6 +138,7 @@ fn little_u32(bytes: &[u8], offset: usize) -> Option<u32> {
 /// A Pro Tools session may use 32-bit float while ExportMix intentionally
 /// renders a 24-bit review file. Using session metadata for the bounce would
 /// therefore label a valid 24-bit file as 32-bit in Sound Room.
+#[cfg(test)]
 pub(crate) fn wav_metadata(bytes: &[u8]) -> Option<WavMetadata> {
     if bytes.get(0..4)? != b"RIFF" || bytes.get(8..12)? != b"WAVE" {
         return None;
@@ -181,7 +206,21 @@ fn linear_db(value: f64) -> f64 {
 /// EBU R128 integrated loudness and oversampled true peak, plus deterministic
 /// delivery hygiene checks. This analyzes the actual bounce, not the session.
 pub fn analyze_wav(bytes: &[u8]) -> AudioQcReport {
-    let fallback = || AudioQcReport {
+    match hound::WavReader::new(Cursor::new(bytes)) {
+        Ok(reader) => analyze_wav_reader(reader),
+        Err(_) => unreadable_audio_report(),
+    }
+}
+
+fn analyze_wav_path(path: &Path) -> AudioQcReport {
+    match hound::WavReader::open(path) {
+        Ok(reader) => analyze_wav_reader(reader),
+        Err(_) => unreadable_audio_report(),
+    }
+}
+
+fn unreadable_audio_report() -> AudioQcReport {
+    AudioQcReport {
         analyzable: false,
         passed: false,
         standard: "EBU R128 / ITU-R BS.1770 true peak".into(),
@@ -201,45 +240,94 @@ pub fn analyze_wav(bytes: &[u8]) -> AudioQcReport {
             code: "unreadable_audio".into(),
             message: "Lydfilen kunne ikke analyseres som WAV.".into(),
         }],
-    };
-    let mut reader = match hound::WavReader::new(Cursor::new(bytes)) {
-        Ok(reader) => reader,
-        Err(_) => return fallback(),
-    };
+    }
+}
+
+fn analyze_wav_reader<R: Read + Seek>(mut reader: hound::WavReader<R>) -> AudioQcReport {
     let spec = reader.spec();
     if spec.channels == 0 || spec.sample_rate == 0 {
-        return fallback();
+        return unreadable_audio_report();
     }
     let scale = 2_f32.powi(i32::from(spec.bits_per_sample.saturating_sub(1)));
-    let samples: Result<Vec<f32>, _> = match spec.sample_format {
-        hound::SampleFormat::Float => reader.samples::<f32>().collect(),
-        hound::SampleFormat::Int if spec.bits_per_sample <= 16 => reader
-            .samples::<i16>()
-            .map(|sample| sample.map(|value| value as f32 / scale))
-            .collect(),
-        hound::SampleFormat::Int => reader
-            .samples::<i32>()
-            .map(|sample| sample.map(|value| value as f32 / scale))
-            .collect(),
-    };
-    let samples = match samples {
-        Ok(samples) if !samples.is_empty() => samples,
-        _ => return fallback(),
-    };
+    match spec.sample_format {
+        hound::SampleFormat::Float => analyze_samples(spec, reader.samples::<f32>()),
+        hound::SampleFormat::Int if spec.bits_per_sample <= 16 => analyze_samples(
+            spec,
+            reader
+                .samples::<i16>()
+                .map(|sample| sample.map(|value| value as f32 / scale)),
+        ),
+        hound::SampleFormat::Int => analyze_samples(
+            spec,
+            reader
+                .samples::<i32>()
+                .map(|sample| sample.map(|value| value as f32 / scale)),
+        ),
+    }
+}
+
+fn analyze_samples<I>(spec: hound::WavSpec, samples: I) -> AudioQcReport
+where
+    I: Iterator<Item = Result<f32, hound::Error>>,
+{
     let channels = usize::from(spec.channels);
-    let frames = samples.len() / channels;
-    let duration = frames as f64 / spec.sample_rate as f64;
     let mut meter = match EbuR128::new(
         u32::from(spec.channels),
         spec.sample_rate,
         Mode::I | Mode::SAMPLE_PEAK | Mode::TRUE_PEAK,
     ) {
         Ok(meter) => meter,
-        Err(_) => return fallback(),
+        Err(_) => return unreadable_audio_report(),
     };
-    if meter.add_frames_f32(&samples).is_err() {
-        return fallback();
+    let chunk_capacity = (32_768 / channels.max(1)).max(1) * channels;
+    let mut chunk = Vec::with_capacity(chunk_capacity);
+    let mut frames = 0usize;
+    let mut silent_frames = 0usize;
+    let mut leading_frames = 0usize;
+    let mut trailing_frames = 0usize;
+    let mut leading = true;
+    let mut frame_silent = true;
+    let mut clipped_samples = 0u64;
+    let silence_threshold = 10_f32.powf(-60.0 / 20.0);
+
+    for sample in samples {
+        let sample = match sample {
+            Ok(value) if value.is_finite() => value,
+            _ => return unreadable_audio_report(),
+        };
+        if sample.abs() >= 0.999_969 {
+            clipped_samples += 1;
+        }
+        frame_silent &= sample.abs() < silence_threshold;
+        chunk.push(sample);
+        if chunk.len() % channels == 0 {
+            frames += 1;
+            if frame_silent {
+                silent_frames += 1;
+                trailing_frames += 1;
+                if leading {
+                    leading_frames += 1;
+                }
+            } else {
+                leading = false;
+                trailing_frames = 0;
+            }
+            frame_silent = true;
+        }
+        if chunk.len() >= chunk_capacity {
+            if meter.add_frames_f32(&chunk).is_err() {
+                return unreadable_audio_report();
+            }
+            chunk.clear();
+        }
     }
+    if frames == 0 {
+        return unreadable_audio_report();
+    }
+    if !chunk.is_empty() && meter.add_frames_f32(&chunk).is_err() {
+        return unreadable_audio_report();
+    }
+    let duration = frames as f64 / spec.sample_rate as f64;
     let loudness = meter.loudness_global().ok().and_then(finite_metric);
     let sample_peak = (0..u32::from(spec.channels))
         .filter_map(|channel| meter.sample_peak(channel).ok())
@@ -247,24 +335,33 @@ pub fn analyze_wav(bytes: &[u8]) -> AudioQcReport {
     let true_peak = (0..u32::from(spec.channels))
         .filter_map(|channel| meter.true_peak(channel).ok())
         .fold(0.0_f64, f64::max);
-    let clipped_samples = samples
-        .iter()
-        .filter(|sample| sample.abs() >= 0.999_969)
-        .count() as u64;
-    let silence_threshold = 10_f32.powf(-60.0 / 20.0);
-    let silent_frames = samples
-        .chunks_exact(channels)
-        .filter(|frame| frame.iter().all(|sample| sample.abs() < silence_threshold))
-        .count();
-    let leading_frames = samples
-        .chunks_exact(channels)
-        .take_while(|frame| frame.iter().all(|sample| sample.abs() < silence_threshold))
-        .count();
-    let trailing_frames = samples
-        .chunks_exact(channels)
-        .rev()
-        .take_while(|frame| frame.iter().all(|sample| sample.abs() < silence_threshold))
-        .count();
+    finish_audio_report(
+        spec,
+        duration,
+        loudness,
+        sample_peak,
+        true_peak,
+        clipped_samples,
+        silent_frames,
+        leading_frames,
+        trailing_frames,
+        frames,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_audio_report(
+    spec: hound::WavSpec,
+    duration: f64,
+    loudness: Option<f64>,
+    sample_peak: f64,
+    true_peak: f64,
+    clipped_samples: u64,
+    silent_frames: usize,
+    leading_frames: usize,
+    trailing_frames: usize,
+    frames: usize,
+) -> AudioQcReport {
     let sample_peak_dbfs = finite_metric(linear_db(sample_peak));
     let true_peak_dbtp = finite_metric(linear_db(true_peak));
     let mut issues = Vec::new();
@@ -486,6 +583,39 @@ fn is_audio_file(path: &Path) -> bool {
     }
 }
 
+async fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| format!("Kunne ikke åpne lydfilen: {}", error))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|error| format!("Kunne ikke lese lydfilen: {}", error))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+async fn read_file_part(path: &Path, offset: u64, length: usize) -> Result<Vec<u8>, String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| format!("Kunne ikke åpne lydfilen: {}", error))?;
+    file.seek(std::io::SeekFrom::Start(offset))
+        .await
+        .map_err(|error| format!("Kunne ikke finne opplastingsdelen: {}", error))?;
+    let mut bytes = vec![0u8; length];
+    file.read_exact(&mut bytes)
+        .await
+        .map_err(|error| format!("Kunne ikke lese opplastingsdelen: {}", error))?;
+    Ok(bytes)
+}
+
 /// Last opp en ferdig bounce → én idempotent review-versjon.
 pub async fn upload_bounce(
     cfg: &SharedConfig,
@@ -514,43 +644,165 @@ pub async fn upload_bounce_with_context(
         return Err("Ikke en lydfil".into());
     }
     let fingerprint = file_fingerprint(path)?;
-    if cfg.lock().unwrap().uploaded_bounces.contains(&fingerprint) {
-        return Err("Denne filversjonen er allerede lastet opp".into());
-    }
     let snap = snapshot(cfg);
     let token = require(&snap.token, "device-token")?;
     let session_id = require(&snap.session_id, "sesjon")?;
     let file_name = safe_file_name(path);
 
-    let bytes = tokio::fs::read(path)
+    let size = tokio::fs::metadata(path)
         .await
-        .map_err(|e| format!("Kunne ikke lese {}: {}", file_name, e))?;
-    let size = bytes.len() as u64;
+        .map_err(|error| format!("Kunne ikke lese {}: {}", file_name, error))?
+        .len();
     if size == 0 {
         return Err("Tom fil".into());
     }
-    let audio_metadata = wav_metadata(&bytes);
-    let qc_report = analyze_wav(&bytes);
-    let checksum = format!("{:x}", Sha256::digest(&bytes));
+    let qc_path = path.to_path_buf();
+    let qc_report = tokio::task::spawn_blocking(move || analyze_wav_path(&qc_path))
+        .await
+        .map_err(|error| format!("Lydsjekken stoppet: {}", error))?;
+    let audio_metadata = match (
+        qc_report.sample_rate,
+        qc_report.bit_depth,
+        qc_report.duration_seconds,
+    ) {
+        (Some(sample_rate), Some(bit_depth), Some(duration_seconds)) => Some(WavMetadata {
+            sample_rate,
+            bit_depth,
+            duration_seconds,
+        }),
+        _ => None,
+    };
+    let checksum = sha256_file(path).await?;
+    // Content identity prevents a renamed/re-exported copy from creating an
+    // accidental duplicate. The explicit force path is only exposed after the
+    // user is told that the audio already exists.
+    let upload_purpose = context
+        .delivery_job_id
+        .as_deref()
+        .map(|job_id| {
+            format!(
+                "delivery:{}:{}",
+                job_id,
+                context.delivery_kind.as_deref().unwrap_or("file")
+            )
+        })
+        .unwrap_or_else(|| "review".into());
+    let client_event_id = if context.force_new_version {
+        format!(
+            "bounce:{}:sha256:{}:force:{}",
+            upload_purpose,
+            checksum,
+            uuid::Uuid::new_v4()
+        )
+    } else {
+        format!("bounce:{}:sha256:{}", upload_purpose, checksum)
+    };
 
+    emit_transfer(app, "upload", 35, "Lydsjekk ferdig. Laster opp privat …");
     emit_activity(
         app,
         "info",
         &format!("Laster opp «{}» ({} MB)…", file_name, size / 1_048_576),
     );
-    let (upload_url, file_url, storage_key) =
-        api_client::presign_bounce(&snap.api_base, token, session_id, &file_name, size).await?;
-    api_client::put_bytes(&upload_url, bytes).await?;
+    let ticket = api_client::presign_bounce(
+        &snap.api_base,
+        token,
+        session_id,
+        &file_name,
+        size,
+        &checksum,
+        &client_event_id,
+    )
+    .await?;
+
+    let mut completed_parts = Vec::new();
+    match ticket.strategy.as_str() {
+        "single" if !ticket.already_uploaded => {
+            let upload_url = ticket
+                .upload_url
+                .as_deref()
+                .ok_or("Opplastingsbilletten mangler uploadUrl")?;
+            api_client::put_file(upload_url, &ticket.required_headers, path, size).await?;
+            emit_transfer(
+                app,
+                "upload",
+                85,
+                "Opplastingen er ferdig. Oppretter versjon …",
+            );
+        }
+        "multipart" if !ticket.already_uploaded => {
+            let part_size = ticket
+                .part_size
+                .filter(|value| *value > 0)
+                .ok_or("Multipart-billetten mangler partSize")?;
+            let expected_parts = size.div_ceil(part_size);
+            if ticket.part_count != Some(expected_parts) {
+                return Err("Multipart-planen samsvarer ikke med filstørrelsen".into());
+            }
+            let mut requests = Vec::with_capacity(expected_parts as usize);
+            for index in 0..expected_parts {
+                let start = index * part_size;
+                let end = ((index + 1) * part_size).min(size);
+                let bytes = read_file_part(path, start, (end - start) as usize).await?;
+                requests.push(api_client::BouncePartRequest {
+                    part_number: index + 1,
+                    checksum_sha256: format!("{:x}", Sha256::digest(&bytes)),
+                });
+            }
+            for request_batch in requests.chunks(200) {
+                let signed = api_client::sign_bounce_parts(
+                    &snap.api_base,
+                    token,
+                    session_id,
+                    &ticket.object_id,
+                    request_batch,
+                )
+                .await?;
+                for signed_part in signed {
+                    let request = request_batch
+                        .iter()
+                        .find(|part| part.part_number == signed_part.part_number)
+                        .ok_or("Backend signerte en ukjent multipart-del")?;
+                    let start = (signed_part.part_number - 1) * part_size;
+                    let end = (signed_part.part_number * part_size).min(size);
+                    let bytes = read_file_part(path, start, (end - start) as usize).await?;
+                    let etag = api_client::put_bytes(
+                        &signed_part.upload_url,
+                        &signed_part.required_headers,
+                        bytes,
+                    )
+                    .await?
+                    .ok_or("Objektlageret returnerte ingen ETag for multipart-delen")?;
+                    completed_parts.push(json!({
+                        "partNumber": signed_part.part_number,
+                        "etag": etag,
+                        "checksumSha256": request.checksum_sha256,
+                    }));
+                    let done = completed_parts.len() as u64;
+                    emit_transfer(
+                        app,
+                        "upload",
+                        35 + ((done * 50 / expected_parts.max(1)) as u8),
+                        &format!("Laster opp del {} av {} …", done, expected_parts),
+                    );
+                }
+            }
+            completed_parts
+                .sort_by_key(|part| part.get("partNumber").and_then(Value::as_u64).unwrap_or(0));
+        }
+        "complete" | "single" | "multipart" if ticket.already_uploaded => {}
+        strategy => return Err(format!("Ukjent opplastingsstrategi: {}", strategy)),
+    }
 
     let response = api_client::complete_bounce(
         &snap.api_base,
         token,
         session_id,
         json!({
-            "fileUrl": file_url,
-            "storageKey": storage_key,
+            "objectId": ticket.object_id,
+            "parts": completed_parts,
             "fileName": file_name,
-            "clientEventId": format!("bounce:{}", fingerprint),
+            "clientEventId": client_event_id,
             "contentFingerprint": fingerprint,
             "sizeBytes": size,
             "durationSeconds": audio_metadata.map(|metadata| metadata.duration_seconds),
@@ -581,6 +833,10 @@ pub async fn upload_bounce_with_context(
         .get("artifactId")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let idempotent = response
+        .get("idempotent")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     {
         let mut current = cfg.lock().unwrap();
@@ -602,6 +858,22 @@ pub async fn upload_bounce_with_context(
             None => format!("«{}» lastet opp", file_name),
         },
     );
+    emit_transfer(
+        app,
+        "complete",
+        100,
+        &match (version_number, idempotent) {
+            (Some(number), true) => {
+                format!("Mix V{} fantes allerede — ingen kopi ble laget", number)
+            }
+            (Some(number), false) => format!("Mix V{} er klar i Sound Room", number),
+            _ => "Filen er klar i Sound Room".into(),
+        },
+    );
+
+    let file_url = bounce_id
+        .as_ref()
+        .map(|id| format!("/api/protools/bounces/{}/file", id));
 
     Ok(BounceResult {
         bounce_id,
@@ -609,10 +881,11 @@ pub async fn upload_bounce_with_context(
         review_version_id,
         version_number,
         sections_synced,
-        file_url: Some(file_url),
+        file_url,
         file_name,
         size_bytes: size,
         checksum,
+        idempotent,
         qc_report,
     })
 }
@@ -681,10 +954,12 @@ pub async fn send_to_review(
     app: &AppHandle,
     file_name: &str,
     source: Option<String>,
+    force_new_version: bool,
 ) -> Result<BounceResult, String> {
     let snap = snapshot(cfg);
     let output_directory = require(&snap.bounce_dir, "Bounced Files-mappe")?;
     emit_activity(app, "info", "Tar session snapshot før review-eksport …");
+    emit_transfer(app, "snapshot", 5, "Sikrer Pro Tools-sesjonen …");
     let snapshot = capture_session_snapshot(cfg, "pre_publish").await?;
     let result = ptsl::execute(
         "export_review",
@@ -693,11 +968,18 @@ pub async fn send_to_review(
         }),
     )
     .await?;
+    emit_transfer(app, "export", 18, "Eksporterer 24-bit WAV fra Pro Tools …");
     let output_path = result
         .get("outputPath")
         .and_then(Value::as_str)
         .ok_or("PTSL returnerte ingen eksportsti")?;
     wait_for_export(Path::new(output_path)).await?;
+    emit_transfer(
+        app,
+        "quality",
+        25,
+        "Kontrollerer lydnivå, clipping og stillhet …",
+    );
     upload_bounce_with_context(
         cfg,
         app,
@@ -709,6 +991,7 @@ pub async fn send_to_review(
                 .map(str::to_string),
             delivery_kind: Some("review".into()),
             register_as_review: true,
+            force_new_version,
             ..Default::default()
         },
     )
@@ -906,6 +1189,7 @@ pub async fn run_delivery(
                     "stem".into()
                 }),
                 register_as_review: false,
+                force_new_version: false,
             },
         )
         .await

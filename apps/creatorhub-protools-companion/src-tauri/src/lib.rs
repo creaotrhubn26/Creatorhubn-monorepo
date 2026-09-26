@@ -524,10 +524,18 @@ async fn list_export_sources() -> Result<Value, String> {
 async fn send_to_review(
     file_name: String,
     source: Option<String>,
+    force_new_version: Option<bool>,
     app: AppHandle,
     cfg: State<'_, SharedConfig>,
 ) -> Result<BounceResult, String> {
-    processing::send_to_review(cfg.inner(), &app, file_name.trim(), source).await
+    processing::send_to_review(
+        cfg.inner(),
+        &app,
+        file_name.trim(),
+        source,
+        force_new_version.unwrap_or(false),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -648,15 +656,32 @@ async fn install_update(app: AppHandle) -> Result<bool, String> {
 #[tauri::command]
 fn diagnostics(cfg: State<'_, SharedConfig>, ipc: State<'_, local_ipc::SharedIpcStatus>) -> Value {
     let snap = snapshot(cfg.inner());
+    let pending_bounces = cfg.lock().unwrap().pending_bounces.len();
+    let ptsl = ptsl::probe();
+    let local_ipc = ipc.lock().unwrap().clone();
+    let bounce_folder_ready = snap
+        .bounce_dir
+        .as_deref()
+        .is_some_and(|path| std::path::Path::new(path).is_dir());
+    let checks = vec![
+        json!({ "id": "account", "label": "CreatorHub-konto", "status": if snap.token.is_some() { "ok" } else { "error" }, "message": if snap.token.is_some() { "Innloggingen er lagret sikkert." } else { "Koble Companion til Workspace med paringskode." } }),
+        json!({ "id": "protools", "label": "Pro Tools", "status": if ptsl.state == "connected" { "ok" } else { "error" }, "message": ptsl.message.clone() }),
+        json!({ "id": "sound-room", "label": "Sound Room", "status": if snap.audio_room_id.is_some() { "ok" } else { "error" }, "message": if snap.audio_room_id.is_some() { "Lydrommet er koblet til sesjonen." } else { "Velg prosjekt og Sound Room i oppsettet." } }),
+        json!({ "id": "easeverse", "label": "EaseVerse", "status": if snap.easeverse_track_id.is_some() { "ok" } else { "warning" }, "message": if snap.easeverse_track_id.is_some() { "Track og prosjektdata synkroniseres." } else { "Valgfritt: koble en EaseVerse-track i Workspace." } }),
+        json!({ "id": "bounce-folder", "label": "Eksportmappe", "status": if bounce_folder_ready { "ok" } else { "error" }, "message": if bounce_folder_ready { "Mappen er tilgjengelig." } else { "Velg en eksisterende Bounced Files-mappe." } }),
+        json!({ "id": "aax", "label": "Review Console", "status": if local_ipc.listening { "ok" } else { "error" }, "message": if local_ipc.listening { "AAX-panelet kan snakke med Companion." } else { "Start Companion på nytt før Review Console åpnes." } }),
+        json!({ "id": "queue", "label": "Bakgrunnskø", "status": if pending_bounces == 0 { "ok" } else { "warning" }, "message": if pending_bounces == 0 { "Alt er synkronisert.".to_string() } else { format!("{} fil(er) venter og prøves igjen automatisk.", pending_bounces) } }),
+    ];
     json!({
         "appVersion": env!("CARGO_PKG_VERSION"), "platform": std::env::consts::OS,
         "paired": snap.token.is_some(), "sessionId": snap.session_id, "audioRoomId": snap.audio_room_id,
-        "workspaceProjectId": snap.workspace_project_id, "ptsl": ptsl::probe(), "localIpc": ipc.lock().unwrap().clone(),
+        "workspaceProjectId": snap.workspace_project_id, "ptsl": ptsl, "localIpc": local_ipc,
         "credentialStorage": if cfg!(any(target_os = "macos", target_os = "windows")) { "os_keychain" } else { "restricted_config_fallback" },
         "lastFeedbackSyncAt": cfg.lock().unwrap().last_feedback_sync_at,
         "lastFeedbackSyncError": cfg.lock().unwrap().last_feedback_sync_error,
         "lastSessionFingerprint": cfg.lock().unwrap().last_session_fingerprint,
-        "pendingBounces": cfg.lock().unwrap().pending_bounces.len(),
+        "pendingBounces": pending_bounces,
+        "checks": checks,
     })
 }
 

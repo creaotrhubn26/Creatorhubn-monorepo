@@ -28,6 +28,7 @@ import { wsIcon } from '../crewIcons';
 import { WsCard, WsTag, wsAlert, wsConfirm } from '../ui';
 import { useWorkspaceUpdate } from '../WorkspaceContext';
 import { detectDesktopPlatform, detectDesktopPlatformSync, isRecommendedDesktopDownload } from '@/lib/desktopPlatform';
+import { latestApprovedSoundRoomVersion, sortSoundRoomVersionsNewest } from '@/lib/soundRoomVersions';
 import MediaRoomCommandCenter from '../media-room/MediaRoomCommandCenter';
 import { useMediaRoomShortcuts } from '../media-room/useMediaRoomShortcuts';
 
@@ -272,10 +273,11 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
   const evStatus: any = { recording: ['Opptak', ws.textDim], mixing: ['Miksing', ws.amber], mastering: ['Mastering', ws.blue], completed: ['Ferdig', ws.green] };
 
   const proj = summary?.project || {};
-  const versions = summary?.versions || [];
+  const versions = sortSoundRoomVersionsNewest(summary?.versions || []);
   const members = summary?.members || [];
-  const current = versions.find((v: any) => v.status === 'under_review') || versions[versions.length - 1] || null;
-  const previewVersions = versions.slice(-VERSION_PREVIEW_LIMIT);
+  const current = versions[0] || null;
+  const approved = latestApprovedSoundRoomVersion(versions);
+  const previewVersions = versions.slice(0, VERSION_PREVIEW_LIMIT);
   const openComments = current?.comment_count ?? null;
   const easeVerseHref = easeVerseWorkspaceUrl({
     creatorhubProjectId: projectId,
@@ -360,7 +362,7 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {proj.status && <WsTag label={proj.status === 'under_review' ? 'Under review' : proj.status === 'approved' ? 'Godkjent' : proj.status} tone={proj.status === 'approved' ? 'green' : proj.status === 'under_review' ? 'amber' : 'neutral'} />}
             </Stack>
             <Typography sx={{ fontSize: 12.5, color: ws.textDim, mt: 0.25 }}>
-              {proj.band_name ? `${proj.band_name} · ` : ''}{versions.length} versjon{versions.length === 1 ? '' : 'er'}{current ? ` · siste: ${current.version_label || `Mix V${current.version_number}`}` : ''}{members.length ? ` · ${members.length} medlem${members.length === 1 ? '' : 'mer'}` : ''}
+              {proj.band_name ? `${proj.band_name} · ` : ''}{versions.length} versjon{versions.length === 1 ? '' : 'er'}{current ? ` · nyeste: ${current.version_label || `Mix V${current.version_number}`}` : ''}{approved ? ` · godkjent: ${approved.version_label || `Mix V${approved.version_number}`}` : ''}{members.length ? ` · ${members.length} medlem${members.length === 1 ? '' : 'mer'}` : ''}
             </Typography>
           </Box>
           <Button variant="text" onClick={(e) => { e.stopPropagation(); openRoom(); }} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700, flexShrink: 0 }}>Åpne →</Button>
@@ -418,9 +420,10 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
                 >
                   <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={0.75} sx={{ minWidth: 0 }}>
                     <Typography noWrap sx={{ minWidth: 0, flex: 1, fontSize: 12.5, fontWeight: 700 }} title={versionLabel}>{versionLabel}</Typography>
-                    {v.status === 'under_review' && <WsTag label="Nå" tone="amber" />}
+                    {v.id === current?.id && <WsTag label="Nyeste" tone="amber" />}
                     {v.status === 'approved' && <WsTag label="✓" tone="green" />}
                   </Stack>
+                  {v.protools_bounce_id && <Typography sx={{ fontSize: 10.5, color: ws.blue, mt: 0.4 }}>Fra Pro Tools Companion</Typography>}
                   <Typography sx={{ minWidth: 0, fontSize: 10.5, color: ws.textFaint, mt: 0.5 }} noWrap title={fileName}>{fileName}</Typography>
                 </Box>
               );
@@ -590,9 +593,17 @@ const SoundRoomTab: React.FC<{ projectId: string }> = ({ projectId }) => {
               {(pt?.markers?.length || 0) > 0 && <WsTag label={`${pt.markers.length} markører`} tone="green" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <WsTag label={`${pt.sync.pending_count} synk venter`} tone="amber" />}
               {Number(pt?.sync?.pending_count || 0) > 0 && <Button size="small" onClick={retryPtSync} disabled={ptBusy} sx={{ color: ws.accent, textTransform: 'none', fontWeight: 700 }}>Prøv igjen</Button>}
+              {pt?.sync?.last_delivered_at && Number(pt?.sync?.pending_count || 0) === 0 && <WsTag label="EaseVerse synkronisert" tone="green" />}
               {pt?.session?.ptsl_status && <WsTag label={pt.session.ptsl_status === 'connected' ? 'PTSL direkte' : pt.session.ptsl_status === 'degraded' ? 'PTSL-bro mangler' : 'Filmodus'} tone={pt.session.ptsl_status === 'connected' ? 'green' : 'neutral'} />}
               {pt?.session?.protools_tier === 'intro' && <WsTag label={pt.session.intro_preflight?.compatible === false ? 'Intro: må forenkles' : 'Intro-klar'} tone={pt.session.intro_preflight?.compatible === false ? 'amber' : 'green'} />}
             </Stack>
+
+            {pt?.sync?.last_error && (
+              <Box sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,176,32,0.08)', border: `1px solid ${ws.amber}44` }}>
+                <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: ws.amber }}>EaseVerse venter på synk</Typography>
+                <Typography sx={{ fontSize: 11, color: ws.textDim, mt: .25 }}>Ingenting går tapt. Companion prøver igjen automatisk, eller du kan trykke «Prøv igjen».</Typography>
+              </Box>
+            )}
 
             {pt?.session?.protools_tier === 'intro' && pt.session.intro_preflight?.compatible === false && (
               <Box sx={{ p: 1.25, borderRadius: `${ws.radiusSm}px`, bgcolor: 'rgba(255,176,32,0.08)', border: `1px solid ${ws.amber}44` }}>

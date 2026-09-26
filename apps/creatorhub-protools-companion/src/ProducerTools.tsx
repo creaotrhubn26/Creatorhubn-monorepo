@@ -10,8 +10,9 @@ import AutoFixHighOutlined from "@mui/icons-material/AutoFixHighOutlined";
 import FolderOpen from "@mui/icons-material/FolderOpen";
 import RestoreOutlined from "@mui/icons-material/RestoreOutlined";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import * as api from "./api";
-import type { AppState, AudioQcReport, DeliveryJob, DeliveryOutput, SessionSnapshot } from "./api";
+import type { AppState, AudioQcReport, BounceResult, DeliveryJob, DeliveryOutput, SessionSnapshot } from "./api";
 
 const ORANGE = "#ff8c00";
 const OUTPUT_LIBRARY = [
@@ -38,6 +39,8 @@ export function ProducerTools({ state, report, refreshState }: {
   const [preset, setPreset] = useState("label");
   const [selectedKinds, setSelectedKinds] = useState<string[]>(["master", "instrumental", "acapella", "clean", "tv"]);
   const [sourceOverrides, setSourceOverrides] = useState<Record<string, string>>({});
+  const [transfer, setTransfer] = useState<{ percent: number; message: string } | null>(null);
+  const [duplicate, setDuplicate] = useState<BounceResult | null>(null);
 
   const reloadHistory = async () => {
     const [nextSnapshots, nextJobs] = await Promise.all([
@@ -56,6 +59,14 @@ export function ProducerTools({ state, report, refreshState }: {
     void reloadHistory();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.session_id, state.ptsl.state]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listen<{ percent: number; message: string }>("companion://transfer-progress", (event) => {
+      setTransfer(event.payload);
+    }).then((stop) => { unlisten = stop; });
+    return () => unlisten?.();
+  }, []);
 
   const selectedOutputs = useMemo<DeliveryOutput[]>(() => {
     const baseName = sanitize(state.session_name || "Session");
@@ -78,15 +89,22 @@ export function ProducerTools({ state, report, refreshState }: {
     ? 0
     : Math.max(0, selectedKinds.length - selectedOutputs.length);
 
-  const sendReview = async () => {
+  const sendReview = async (forceNewVersion = false) => {
     setBusy("review");
+    setDuplicate(null);
+    setTransfer({ percent: 2, message: "Gjør klar review …" });
     try {
-      const result = await api.sendToReview(reviewName, reviewSource || null);
+      const result = await api.sendToReview(reviewName, reviewSource || null, forceNewVersion);
       setLastQc(result.qc_report);
-      report("bounce", result.version_number ? `Review publisert som Mix V${result.version_number}` : "Review publisert");
+      if (result.idempotent) {
+        setDuplicate(result);
+        report("info", result.version_number ? `Samme lyd finnes allerede som Mix V${result.version_number}` : "Samme lyd finnes allerede");
+      } else {
+        report("bounce", result.version_number ? `Review publisert som Mix V${result.version_number}` : "Review publisert");
+      }
       await Promise.all([reloadHistory(), refreshState()]);
     } catch (error) { report("error", `Review-publisering feilet: ${error}`); }
-    finally { setBusy(null); }
+    finally { setBusy(null); window.setTimeout(() => setTransfer(null), 5000); }
   };
 
   const capture = async () => {
@@ -160,10 +178,27 @@ export function ProducerTools({ state, report, refreshState }: {
           <TextField size="small" select label="Mikskilde" value={reviewSource} onChange={(event) => setReviewSource(event.target.value)} sx={{ minWidth: 220 }}>
             {sources.map((source) => <MenuItem key={`${source.sourceType}-${source.name}`} value={source.name}>{source.name}</MenuItem>)}
           </TextField>
-          <Button variant="contained" disabled={busy != null || state.ptsl.state !== "connected" || !reviewName.trim()} onClick={() => void sendReview()}
+          <Button variant="contained" disabled={busy != null || state.ptsl.state !== "connected" || !reviewName.trim()} onClick={() => void sendReview(false)}
             sx={{ bgcolor: ORANGE, whiteSpace: "nowrap", fontWeight: 800, "&:hover": { bgcolor: "#e07e00" } }}>Send til review</Button>
         </Stack>
-        {busy === "review" && <LinearProgress sx={{ mt: 1 }} />}
+        {transfer && (
+          <Box sx={{ mt: 1.2 }} aria-live="polite">
+            <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 700 }}>{transfer.message}</Typography>
+              <Typography sx={{ fontSize: 12, color: "text.secondary" }}>{transfer.percent}%</Typography>
+            </Stack>
+            <LinearProgress variant="determinate" value={transfer.percent} sx={{ mt: .6, height: 7, borderRadius: 9 }} />
+          </Box>
+        )}
+        {duplicate && (
+          <Alert severity="info" sx={{ mt: 1.2 }} action={
+            <Button color="inherit" size="small" disabled={busy != null} onClick={() => void sendReview(true)} sx={{ fontWeight: 800 }}>
+              Lag ny likevel
+            </Button>
+          }>
+            Denne lyden ligger allerede i Sound Room{duplicate.version_number ? ` som Mix V${duplicate.version_number}` : ""}. Det ble ikke laget en kopi.
+          </Alert>
+        )}
         {lastQc && <QcSummary report={lastQc} />}
       </ToolCard>
 
