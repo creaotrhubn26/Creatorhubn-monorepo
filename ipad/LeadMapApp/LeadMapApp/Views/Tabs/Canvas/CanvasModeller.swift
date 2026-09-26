@@ -312,6 +312,13 @@ struct CanvasObjekt: Codable, Identifiable, Hashable, Sendable {
     /// derfor ikke samtykke per samtale — men et lydobjekt MED dokId og
     /// UTEN samtykke-ID er et opptak som aldri skulle vært tatt.
     var samtykkeId: String? = nil
+
+    /// Punkter selgeren markerte mens opptaket gikk, i sekunder.
+    ///
+    /// Man vet at noe var viktig I DET det blir sagt, men rekker ikke skrive
+    /// det ned. Et trykk koster ingenting og gjør at man finner tilbake —
+    /// uten det må man spole gjennom en time for å finne tjue sekunder.
+    var markorer: [Double]? = nil
 }
 
 /// Én ytring fra transkripsjonen, med tidspunkt.
@@ -470,6 +477,11 @@ enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
     case kanban
     case pipeline
     case territorium
+    // Befaring og lead var de to notattypene som åpnet på blankt ark. De
+    // gjorde jobben verst egnet for et blankt ark: man står hos kunden og
+    // skal huske å spørre om fire ting.
+    case befaring
+    case leadkort
 
     var id: String { rawValue }
 
@@ -485,6 +497,8 @@ enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
         case .kanban: return "Kanban"
         case .pipeline: return "Pipeline"
         case .territorium: return "Territorium"
+        case .befaring: return "Befaring"
+        case .leadkort: return "Leadkort"
         }
     }
 
@@ -500,6 +514,8 @@ enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
         case .kanban: return "rectangle.split.3x1"
         case .pipeline: return "arrow.right.square"
         case .territorium: return "map"
+        case .befaring: return "checklist"
+        case .leadkort: return "person.text.rectangle"
         }
     }
 
@@ -510,6 +526,8 @@ enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rute: return .rute
         case .salgsplan: return .salgsstrategi
         case .prosjekt: return .kanban
+        case .befaring: return .befaring
+        case .lead: return .leadkort
         default: return .blank
         }
     }
@@ -595,6 +613,28 @@ enum CanvasPapir: String, CaseIterable, Identifiable, Codable, Sendable {
                 s.etiketter.append((n, CGPoint(x: Double(i) / 5 + 0.055, y: 0.04)))
             }
             return s
+        case .befaring:
+            // Rekkefølgen er den man faktisk går gjennom på stedet: se,
+            // måle, se hva som skurrer, avtale hva som skjer videre.
+            return Spec(
+                linjer: [(CGPoint(x: 0.03, y: 0.28), CGPoint(x: 0.97, y: 0.28)),
+                         (CGPoint(x: 0.50, y: 0.28), CGPoint(x: 0.50, y: 0.76)),
+                         (CGPoint(x: 0.03, y: 0.76), CGPoint(x: 0.97, y: 0.76))],
+                etiketter: [("OBSERVASJONER", CGPoint(x: 0.04, y: 0.045)),
+                            ("MÅL OG TALL", CGPoint(x: 0.04, y: 0.295)),
+                            ("HVA SKURRER", CGPoint(x: 0.51, y: 0.295)),
+                            ("AVTALT PÅ STEDET", CGPoint(x: 0.04, y: 0.775))])
+        case .leadkort:
+            // Fire spørsmål et lead står og faller på. Er «neste steg» tomt
+            // når man går ut døra, var møtet en hyggelig samtale.
+            return Spec(
+                linjer: [(CGPoint(x: 0.03, y: 0.24), CGPoint(x: 0.97, y: 0.24)),
+                         (CGPoint(x: 0.03, y: 0.52), CGPoint(x: 0.97, y: 0.52)),
+                         (CGPoint(x: 0.03, y: 0.78), CGPoint(x: 0.97, y: 0.78))],
+                etiketter: [("HVEM BESTEMMER", CGPoint(x: 0.04, y: 0.045)),
+                            ("HVA KOSTER DAGENS LØSNING", CGPoint(x: 0.04, y: 0.255)),
+                            ("INNVENDING", CGPoint(x: 0.04, y: 0.535)),
+                            ("NESTE STEG OG NÅR", CGPoint(x: 0.04, y: 0.795))])
         case .territorium:
             var s = Spec(rutenett: 44)
             s.etiketter.append(("N ↑", CGPoint(x: 0.93, y: 0.03)))

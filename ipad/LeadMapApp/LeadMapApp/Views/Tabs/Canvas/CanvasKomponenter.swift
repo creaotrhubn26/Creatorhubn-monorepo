@@ -829,6 +829,7 @@ struct ObjektView: View {
                 skala: objekt.skala,
                 spiller: lydSpiller ?? NexusLydSpiller(),
                 harBlekkSynk: objekt.opptakStartet != nil,
+                markorer: objekt.markorer ?? [],
                 venterPaaOpplasting: venterPaaOpplasting,
                 kanTrekkes: objekt.dokId != nil && !venterPaaOpplasting,
                 trekkSamtykke: onTrekkSamtykke,

@@ -17,6 +17,7 @@
 import SwiftUI
 import PencilKit
 import AVFoundation
+import AVKit
 import SafariServices
 
 /// Felles kledning for alt som ligger på flata.
@@ -343,6 +344,40 @@ enum NexusBlekkSynk {
         return max(0, t)
     }
 
+    /// Strøket nærmest et punkt på arket.
+    ///
+    /// PencilKit har ingen offentlig treff-test, så vi måler mot strøkenes
+    /// egne rammer. Det holder her: vi leter etter «hvilket strøk pekte han
+    /// på», ikke etter en piksel.
+    ///
+    /// Toleransen er 40 punkter fordi en finger er bredere enn en penn, og
+    /// fordi et bomskudd som gir NÆRMESTE strøk er bedre enn et som gir
+    /// ingenting — brukeren ser uansett hva som lyser opp.
+    static func strokNaer(_ punkt: CGPoint, i tegning: PKDrawing,
+                          toleranse: CGFloat = 40) -> Int? {
+        var beste: (indeks: Int, avstand: CGFloat)?
+        for (i, strok) in tegning.strokes.enumerated() {
+            let r = strok.renderBounds.insetBy(dx: -toleranse, dy: -toleranse)
+            guard r.contains(punkt) else { continue }
+            let senter = CGPoint(x: strok.renderBounds.midX, y: strok.renderBounds.midY)
+            let d = hypot(senter.x - punkt.x, senter.y - punkt.y)
+            if beste == nil || d < beste!.avstand { beste = (i, d) }
+        }
+        return beste?.indeks
+    }
+
+    /// Hva som ble sagt da ET BESTEMT strøk ble skrevet.
+    ///
+    /// Dette er retningen som betyr noe i praksis. «Dra i lyden og se
+    /// blekket» er pent; «tapp på det jeg krotet ned og fortell meg hva han
+    /// sa» er grunnen til at man tar opp i det hele tatt.
+    static func sagtDa(_ strok: PKStroke, opptakStartet: Date,
+                       varighet: Double, referat: [Referatsegment]) -> Referatsegment? {
+        guard let t = lydtid(for: strok, opptakStartet: opptakStartet,
+                             varighet: varighet) else { return nil }
+        return segmentVed(t, i: referat)
+    }
+
     /// Hva som ble SAGT rundt et gitt sekund.
     ///
     /// Motsatt vei av strokIndekser: gitt et strøk, finn ytringen. Det er
@@ -377,6 +412,8 @@ struct NexusLydKort: View {
     let skala: Double
     let spiller: NexusLydSpiller
     let harBlekkSynk: Bool
+    /// Merker satt under opptaket, i sekunder.
+    var markorer: [Double] = []
     /// Opptaket ligger fortsatt bare på iPaden.
     var venterPaaOpplasting: Bool = false
     /// Lyden er lagret på serveren, og kan trekkes tilbake (§4 punkt 4).
@@ -410,12 +447,28 @@ struct NexusLydKort: View {
                         .foregroundStyle(CvBrand.textSecondary)
                 }
             }
-            Slider(
-                value: Binding(
-                    get: { spiller.lengde > 0 ? spiller.posisjon : 0 },
-                    set: { sokTil($0) }),
-                in: 0...max(varighet, 0.1))
-                .tint(CvBrand.green)
+            ZStack(alignment: .leading) {
+                Slider(
+                    value: Binding(
+                        get: { spiller.lengde > 0 ? spiller.posisjon : 0 },
+                        set: { sokTil($0) }),
+                    in: 0...max(varighet, 0.1))
+                    .tint(CvBrand.green)
+                // Merkene ligger OPPÅ sporet, ikke i en liste ved siden av:
+                // poenget er å se hvor i opptaket de er.
+                if varighet > 0, !markorer.isEmpty {
+                    GeometryReader { geo in
+                        ForEach(markorer, id: \.self) { t in
+                            Capsule()
+                                .fill(CvBrand.yellow)
+                                .frame(width: 2, height: 11)
+                                .offset(x: geo.size.width * CGFloat(t / varighet))
+                        }
+                    }
+                    .frame(height: 11)
+                    .allowsHitTesting(false)
+                }
+            }
             // Hintet er en TILSTAND, ikke en permanent etikett: det er sant
             // mens lyden går, og da forklarer det det man ser skje i blekket.
             // Alltid synlig ville det vært en reklameplakat på eget kort.
@@ -472,6 +525,11 @@ struct NexusOpptakBanner: View {
     /// skulle vært tatt opp. Den hører hjemme HER, i banneret selgeren
     /// allerede ser på, ikke i en meny han må lete i mens samtalen går.
     var glemSiste: (() -> Void)? = nil
+    /// Sett et merke her. Man vet at noe var viktig i det det blir sagt.
+    var settMarkor: (() -> Void)? = nil
+    /// Hvor mange merker som er satt. Uten tallet er knappen en knapp man
+    /// trykker på uten å vite om den gjorde noe.
+    var antallMarkorer: Int = 0
     let stopp: () -> Void
 
     @State private var naa = Date()
@@ -497,6 +555,27 @@ struct NexusOpptakBanner: View {
             Text(gaatt)
                 .font(.appScaled(size: 13, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.85))
+
+            if let settMarkor {
+                Button(action: settMarkor) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bookmark.fill")
+                            .font(.appScaled(size: 11, weight: .semibold))
+                        if antallMarkorer > 0 {
+                            Text("\(antallMarkorer)")
+                                .font(.appScaled(size: 11, weight: .bold).monospacedDigit())
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .frame(height: 34)
+                    .background(.white.opacity(0.18), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(antallMarkorer == 0
+                    ? "Sett et merke her"
+                    : "Sett et merke her. \(antallMarkorer) satt.")
+            }
 
             if let glemSiste {
                 Button(action: glemSiste) {
@@ -702,6 +781,25 @@ enum NexusVideo {
         return UIImage(cgImage: cg)
     }
 
+    /// Når klippet faktisk ble filmet.
+    ///
+    /// Kameraet skriver dette inn i fila, så et klipp fra et møte vet selv
+    /// når det startet. Det er alt blekk-synkingen trenger: strøk skrevet
+    /// mens kameraet gikk kan regnes om til et sekund i klippet, akkurat som
+    /// for lyd. Klipp uten tidsstempel (eksport, nedlasting, redigert fil)
+    /// gir `nil`, og da får videoen ingen blekk-synk — bedre enn en synk som
+    /// peker feil sted.
+    static func tattOpp(for data: Data) async -> Date? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nexus-dato-\(UUID().uuidString).mov")
+        guard (try? data.write(to: url)) != nil else { return nil }
+        defer { try? FileManager.default.removeItem(at: url) }
+        let asset = AVURLAsset(url: url)
+        guard let element = try? await asset.load(.creationDate),
+              let dato = try? await element.load(.dateValue) else { return nil }
+        return dato
+    }
+
     static func varighet(for data: Data) async -> Double {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("nexus-len-\(UUID().uuidString).mov")
@@ -716,4 +814,44 @@ enum NexusVideo {
 /// unik i seg selv — dette sparer en wrapper-type per bruksted.
 extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
+}
+
+/// Videospiller som kan åpne midt i klippet.
+///
+/// Spilleren lages én gang i `task`, ikke på hver body-evaluering. Bygges den
+/// i `body` starter klippet forfra hver gang noe rundt den endrer seg — og
+/// da forsvinner nettopp det punktet brukeren tappet seg fram til.
+struct NexusVideoSpiller: View {
+    let url: URL
+    /// Sekundet klippet skal åpne på. 0 = fra start.
+    let start: Double
+    let lukk: () -> Void
+
+    @State private var spiller: AVPlayer?
+
+    var body: some View {
+        VideoPlayer(player: spiller)
+            .ignoresSafeArea()
+            .overlay(alignment: .topTrailing) {
+                Button(action: lukk) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(.white, .black.opacity(0.5))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .padding()
+                .accessibilityLabel("Lukk videoen")
+            }
+            .task {
+                guard spiller == nil else { return }
+                let ny = AVPlayer(url: url)
+                if start > 0.5 {
+                    await ny.seek(to: CMTime(seconds: start, preferredTimescale: 600),
+                                  toleranceBefore: .zero, toleranceAfter: .zero)
+                }
+                spiller = ny
+                ny.play()
+            }
+    }
 }
