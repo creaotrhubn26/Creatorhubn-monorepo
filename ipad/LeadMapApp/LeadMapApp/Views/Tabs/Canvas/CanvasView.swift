@@ -3687,16 +3687,47 @@ struct CanvasView: View {
     }
 
     /// PDF til temp-fil for ShareLink (én side = komposittbildet).
-    private func pdfFil() -> URL? {
+    /// Navnene eksporten kan skjule: kontaktpersonene notatet allerede
+    /// kjenner gjennom koblingene (daglig leder og styret).
+    private var kjenteKontakter: [String] { koblinger.personer.map(\.navn) }
+
+    /// Referatet fra notatets lydobjekter, i rekkefølge.
+    private var referatLinjer: [String] { referatLinjer(skjulNavn: kjenteKontakter) }
+
+    private func referatLinjer(skjulNavn: [String]) -> [String] {
+        objekter
+            .filter { $0.type == CanvasObjektType.lyd.rawValue }
+            .compactMap { objekt -> [String]? in
+                guard let referat = objekt.referat, !referat.isEmpty else { return nil }
+                return NexusEksport.referatLinjer(
+                    referat, markorer: objekt.markorer ?? [], skjulNavn: skjulNavn)
+            }
+            .flatMap { $0 }
+    }
+
+    /// Notatet som PDF: flata som den ser ut, og det som ble sagt.
+    ///
+    /// Referatet lå tidligere bare på lydobjektet og fulgte aldri med ut. Den
+    /// som fikk PDF-en så en tegning uten ord.
+    private func pdfFil(anonymt: Bool = true) -> URL? {
         let bilde = komponertBilde()
+        let navn = tittel.isEmpty
+            ? "canvas-notat" : tittel.replacingOccurrences(of: "/", with: "-")
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(tittel.isEmpty ? "canvas-notat" : tittel.replacingOccurrences(of: "/", with: "-")).pdf")
+            .appendingPathComponent("\(navn)\(anonymt ? "" : "-med-navn").pdf")
+        let skjulte = anonymt ? kjenteKontakter : []
+        let linjer = referatLinjer(skjulNavn: skjulte)
         let pdfRenderer = UIGraphicsPDFRenderer(
             bounds: CGRect(origin: .zero, size: bilde.size))
         do {
             try pdfRenderer.writePDF(to: url) { ctx in
                 ctx.beginPage()
                 bilde.draw(at: .zero)
+                if !linjer.isEmpty {
+                    NexusEksport.tegnTekstsider(
+                        ctx, tittel: tittel, linjer: linjer,
+                        navnSkjult: !skjulte.isEmpty)
+                }
             }
             return url
         } catch { return nil }
@@ -4562,7 +4593,20 @@ struct CanvasView: View {
                             }
                             if let pdfURL = pdfFil() {
                                 ShareLink(item: pdfURL) {
-                                    Label("Del som PDF", systemImage: "doc.richtext")
+                                    Label(referatLinjer.isEmpty || kjenteKontakter.isEmpty
+                                          ? "Del som PDF"
+                                          : "Del som PDF (navn skjult)",
+                                          systemImage: "doc.richtext")
+                                }
+                            }
+                            // Navnene med er et bevisst valg, ikke standarden.
+                            // En PDF havner i e-posttråder og delte mapper —
+                            // steder ingen samtykke-logg når.
+                            if !referatLinjer.isEmpty, !kjenteKontakter.isEmpty,
+                               let medNavn = pdfFil(anonymt: false) {
+                                ShareLink(item: medNavn) {
+                                    Label("Del som PDF med navn",
+                                          systemImage: "person.text.rectangle")
                                 }
                             }
                             // Ekte PDF-eksport: original vektor-kvalitet
