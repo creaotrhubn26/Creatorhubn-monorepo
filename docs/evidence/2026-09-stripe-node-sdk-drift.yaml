@@ -1,0 +1,108 @@
+claim: >
+  backend/package.json pins "stripe": "^19.3.0" while stripe/stripe-node's
+  latest release is v22.6.2 (2026-09-09) — three major versions of drift.
+  This record's first draft claimed the drift was low-risk because
+  "we explicitly pin the Stripe API version per-client" — that claim was
+  checked against one call site and is false at repo scale: a `new Stripe(`
+  grep across backend/server/*.ts returns ~35 constructor call sites, and
+  exactly one (backend/server/lead-map-routes.ts:128) passes an explicit
+  apiVersion. Every other client (including all five constructEvent
+  webhook handlers) is constructed bare and therefore floats to whatever
+  API version the installed stripe-node build defaults to. The changelog
+  review itself was also scoped wrong: it covered v22.4.0→v22.6.2 (the
+  range between the last two weekly checks) but the repo is on ^19.3.0, so
+  v20, v21, and v22.0–v22.3 were never reviewed — "no breaking-change
+  intersection found" was true only for a slice of the actual gap.
+source_type: changelog
+source: >
+  https://raw.githubusercontent.com/stripe/stripe-node/master/CHANGELOG.md
+  (v22.4.0 2026-07-29 through v22.6.2 2026-09-09 only — v20/v21/v22.0-22.3
+  NOT reviewed, see decision); repo check: backend/package.json:274; git
+  grep -n "new Stripe(" backend/server/*.ts (35 call sites, 1 with explicit
+  apiVersion: lead-map-routes.ts:128); backend/server/dance-billing-service.ts:635-640
+  (existing "// Stripe v19: current_period_end is on items.data[i] istedenfor
+  toppnivå" comment — direct evidence that an earlier Stripe API version
+  bump already forced a shape-handling change in this codebase, the same
+  class of risk this record originally waved off).
+authority_tier: 1
+vendor: Stripe
+product: stripe-node (Node SDK)
+version_scope: "installed ^19.3.0; upstream latest v22.6.2; changelog audited only for v22.4.0-v22.6.2"
+publication_date: "2026-09-21"
+valid_from: "2026-09"
+valid_to: >
+  until backend/package.json's stripe dependency changes, or someone
+  completes the full v20→v22.6.2 changelog audit this record still owes
+evidence_summary: >
+  Corrected after PR review (Codex, 2026-09-21), two findings against the
+  first draft:
+  (1) Default-API-version exposure: 34 of 35 `new Stripe(...)` call sites
+  in backend/server/*.ts pass no apiVersion, so they inherit stripe-node's
+  built-in default, which moves every time the installed SDK version
+  changes (v22.6.0's changelog entry itself says it pinned the default to
+  2026-08-26.dahlia). Only lead-map-routes.ts is insulated from that. Any
+  future SDK bump changes response shapes for the other 34 call sites
+  (webhook handlers, seat/subscription sync, billing-health routes, admin
+  routes) unless each is audited or given an explicit apiVersion first.
+  (2) Audit-range gap: this record's changelog fetch started at v22.4.0
+  because that was the "previous known version" recorded in
+  docs/impact-reports/latest-versions.yaml from the last run — not because
+  it's where the repo's installed ^19.3.0 sits. The real gap (19.3.0 →
+  22.6.2) spans v20.x, v21.x, and v22.0-22.3, none of which were checked
+  for breaking changes. dance-billing-service.ts:635-640 already carries a
+  hand-written comment about a v19-era API-version-driven shape change
+  (current_period_end moved from subscription top-level into
+  items.data[i]), which is concrete proof this class of break has already
+  hit us once and was worked around ad hoc rather than tracked.
+interpretation: >
+  This record no longer supports "no compatibility risk" for the pinned
+  SDK. What's actually known: the current *runtime* API version each of
+  those 34 bare clients gets is whatever ^19.3.0 (or the range npm resolves
+  it to) defaults to today, and that has apparently already shifted once
+  (the v19 comment). Nothing has broken *since* — but that's absence of a
+  known incident, not evidence of safety, given the audit gap above.
+project_impact: >
+  backend/server/{index,dance-billing-service,game-billing-service,
+  academy-stripe-webhook-routes,post-agent-stripe-webhook,vertical-billing-core,
+  admin-academy-routes,admin-lead-map-pricing-routes,admin-payment-tests-routes,
+  composer-invoice-runner,editing-payments-service,generative-media,
+  marketplace-app-config-routes,org-self-onboard-routes,plan-routes,
+  post-agent-anthropic-routes,project-workspace-routes,role-room-ads-meter-emitter,
+  role-room-billing-health-routes,role-room-seat-management-routes,
+  role-room-seat-reconciliation-routes,role-room-seat-stripe-sync,
+  role-room-subscription-health,storage-billing-admin-routes,
+  storage-quota-service,stripe-price-drift-routes,superadmin-routes}.ts —
+  all construct Stripe without an explicit apiVersion; these are the
+  no-apiVersion audit surface, not just the 5 constructEvent sites named in
+  this record's first draft.
+confidence: strong_evidence
+decision: >
+  HOLD stands, but on a narrower basis than the first draft claimed: not
+  "audited and safe," but "not urgent enough to force this run, with two
+  follow-ups now required before the next SDK-related decision can call
+  itself GO": (1) audit stripe-node's changelog for v20.0 through v22.3.x
+  (the unreviewed range) for breaking changes against our actual call
+  sites, not just the v22.4-22.6 slice; (2) either add an explicit
+  apiVersion to the ~34 bare Stripe() constructors (matching
+  lead-map-routes.ts's pattern) or accept in writing that they float with
+  the SDK. Until both are done, "GO on the current pin" is a statement
+  about absence of a known incident, not a verified compatibility check.
+affected:
+  - backend/package.json
+  - backend/server/lead-map-routes.ts
+  - backend/server/dance-billing-service.ts
+  - backend/server/vertical-billing-core.ts
+  - backend/server/academy-stripe-webhook-routes.ts
+  - backend/server/post-agent-stripe-webhook.ts
+  - backend/server/index.ts
+  - backend/server/customer-success-service.ts
+lesson: >
+  Two compounding mistakes: scoping the changelog fetch to the delta since
+  the last *weekly check* instead of the delta since the *installed
+  version*, and generalizing "one file pins apiVersion" to "we pin
+  apiVersion" without grepping every constructor. Both were caught by a
+  reviewer bot reading the actual call sites rather than trusting the
+  narrative. For any vendor tracked as "latest upstream version" in
+  latest-versions.yaml, the audit range for a fresh HOLD/GO must be
+  installed-version → latest, not previous-check → latest — the two only
+  coincide when nobody has ever skipped a version audit before.
