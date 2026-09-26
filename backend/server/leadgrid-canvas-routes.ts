@@ -11,12 +11,33 @@ import type { Pool } from "pg";
 import { randomUUID } from "crypto";
 import { resolveOrgIdForUser } from "./leadgrid-org-resolver.js";
 import { loadAccessibleLeadgridProject } from "./leadgrid-project-access.js";
-import { assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS } from "./leadgrid-entitlement-guard.js";
+import {
+  assertAnyEntitled, LEADGRID_CANVAS_FEATURE_KEYS,
+  LEADBOOK_LYDOPPTAK_FEATURE_KEY,
+} from "./leadgrid-entitlement-guard.js";
 import {
   getLeadgridObjectStorage,
   leadgridStorageKeys,
 } from "./leadgrid-s3-storage-service.js";
 import { leadgridStoragePersistenceError } from "./leadgrid-org-storage-service.js";
+import {
+  gyldigFrist, STANDARD_FRIST_DAGER, slettUtloptNexusLyd,
+} from "./leadgrid-nexus-lyd-retensjon.js";
+
+/**
+ * MIME-typen som lagres på dokumentraden.
+ *
+ * Alt ble tidligere merket 'application/pdf' fordi endepunktet bare tok
+ * PDF-er. Nå bærer det lyd og video også, og en feil MIME gjør at
+ * nedlastingen serveres som feil type.
+ */
+function mimeForSlag(slag: string): string {
+  switch (slag) {
+    case "lyd": return "audio/mp4";
+    case "video": return "video/quicktime";
+    default: return "application/pdf";
+  }
+}
 import {
   koblingerFor, lagKobling, tellKoblingsbruk,
 } from "./leadgrid-nexus-koblinger.js";
@@ -68,7 +89,17 @@ async function innenforKvote(
       windowMs: kvote.windowMs,
       mode: kvote.mode,
     });
-    if (svar.allowed) return true;
+    if (svar.allowed) {
+      // Kvoten er ikke en hemmelighet. Appen skal kunne si fra FØR taket,
+      // ikke først når serveren svarer 429 midt i en tegning. Headeren
+      // koster ingenting og gjør 429-en forutsigbar.
+      res.setHeader("X-Nexus-Kvote-Rest", String(svar.remaining));
+      res.setHeader("X-Nexus-Kvote-Tak", String(kvote.limit));
+      if (svar.remaining <= Math.ceil(kvote.limit * 0.2)) {
+        res.setHeader("X-Nexus-Kvote-Advarsel", "1");
+      }
+      return true;
+    }
     res.setHeader("Retry-After", String(svar.retryAfterSeconds));
     res.status(429).json({
       error: "for_mange_kall",
@@ -216,6 +247,29 @@ async function ensureSchema(pool: Pool): Promise<void> {
   await pool.query(`
     ALTER TABLE leadgrid_canvas_notater
       ADD COLUMN IF NOT EXISTS slettet_at TIMESTAMPTZ`);
+  // Koblingsbruk (0682) og sett-markering (0683): selvhelende her også, så
+  // et miljø uten migrasjonene ikke får 500 på koblingspanelet.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_nexus_kobling_bruk (
+      organization_id TEXT NOT NULL,
+      project_id      TEXT NOT NULL,
+      kilde           TEXT NOT NULL,
+      visninger       BIGINT NOT NULL DEFAULT 0,
+      aapninger       BIGINT NOT NULL DEFAULT 0,
+      oppdatert_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (organization_id, project_id, kilde)
+    )`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leadgrid_nexus_notat_sett (
+      notat_id        UUID NOT NULL,
+      user_id         TEXT NOT NULL,
+      organization_id TEXT NOT NULL,
+      sist_sett_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (notat_id, user_id)
+    )`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_nexus_notat_sett_notat
+      ON leadgrid_nexus_notat_sett (notat_id, sist_sett_at DESC)`);
   schemaReady = true;
 }
 
@@ -612,7 +666,31 @@ export function registerLeadgridCanvasRoutes(deps: {
       const dokId = String(b.id ?? "").slice(0, 64);
       const navn = String(b.navn ?? "").slice(0, 200);
       const base64 = String(b.base64 ?? "");
+      const slag = String(b.slag ?? "pdf");
       if (!dokId || !base64) { res.status(400).json({ error: "bad_request" }); return; }
+
+      // Rå lyd er ikke som en PDF.
+      //
+      // docs/leadgrid-gdpr-lydopptak.md er tydelig: GDPR-pakken må være
+      // godkjent og implementert FØR ekte lyd skrus på, og
+      // leadbook-recording-consent-routes.ts bygger på at rå lyd ALDRI
+      // persisteres — transkripsjon skjer på enheten, bare teksten sendes.
+      //
+      // Nexus-opptakene bryter den forutsetningen: de laster opp lyden.
+      // Derfor gates de på det samme entitlementet som åpnes først når
+      // org-admin har bekreftet alle fire §7-punktene. Uten den bekreftelsen
+      // skal opptaket ikke kunne lagres i det hele tatt.
+      let fristDager = STANDARD_FRIST_DAGER;
+      if (slag === "lyd" || slag === "video") {
+        if (!(await assertAnyEntitled(
+          pool, session.userId, [LEADBOOK_LYDOPPTAK_FEATURE_KEY], res))) return;
+        // Org-en kan slette raskere, men ikke velge seg bort fra sletting.
+        const org = await pool.query<{ dager: number | null }>(
+          `SELECT nexus_lyd_slettefrist_dager AS dager
+             FROM organizations WHERE id = $1::uuid`,
+          [scope.organizationId]).catch(() => ({ rows: [] as { dager: number | null }[] }));
+        fristDager = gyldigFrist(org.rows[0]?.dager ?? null);
+      }
       if (base64.length > 27_000_000) {
         res.status(413).json({ error: "dokument_for_stort" });
         return;
@@ -708,9 +786,9 @@ export function registerLeadgridCanvasRoutes(deps: {
            INSERT INTO leadgrid_canvas_dokumenter
              (id, notat_id, organization_id, user_id, navn, base64,
               storage_provider, storage_object_id, storage_key, size_bytes,
-              mime_type, checksum_sha256)
+              mime_type, checksum_sha256, slag, slettes_etter)
            SELECT $10, $11::uuid, $2, $3, $6, '', 'aws_s3', id, $5, $7,
-                  'application/pdf', $8
+                  $12, $8, $13, $14::timestamptz
              FROM stored
            ON CONFLICT (id) DO UPDATE SET
              navn = EXCLUDED.navn,
@@ -720,7 +798,9 @@ export function registerLeadgridCanvasRoutes(deps: {
              storage_key = EXCLUDED.storage_key,
              size_bytes = EXCLUDED.size_bytes,
              mime_type = EXCLUDED.mime_type,
-             checksum_sha256 = EXCLUDED.checksum_sha256
+             checksum_sha256 = EXCLUDED.checksum_sha256,
+             slag = EXCLUDED.slag,
+             slettes_etter = EXCLUDED.slettes_etter
            WHERE leadgrid_canvas_dokumenter.user_id = $3
              AND leadgrid_canvas_dokumenter.organization_id = $2
              AND leadgrid_canvas_dokumenter.notat_id = $11::uuid`,
@@ -740,6 +820,13 @@ export function registerLeadgridCanvasRoutes(deps: {
             }),
             dokId,
             req.params.id,
+            mimeForSlag(slag),
+            slag,
+            // §5: rå lyd og video har frist. En PDF av et tilbud har ikke —
+            // den er ikke en personopplysning på samme måte.
+            slag === "lyd" || slag === "video"
+              ? new Date(Date.now() + fristDager * 86_400_000).toISOString()
+              : null,
           ],
         );
       } catch (error) {
@@ -950,6 +1037,155 @@ export function registerLeadgridCanvasRoutes(deps: {
   });
 
   /** Den manuelle koblingen — unntaket systemet ikke kan gjette. */
+  /**
+   * Trekk samtykket for et opptak (§4 punkt 4).
+   *
+   *   «Trekk av samtykke: enkel flate i appen → opptaket + transkript +
+   *    avledede eksempler slettes innen 30 dager.»
+   *
+   * Vi venter ikke 30 dager. Fristen i dokumentet er en YTTERGRENSE, ikke et
+   * mål, og det finnes ingen grunn til å la lyden ligge når kunden har sagt
+   * fra. Sletting skjer umiddelbart; loggen viser at den skjedde.
+   *
+   * Transkripsjonen fjernes av klienten sammen med objektet — den bor i
+   * notatets JSON, ikke i en egen tabell.
+   */
+  app.post("/api/leadgrid/canvas/:id/trekk-samtykke", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const dokId = String((req.body ?? {}).dok_id ?? "").slice(0, 64);
+      if (!dokId) { res.status(400).json({ error: "mangler_dok_id" }); return; }
+
+      const rad = await pool.query<{
+        id: string; organization_id: string; slag: string;
+        size_bytes: string | null; created_at: Date | null; storage_key: string | null;
+      }>(
+        `SELECT d.id, d.organization_id, d.slag, d.size_bytes::text,
+                d.created_at, d.storage_key
+           FROM leadgrid_canvas_dokumenter d
+           JOIN leadgrid_canvas_notater n ON n.id = d.notat_id
+          WHERE d.id = $1 AND d.notat_id = $2::uuid
+            AND n.organization_id = $3 AND n.project_id = $4
+            AND n.user_id = $5`,
+        [dokId, req.params.id, scope.organizationId, scope.projectId, session.userId]);
+      const dok = rad.rows[0];
+      // Allerede borte er et gyldig utfall, ikke en feil: kunden ba om at
+      // det skulle være slettet, og det er det.
+      if (!dok) { res.json({ slettet: false, alleredeBorte: true }); return; }
+
+      const storage = getLeadgridObjectStorage();
+      if (storage && dok.storage_key) {
+        await storage.deleteObject(dok.storage_key).catch(() => undefined);
+      }
+      await pool.query(`DELETE FROM leadgrid_canvas_dokumenter WHERE id = $1`, [dokId]);
+      await pool.query(
+        `INSERT INTO leadgrid_nexus_sletting_logg
+           (dok_id, notat_id, organization_id, slag, storrelse_bytes,
+            opprettet_at, grunn)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7)`,
+        [dokId, req.params.id, dok.organization_id, dok.slag,
+         dok.size_bytes ? Number(dok.size_bytes) : null,
+         dok.created_at, "trukket_samtykke"]);
+      res.json({ slettet: true, alleredeBorte: false });
+    } catch (e) {
+      console.error("[nexus] trekk samtykke feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  /**
+   * Kjør slettefristen (§5). Beskyttet av samme cron-token som øvrige jobber.
+   *
+   * Eksponert som et endepunkt, ikke en intern timer, fordi etterlevelse
+   * skal kunne utløses og etterprøves — ikke bare skje.
+   */
+  app.post("/api/leadgrid/canvas/retensjon/kjor", async (req, res) => {
+    const token = String(req.headers["x-cron-token"] ?? "");
+    const forventet = process.env.LEADGRID_CRON_TRIGGER_TOKEN ?? "";
+    if (!forventet || token !== forventet) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
+    try {
+      await ensureSchema(pool);
+      const ut = await slettUtloptNexusLyd(pool);
+      console.log("[nexus-retensjon] slettet", ut.slettet, "objekter,",
+                  ut.bytes, "bytes,", ut.feilet, "feilet");
+      res.json(ut);
+    } catch (e) {
+      console.error("[nexus] retensjonskjøring feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
+  /**
+   * Marker at notatet er sett, og svar med hvem andre som har sett det.
+   *
+   * Et delt notat er en påstand om at noe angår flere enn deg. I dag kan man
+   * dele, men ikke se om noen faktisk åpnet det — og da vet man ikke om
+   * beskjeden kom fram eller bare ble lagt i en skuff.
+   *
+   * Eieren sin egen åpning telles ikke: at du har sett ditt eget notat er
+   * ikke informasjon.
+   */
+  app.post("/api/leadgrid/canvas/:id/sett", async (req, res) => {
+    try {
+      const session = await requireUserSession(req, res);
+      if (!session) return;
+      const scope = await resolveCanvasProjectScope(pool, req, res, session.userId);
+      if (!scope) return;
+      if (!(await assertAnyEntitled(pool, session.userId, LEADGRID_CANVAS_FEATURE_KEYS, res))) return;
+      await ensureSchema(pool);
+      const notatId = String(req.params.id);
+      const eier = await pool.query<{ user_id: string; delt: boolean }>(
+        `SELECT user_id, delt FROM leadgrid_canvas_notater
+          WHERE id = $1::uuid AND organization_id = $2 AND project_id = $3
+            AND slettet_at IS NULL`,
+        [notatId, scope.organizationId, scope.projectId]);
+      const rad = eier.rows[0];
+      if (!rad) { res.status(404).json({ error: "notat_ikke_funnet" }); return; }
+      // Bare delte notater har et publikum å spore.
+      if (!rad.delt) { res.json({ sett: [] }); return; }
+
+      if (rad.user_id !== session.userId) {
+        await pool.query(
+          `INSERT INTO leadgrid_nexus_notat_sett
+             (notat_id, user_id, organization_id)
+           VALUES ($1::uuid, $2, $3)
+           ON CONFLICT (notat_id, user_id)
+             DO UPDATE SET sist_sett_at = now()`,
+          [notatId, session.userId, scope.organizationId]);
+      }
+
+      const sett = await pool.query<{ navn: string; sist_sett_at: Date }>(
+        `SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''),
+                         u.username, u.email, 'Ukjent') AS navn,
+                s.sist_sett_at
+           FROM leadgrid_nexus_notat_sett s
+           LEFT JOIN users u ON u.id::text = s.user_id
+          WHERE s.notat_id = $1::uuid AND s.organization_id = $2
+            AND s.user_id <> $3
+          ORDER BY s.sist_sett_at DESC
+          LIMIT 20`,
+        [notatId, scope.organizationId, rad.user_id]);
+
+      res.json({
+        sett: sett.rows.map((r) => ({
+          navn: r.navn,
+          sistSett: r.sist_sett_at?.toISOString?.() ?? null,
+        })),
+      });
+    } catch (e) {
+      console.error("[nexus] sett-markering feilet:", e);
+      res.status(500).json({ error: "server_error" });
+    }
+  });
+
   /**
    * Søk på tvers av alle notater.
    *

@@ -504,6 +504,21 @@ final class AppState {
 
     /// Kun lead-fetch — billigere enn full refreshAll. Brukes av real-time-
     /// pulse-flyten for å unngå å refreshe metrics/calendar samtidig.
+    /// Siste Nexus-notater, for widgeten.
+    ///
+    /// Holdes her fordi widget-snapshotet skrives herfra. Notatene hentes
+    /// av Nexus-flata når den er åpen; widgeten viser det den har.
+    private(set) var sisteNexusNotater: [WidgetSnapshot.NotatItem] = []
+
+    /// Kalles av Nexus når notatlista er lastet. Widgeten er den eneste
+    /// leseren, så vi tar bare de tre nyeste.
+    func settSisteNexusNotater(_ notater: [WidgetSnapshot.NotatItem]) {
+        let nye = Array(notater.sorted { $0.oppdatert > $1.oppdatert }.prefix(3))
+        guard nye != sisteNexusNotater else { return }
+        sisteNexusNotater = nye
+        writeWidgetSnapshotPublic()
+    }
+
     /// Antall Nexus-notater per lead-ID.
     ///
     /// Gjør Nexus synlig fra leadlista og kartet. Tom til første oppslag, og
@@ -1859,6 +1874,9 @@ func configureDiscovery() async {
 
     /// Skriver siste data til App Group container så widget kan lese.
     /// Trigges automatisk etter hver vellykket refreshAll.
+    /// Nexus ligger utenfor AppState og må kunne trigge en ny skriving.
+    func writeWidgetSnapshotPublic() { writeWidgetSnapshot() }
+
     private func writeWidgetSnapshot() {
         guard let scope = offlineCacheScope else {
             clearWidgetSnapshot()
@@ -1887,6 +1905,7 @@ func configureDiscovery() async {
             staleOver14: reminders?.buckets.over14days ?? 0,
             staleOver7: reminders?.buckets.over7days ?? 0,
             dueToday: Array(dueItems),
+            nexusNotater: sisteNexusNotater.isEmpty ? nil : sisteNexusNotater,
             writtenAt: Date()
         )
         WidgetSnapshotStore.write(snapshot)

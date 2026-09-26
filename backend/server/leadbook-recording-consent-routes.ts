@@ -177,6 +177,18 @@ export function registerLeadbookRecordingConsentRoutes(
     const b = (req.body ?? {}) as Record<string, unknown>;
     const consentVersion = str(b.consent_version).trim();
     if (!consentVersion) return res.status(400).json({ error: "mangler_consent_version" });
+    // Et opptak fanger alle i rommet. Samtykke fra én dekker ikke de andre.
+    const tilstedeRaa = Number(b.tilstede_antall);
+    const tilstede = Number.isFinite(tilstedeRaa)
+      ? Math.min(50, Math.max(1, Math.floor(tilstedeRaa)))
+      : null;
+    const alleSamtykket = b.alle_tilstede_samtykket === true;
+    // Er de flere enn én, MÅ selgeren bekrefte at alle sa ja. Uten det har
+    // vi et samtykke som ikke dekker behandlingen, og det er verre enn å
+    // ikke ha et: det ser ut som grunnlag i loggen.
+    if (tilstede !== null && tilstede > 1 && !alleSamtykket) {
+      return res.status(400).json({ error: "mangler_samtykke_fra_alle_tilstede" });
+    }
     const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || null;
 
     try {
@@ -184,10 +196,12 @@ export function registerLeadbookRecordingConsentRoutes(
       await pool.query(
         `INSERT INTO leadbook_recording_consents
            (id, organization_id, project_id, user_id, consent_version,
-            customer_label, consented_at, ip)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
+            customer_label, consented_at, ip,
+            tilstede_antall, alle_tilstede_samtykket)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9)`,
         [id, scope.organizationId, scope.projectId, scope.session.userId,
-         consentVersion, str(b.customer_label), ip],
+         consentVersion, str(b.customer_label), ip,
+         tilstede, tilstede === null ? null : alleSamtykket],
       );
       res.status(201).json({
         id, consentedAt: new Date().toISOString(), projectId: scope.projectId,

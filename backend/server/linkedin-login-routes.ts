@@ -28,7 +28,11 @@ import {
   persistOauthState,
   persistOauthTransfer,
 } from "./role-room-oauth-store.js";
-import { resolveLinkedInOauthClient, resolveLinkedInRedirectUri } from "./linkedin-oauth-config.js";
+import {
+  type LinkedInProdukt,
+  resolveLinkedInOauthClient,
+  resolveLinkedInRedirectUri,
+} from "./linkedin-oauth-config.js";
 import { RateLimitExceededError, checkEndpointRateLimit } from "./role-room-agent-ratelimit.js";
 import { isTrustedWebOrigin, safeReturnPath } from "./web-origin-allowlist.js";
 import {
@@ -62,6 +66,15 @@ type Platform = "web" | "ios";
 type LoginState = {
   kind: "linkedin_login";
   platform: Platform;
+  /**
+   * Hvilket produkt innloggingen gjelder.
+   *
+   * Må ligge i state fordi callbacken er FELLES: koden må veksles inn med
+   * den samme klienten som utstedte den. Uten dette ville et Leadgrid-login
+   * blitt vekslet inn med Role Room sin klient, og LinkedIn ville avvist
+   * det. Valgfri for states laget før feltet fantes.
+   */
+  produkt?: LinkedInProdukt;
   createdAt: number;
   redirectUri: string;
   returnPath: string;
@@ -150,8 +163,8 @@ function clientKey(req: Request): string {
 }
 
 export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadImage, fetchImpl }: Deps): void {
-  const resolveConfig = (req: Request) => {
-    const client = resolveLinkedInOauthClient();
+  const resolveConfig = (req: Request, produkt: LinkedInProdukt) => {
+    const client = resolveLinkedInOauthClient(produkt);
     const redirectUri = resolveLinkedInRedirectUri(req);
     return {
       ...client,
@@ -160,7 +173,11 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
     };
   };
 
-  async function startLogin(req: Request, res: Response, platform: Platform, options: { returnPath?: unknown; browserOrigin?: unknown }) {
+  async function startLogin(
+    req: Request, res: Response, platform: Platform,
+    produkt: LinkedInProdukt,
+    options: { returnPath?: unknown; browserOrigin?: unknown },
+  ) {
     try {
       checkEndpointRateLimit(clientKey(req), "linkedin_login_start", 20);
     } catch (error) {
@@ -171,7 +188,7 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
       throw error;
     }
 
-    const config = resolveConfig(req);
+    const config = resolveConfig(req, produkt);
     if (!config.enabled || !config.clientId || !config.redirectUri) {
       return res.status(503).json({ error: "linkedin_login_unavailable", message: "LinkedIn-innlogging er ikke tilgjengelig." });
     }
@@ -180,6 +197,7 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
     const payload: LoginState = {
       kind: "linkedin_login",
       platform,
+      produkt,
       createdAt: Date.now(),
       redirectUri: config.redirectUri,
       returnPath: safeReturnPath(options.returnPath, DEFAULT_RETURN_PATH),
@@ -201,12 +219,15 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
   }
 
   app.get("/api/auth/linkedin/login-status", (req, res) => {
-    res.json({ enabled: resolveConfig(req).enabled });
+    // Statusen gjelder om innlogging i det hele tatt er mulig. Begge
+    // produktene faller tilbake til den delte klienten, så den ene er
+    // representativ for «finnes det en konfigurasjon».
+    res.json({ enabled: resolveConfig(req, "leadgrid").enabled });
   });
 
   app.post("/api/auth/linkedin/oauth/start", async (req, res) => {
     try {
-      await startLogin(req, res, "web", {
+      await startLogin(req, res, "web", "roleroom", {
         returnPath: req.body?.returnPath,
         browserOrigin: req.body?.browserOrigin ?? req.get("origin"),
       });
@@ -222,7 +243,9 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
       return res.status(400).json({ error: "Ugyldig platform" });
     }
     try {
-      await startLogin(req, res, "ios", {});
+      // Leadgrid-appen har sin egen LinkedIn-app, så selgeren ser
+      // «Leadgrid» på samtykkeskjermen — ikke et annet produkt.
+      await startLogin(req, res, "ios", "leadgrid", {});
     } catch (error) {
       console.error("[linkedin-login] ios start failed", error);
       res.status(500).json({ error: "internal_error" });
@@ -257,7 +280,9 @@ export function registerLinkedInLoginRoutes({ app, pool, activeSessions, uploadI
       return fail("Mangler kode fra LinkedIn.");
     }
 
-    const config = resolveConfig(req);
+    // Samme klient som utstedte koden. Gamle states mangler feltet og
+    // faller tilbake til den delte konfigurasjonen, som er der de kom fra.
+    const config = resolveConfig(req, state.produkt ?? "roleroom");
     if (!config.enabled || !config.clientId || !config.clientSecret) {
       return fail("LinkedIn-innlogging er ikke tilgjengelig.");
     }

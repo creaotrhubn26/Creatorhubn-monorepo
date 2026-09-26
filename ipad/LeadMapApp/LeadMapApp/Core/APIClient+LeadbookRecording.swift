@@ -41,15 +41,29 @@ struct LeadbookDeletionQueueRowDTO: Decodable, Identifiable, Sendable {
 extension APIClient {
     /// Logg samtykke FØR mikrofonen startes (§4). `consentVersion` er
     /// ordlyd-versjonen av samtykke-teksten som ble vist/lest opp.
+    /// `tilstedeAntall` er antall personer fra kundesiden i rommet.
+    ///
+    /// Et opptak fanger alle som er der. Samtykke fra én dekker ikke de
+    /// andre, og backenden avviser flere enn én uten at selgeren har
+    /// bekreftet at alle sa ja.
     func leadbookLogRecordingConsent(
-        projectId: String, consentVersion: String, customerLabel: String
+        projectId: String, consentVersion: String, customerLabel: String,
+        tilstedeAntall: Int? = nil, alleTilstedeSamtykket: Bool = false
     ) async throws -> LeadbookRecordingConsentDTO {
-        struct Payload: Encodable { let consentVersion: String; let customerLabel: String }
+        struct Payload: Encodable {
+            let consentVersion: String
+            let customerLabel: String
+            let tilstede_antall: Int?
+            let alle_tilstede_samtykket: Bool
+        }
         return try await _post(
             leadbookRecordingProjectPath(
                 "/api/leadgrid/leadbook/recording-consent",
                 projectId: projectId),
-            body: Payload(consentVersion: consentVersion, customerLabel: customerLabel)
+            body: Payload(consentVersion: consentVersion,
+                          customerLabel: customerLabel,
+                          tilstede_antall: tilstedeAntall,
+                          alle_tilstede_samtykket: alleTilstedeSamtykket)
         )
     }
 

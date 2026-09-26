@@ -16,6 +16,7 @@ synker arbeidet inn i den koblede EaseVerse-låtens **Sound Room** i CreatorHub:
 - **Leveransefabrikk** → eksplisitte master/instrumental/acapella/clean/TV-busser eller alle oppdagede stems; aldri skjult master-fallback
 - **Intro-sikker kopi** → `SaveSessionAs` før overskytende spor settes inaktive; originalsesjonen forblir urørt
 - **Bakgrunnsdrift** → systemstatusfelt, valgfri oppstart ved innlogging, offline feedback-cache og diagnosepakke uten tokens
+- **AAX-autostart** → Review Console vekker den lokale Companion-motoren skjult når den trengs; appvinduet er bare nødvendig for oppsett og diagnostikk
 
 ## PTSL og robust filmodus
 
@@ -56,6 +57,13 @@ event-stream når den kjører denne adaptive modusen.
 protokollskjema og kontrakttest for en tynn AAX-visning. Den kobler bare til
 `127.0.0.1:31417`, bruker en separat 256-bit hemmelighet fra macOS Keychain eller
 Windows Credential Manager og får aldri CreatorHub device-tokenet.
+
+På macOS forsøker AAX-panelet først den eksisterende loopback-tjenesten. Hvis
+den ikke svarer, startes den installerte, signerte Companion-appen med
+`--background` uten å stjele fokus fra Pro Tools. Lytteren må fortsatt bevise
+den separate Keychain-hemmeligheten; autostart åpner derfor ikke en ny
+tillitsgrense. Vanlig åpning fra Finder viser oppsettvinduet, mens autostart og
+AAX-wake bare viser statusikonet i menylinjen.
 
 En distribuerbar `.aaxplugin` er med vilje ikke generert: Avids lisensierte AAX
 SDK, AAX-wrapper/signering og iLok-autorisasjon må legges til i en lukket

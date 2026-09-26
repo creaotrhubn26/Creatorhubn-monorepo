@@ -19,15 +19,57 @@ enum RecordingConsentGate {
     ikke, kun teksten. Du kan når som helst be om at teksten slettes. \
     Er det greit for deg?»
     """
+
+    // MARK: Nexus med lagret lyd
+    //
+    // EGEN ordlyd, og det er ikke pynt. Teksten over sier «opptaket lagres
+    // ikke, kun teksten» — og det er sant for Leadbook og for Nexus sin
+    // referat-modus. I lyd-modus lagres opptaket.
+    //
+    // Gjenbrukte vi versjonen over, ville kunden samtykket til at opptaket
+    // IKKE lagres, mens vi lagret det. Et samtykke innhentet på feil premiss
+    // er verre enn ingen samtykke: det ser ut som etterlevelse.
+
+    static let nexusLydVersion = "nexus-lyd-v1-2026-09-25"
+
+    /// Lagringstiden er med i ordlyden fordi §4 krever det: kunden skal få
+    /// vite hva som tas opp, formålet, LAGRINGSTIDEN og retten til å trekke.
+    static func nexusLydText(dager: Int = 90) -> String {
+        """
+        «Jeg tar opp denne samtalen — både lyden og en tekstversjon. \
+        Det hjelper oss med kvalitetssikring og intern opplæring. \
+        Lydopptaket slettes automatisk etter \(dager) dager; teksten kan \
+        bli liggende lenger hvis den brukes som læringseksempel, og da \
+        anonymisert. Du kan når som helst be om at begge deler slettes. \
+        Er det greit for deg?»
+        """
+    }
 }
 
 struct RecordingConsentGateSheet: View {
     /// Kalt når selger har bekreftet OG samtykket er logget server-side.
     let onConfirmed: (LeadbookRecordingConsentDTO, String, String, String) -> Void
+    /// Ordlyden som leses opp. Standard er Leadbook sin «lyden lagres ikke».
+    var tekst: String = RecordingConsentGate.consentText
+    /// Versjonen som loggføres. Må høre til `tekst` — et samtykke skal kunne
+    /// spores tilbake til nøyaktig hva kunden fikk høre.
+    var versjon: String = RecordingConsentGate.currentVersion
+    /// Sluttlinjen under knappen. Den må beskrive det som faktisk skjer.
+    var lagringsforklaring: String =
+        "Uten bekreftelse kan opptak ikke startes. Rå lyd lagres aldri — kun "
+        + "den transkriberte teksten, som et vanlig utkast du kan "
+        + "redigere/slette før noe deles."
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
     @State private var customerLabel: String = ""
     @State private var customerConfirmed = false
+    /// Hvor mange fra kundesiden er i rommet.
+    ///
+    /// Opptaket fanger alle. Samtykke fra den ene du snakker med dekker
+    /// ikke kollegaen ved siden av, og i ettertid kan vi ikke vurdere
+    /// grunnlaget uten å vite at det var flere.
+    @State private var tilstedeAntall: Int = 1
+    @State private var alleSamtykket = false
     @State private var isSaving = false
     @State private var error: String?
 
@@ -39,7 +81,7 @@ struct RecordingConsentGateSheet: View {
                         Label("Les opp for kunden", systemImage: "text.bubble.fill")
                             .font(.appScaled(size: 13, weight: .bold))
                             .foregroundStyle(LBrand.purpleLight)
-                        Text(RecordingConsentGate.consentText)
+                        Text(tekst)
                             .font(.appScaled(size: 15, design: .serif))
                             .foregroundStyle(.white)
                             .fixedSize(horizontal: false, vertical: true)
@@ -59,6 +101,21 @@ struct RecordingConsentGateSheet: View {
                             .overlay(RoundedRectangle(cornerRadius: 9).stroke(LBrand.stroke, lineWidth: 1))
                     }
 
+                    // Opptaket fanger alle i rommet. Samtykke fra den ene du
+                    // snakker med dekker ikke kollegaen ved siden av.
+                    Stepper(value: $tilstedeAntall, in: 1...20) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill")
+                                .font(.appScaled(size: 12))
+                                .foregroundStyle(LBrand.textSecondary)
+                            Text(tilstedeAntall == 1
+                                 ? "Én person fra kunden i rommet"
+                                 : "\(tilstedeAntall) personer fra kunden i rommet")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+
                     Toggle(isOn: $customerConfirmed) {
                         Text("Kunden har muntlig bekreftet samtykke — PÅ opptaket")
                             .font(.appScaled(size: 13, weight: .semibold))
@@ -66,11 +123,22 @@ struct RecordingConsentGateSheet: View {
                     }
                     .tint(LBrand.green)
 
+                    // Vises bare når den betyr noe. Ved én person er den
+                    // samme spørsmål to ganger.
+                    if tilstedeAntall > 1 {
+                        Toggle(isOn: $alleSamtykket) {
+                            Text("ALLE \(tilstedeAntall) har hørt opplesningen og sagt ja")
+                                .font(.appScaled(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .tint(LBrand.green)
+                    }
+
                     if let error {
                         Text(error).font(.appScaled(size: 12)).foregroundStyle(LBrand.red)
                     }
 
-                    Text("Uten bekreftelse kan opptak ikke startes. Rå lyd lagres aldri — kun den transkriberte teksten, som et vanlig utkast du kan redigere/slette før noe deles.")
+                    Text(lagringsforklaring)
                         .font(.appScaled(size: 10)).foregroundStyle(LBrand.textTertiary)
                 }
                 .padding(20)
@@ -104,7 +172,10 @@ struct RecordingConsentGateSheet: View {
             .opacity(customerConfirmed ? 1 : 0.55)
         }
         .buttonStyle(.plain)
-        .disabled(!customerConfirmed || isSaving)
+        // Er de flere enn én, må begge bekreftelsene stå. Backenden avviser
+        // det også, men knappen skal ikke la selgeren prøve.
+        .disabled(!customerConfirmed || isSaving
+                  || (tilstedeAntall > 1 && !alleSamtykket))
         .padding(.horizontal, 20).padding(.vertical, 12)
         .background(LBrand.bg.opacity(0.95).overlay(Rectangle().fill(LBrand.stroke).frame(height: 1), alignment: .top))
     }
@@ -121,8 +192,10 @@ struct RecordingConsentGateSheet: View {
         do {
             let consent = try await api.leadbookLogRecordingConsent(
                 projectId: requestedProjectId,
-                consentVersion: RecordingConsentGate.currentVersion,
-                customerLabel: customerLabel
+                consentVersion: versjon,
+                customerLabel: customerLabel,
+                tilstedeAntall: tilstedeAntall,
+                alleTilstedeSamtykket: tilstedeAntall == 1 || alleSamtykket
             )
             guard consent.projectId == requestedProjectId,
                   appState.activeOrganizationId == requestedOrganizationId,

@@ -394,11 +394,17 @@ extension APIClient {
     }
 
     /// Last opp dokument-bytes til egen tabell (klient-generert id).
+    /// `slag` lar backenden skille lyd og video fra PDF-er. Lyd gates på
+    /// leadbookLydopptak-entitlementet; en PDF gjør det ikke.
     func lastOppCanvasDokument(notatId: String, dokId: String,
                                projectId: String,
-                               navn: String, base64: String) async throws {
-        struct Body: Encodable { let id: String; let navn: String; let base64: String }
-        let data = try JSONEncoder().encode(Body(id: dokId, navn: navn, base64: base64))
+                               navn: String, base64: String,
+                               slag: String = "pdf") async throws {
+        struct Body: Encodable {
+            let id: String; let navn: String; let base64: String; let slag: String
+        }
+        let data = try JSONEncoder().encode(
+            Body(id: dokId, navn: navn, base64: base64, slag: slag))
         _ = try await _request(canvasScopedPath(
             "/api/leadgrid/canvas/\(notatId)/dokumenter", projectId: projectId),
                                method: "POST", body: data)
@@ -477,6 +483,24 @@ extension APIClient {
 }
 
 extension APIClient {
+    /// Trekk samtykket for et opptak (§4 punkt 4).
+    ///
+    /// Sletter lyden umiddelbart. Dokumentet sier «innen 30 dager», men det
+    /// er en yttergrense, ikke et mål — det finnes ingen grunn til å la
+    /// lyden ligge når kunden har sagt fra.
+    @discardableResult
+    func trekkCanvasSamtykke(
+        notatId: String, dokId: String, projectId: String
+    ) async throws -> Bool {
+        struct Body: Encodable { let dok_id: String }
+        struct Resp: Decodable { let slettet: Bool; let alleredeBorte: Bool }
+        let r: Resp = try await _post(
+            canvasScopedPath("/api/leadgrid/canvas/\(notatId)/trekk-samtykke",
+                             projectId: projectId),
+            body: Body(dok_id: dokId))
+        return r.slettet || r.alleredeBorte
+    }
+
     /// Hvor mange Nexus-notater finnes per lead.
     ///
     /// Tallet vises i leadlista og på kartet. Nexus er usynlig fra flatene
