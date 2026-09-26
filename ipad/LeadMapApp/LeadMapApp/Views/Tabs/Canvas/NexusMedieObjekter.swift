@@ -279,6 +279,19 @@ final class NexusLydOpptaker: NSObject {
         return true
     }
 
+    /// Stopper og sletter opptaket uten å gi det tilbake.
+    ///
+    /// Brukes når org-en ikke har åpnet GDPR-nøkkelen: transkripsjonen
+    /// beholdes, lyden kastes. Det er hele forskjellen mellom «vi lagrer
+    /// ikke rå lyd» og «vi lagrer rå lyd, men later som vi ikke gjør det».
+    func forkast() {
+        ticker?.invalidate(); ticker = nil
+        opptaker?.stop()
+        if let url = filUrl { try? FileManager.default.removeItem(at: url) }
+        opptaker = nil; filUrl = nil; startet = nil
+        tarOpp = false; nivaa = 0
+    }
+
     /// Stopper og gir tilbake bytes, lengde, starttidspunkt og filen.
     ///
     /// Filen slettes IKKE her. Den er den eneste kopien til opplastingen har
@@ -312,6 +325,18 @@ enum NexusBlekkSynk {
         return max(0, t)
     }
 
+    /// Hva som ble SAGT rundt et gitt sekund.
+    ///
+    /// Motsatt vei av strokIndekser: gitt et strøk, finn ytringen. Det er
+    /// den retningen som betyr noe i praksis — «hva ble sagt da jeg skrev
+    /// dette?» er spørsmålet man faktisk stiller.
+    static func segmentVed(_ tid: Double, i referat: [Referatsegment],
+                           vindu: Double = 4) -> Referatsegment? {
+        referat
+            .filter { $0.start - vindu <= tid && tid <= $0.start + $0.varighet + vindu }
+            .min { abs($0.start - tid) < abs($1.start - tid) }
+    }
+
     /// Strøkene som ble skrevet innenfor `vindu` sekunder rundt `tid`.
     ///
     /// Vinduet er romslig med vilje: man skriver sjelden akkurat idet ordet
@@ -336,6 +361,9 @@ struct NexusLydKort: View {
     let harBlekkSynk: Bool
     /// Opptaket ligger fortsatt bare på iPaden.
     var venterPaaOpplasting: Bool = false
+    /// Lyden er lagret på serveren, og kan trekkes tilbake (§4 punkt 4).
+    var kanTrekkes: Bool = false
+    var trekkSamtykke: (() -> Void)? = nil
     /// Kortet er valgt på flata.
     var valgt: Bool = false
     let startEllerPause: () -> Void
@@ -381,6 +409,18 @@ struct NexusLydKort: View {
                       systemImage: "exclamationmark.icloud")
                     .font(.appScaled(size: 10, weight: .semibold))
                     .foregroundStyle(CvBrand.yellow)
+            } else if valgt, kanTrekkes {
+                // §4 punkt 4: kunden skal kunne be om at opptaket slettes.
+                // Knappen står på kortet, ikke i en innstillingsmeny — den
+                // som får forespørselen er selgeren, midt i samtalen.
+                Button { trekkSamtykke?() } label: {
+                    Label("Kunden trekker samtykket", systemImage: "trash")
+                        .font(.appScaled(size: 11, weight: .semibold))
+                        .foregroundStyle(CvBrand.red)
+                        .frame(height: 34)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             } else if harBlekkSynk, spiller.spiller {
                 Label("Blekket lyser der du skrev", systemImage: "scribble.variable")
                     .font(.appScaled(size: 10))

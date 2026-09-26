@@ -84,6 +84,14 @@ struct CanvasView: View {
     // MARK: Medier
     @State private var lydSpiller = NexusLydSpiller()
     @State private var lydOpptaker = NexusLydOpptaker()
+    /// Transkripsjon på enheten. Hovedsporet: teksten lagres, lyden ikke.
+    @State private var referatMotor = LiveTranscriptionEngine()
+    @State private var referatStartet: Date?
+    /// §4: samtykke må være logget FØR mikrofonen starter i lyd-modus.
+    /// Hard gate, ikke advarsel — dokumentet er eksplisitt på det.
+    @State private var samtykkeArkAapent = false
+    /// ID-en på det loggede samtykket, lagret på opptaket så det kan spores.
+    @State private var sisteSamtykkeId: String?
     /// Hvilket lydobjekt spiller nå. Bare ett om gangen på en flate.
     @State private var aktivtLydObjekt: String?
     @State private var videoVelgerAapen = false
@@ -385,6 +393,11 @@ struct CanvasView: View {
             konsumerNexusDeepLink()
         }
         .onAppear { konsumerNexusDeepLink() }
+        // Widgeten viser de nyeste notatene. Den kan ikke kalle API-et selv,
+        // så Nexus mater den via App Group-snapshotet hver gang lista endrer
+        // seg.
+        .onChange(of: notater.count) { _, _ in materWidget() }
+        .onChange(of: valgtId) { _, _ in materWidget() }
         .onChange(of: appState.activeOrganizationId) { _, _ in
             snapshotGjeldendeNotatForForrigeScope()
         }
@@ -1403,6 +1416,22 @@ struct CanvasView: View {
                                      api: appState.api)
             }
         }
+        // §4: samtykke-kortet leses opp for kunden før mikrofonen starter.
+        .sheet(isPresented: $samtykkeArkAapent) {
+            RecordingConsentGateSheet(
+                onConfirmed: { samtykke, _, _, _ in
+                    sisteSamtykkeId = samtykke.id
+                    samtykkeArkAapent = false
+                    Task { await startReferat(medLyd: true) }
+                },
+                tekst: RecordingConsentGate.nexusLydText(),
+                versjon: RecordingConsentGate.nexusLydVersion,
+                lagringsforklaring:
+                    "Uten bekreftelse kan opptak ikke startes. Lydopptaket "
+                    + "slettes automatisk etter 90 dager. Teksten kan bli "
+                    + "liggende lenger hvis den brukes som læringseksempel, "
+                    + "og da anonymisert.")
+        }
         .sheet(item: $nettsideSomVises) { url in
             NexusSafari(url: url).ignoresSafeArea()
         }
@@ -1829,11 +1858,19 @@ struct CanvasView: View {
             Divider()
             // Lyd, video og nettsider. Lyden først: den er den eneste av
             // dem man rekker å starte mens noen andre snakker.
+            // Labelen sier hva som faktisk skjer.
+            //
+            // Uten GDPR-nøkkelen tas det opp et REFERAT: talen gjenkjennes
+            // på enheten, teksten lagres, lyden kastes. Med nøkkelen lagres
+            // lyden i tillegg. Å kalle begge «ta opp lyd» ville vært en
+            // påstand om at lyden finnes, og den ville vært usann.
             Button {
                 Task { await vekslLydopptak() }
             } label: {
-                Label(lydOpptaker.tarOpp ? "Stopp opptaket" : "Ta opp lyd",
-                      systemImage: lydOpptaker.tarOpp ? "stop.circle.fill" : "mic.fill")
+                Label(opptaksEtikett,
+                      systemImage: referatMotor.isRecording
+                          ? "stop.circle.fill"
+                          : (kanLagreLyd ? "mic.fill" : "text.bubble"))
             }
             Button {
                 videoVelgerAapen = true
@@ -3575,6 +3612,12 @@ struct CanvasView: View {
         deler.append(contentsOf: notat.noder.map(\.tekst))
         deler.append(contentsOf: notat.objekter.compactMap(\.tittel))
         deler.append(contentsOf: notat.objekter.compactMap(\.detalj))
+        // Det som ble SAGT er like søkbart som det som ble skrevet — og når
+        // lyden ikke lagres, er teksten det eneste som står igjen av møtet.
+        deler.append(contentsOf: notat.objekter
+            .compactMap(\.referat)
+            .flatMap { $0 }
+            .map(\.tekst))
         let snapshotDrawing = try? PKDrawing(data: notat.drawingData)
         if let snapshotDrawing, !snapshotDrawing.bounds.isEmpty,
            let cg = snapshotDrawing
@@ -3779,23 +3822,63 @@ struct CanvasView: View {
     /// Start eller stopp lydopptak. Stopp laster opp bytes og legger kortet
     /// på flata med tidspunktet opptaket begynte — nøkkelen til blekk-synk.
     private func vekslLydopptak() async {
-        if lydOpptaker.tarOpp {
-            guard let resultat = lydOpptaker.stopp() else { return }
-            let dokId = UUID().uuidString
+        if referatMotor.isRecording {
+            // Stopp transkripsjonen først, så segmentene er komplette når
+            // objektet bygges.
+            referatMotor.stop()
+            let referat = referatMotor.segmenter.map {
+                Referatsegment(start: $0.start, varighet: $0.varighet, tekst: $0.tekst)
+            }
+            let varighet = Double(referatMotor.elapsedSeconds)
+            let startet = referatStartet ?? Date()
+            referatStartet = nil
+
+            // Lyden lagres BARE når org-en har åpnet GDPR-nøkkelen. Uten den
+            // beholder vi teksten og kaster lyden — det er hele poenget med
+            // «ingen rå lyd persisteres».
+            let lyd = kanLagreLyd ? lydOpptaker.stopp() : nil
+            if !kanLagreLyd { lydOpptaker.forkast() }
+
+            let dokId = lyd != nil ? UUID().uuidString : nil
+            let samtykkeId = sisteSamtykkeId
+            sisteSamtykkeId = nil
             let navn = "Opptak \(Date().formatted(date: .omitted, time: .shortened))"
             objekter.append(CanvasObjekt(
                 type: CanvasObjektType.lyd.rawValue,
                 x: 430, y: 300,
                 tittel: navn,
                 dokId: dokId,
-                varighet: resultat.varighet,
-                opptakStartet: resultat.startet))
+                varighet: lyd?.varighet ?? varighet,
+                opptakStartet: lyd?.startet ?? startet,
+                referat: referat.isEmpty ? nil : referat,
+                samtykkeId: samtykkeId))
             objektModus = true
-            // Filen beholdes til opplastingen har gått gjennom. Den er den
-            // eneste kopien av møtet.
-            ventendeOpplasting[dokId] = resultat.fil
-            await lastOppMedie(dokId: dokId, navn: navn, data: resultat.data)
-        } else {
+            markerUlagret()
+            if let lyd, let dokId {
+                ventendeOpplasting[dokId] = lyd.fil
+                await lastOppMedie(dokId: dokId, navn: navn, data: lyd.data, slag: "lyd")
+            }
+            return
+        }
+        // Ikke i gang.
+        //
+        // Lyd-modus krever samtykke per samtale (§4 punkt 3: «uten
+        // bekreftelse kan opptak ikke startes — hard gate, ikke advarsel»).
+        // Referat-modus gjør ikke: ingen rå lyd lagres, og tekstbaserte
+        // notater er allerede i drift som fase 1.
+        if kanLagreLyd {
+            samtykkeArkAapent = true
+            return
+        }
+        await startReferat()
+    }
+
+    /// Starter transkripsjonen, og lyden når samtykket er på plass.
+    private func startReferat(medLyd: Bool = false) async {
+        referatMotor.tillatSkyfallback = false
+        referatStartet = Date()
+        referatMotor.start()
+        if medLyd {
             let ok = await lydOpptaker.start()
             if !ok { feilVedImport = "Mikrofonen er ikke tilgjengelig." }
         }
@@ -3804,14 +3887,15 @@ struct CanvasView: View {
     /// Mediebytes går gjennom dokument-endepunktet. Det er innholdsagnostisk
     /// og lagrer allerede til S3 — et eget medie-endepunkt ville vært den
     /// samme koden med et annet navn.
-    private func lastOppMedie(dokId: String, navn: String, data: Data) async {
+    private func lastOppMedie(dokId: String, navn: String, data: Data,
+                              slag: String = "pdf") async {
         guard let api = appState.api,
               let prosjekt = appState.activeLeadgridProjectId,
               let notatId = valgtId else { return }
         do {
             try await api.lastOppCanvasDokument(
                 notatId: notatId, dokId: dokId, projectId: prosjekt,
-                navn: navn, base64: data.base64EncodedString())
+                navn: navn, base64: data.base64EncodedString(), slag: slag)
             // Først nå er den lokale kopien overflødig.
             if let fil = ventendeOpplasting.removeValue(forKey: dokId) {
                 try? FileManager.default.removeItem(at: fil)
@@ -3827,8 +3911,8 @@ struct CanvasView: View {
         guard let dokId = objekt.dokId,
               let fil = ventendeOpplasting[dokId],
               let data = try? Data(contentsOf: fil) else { return }
-        await lastOppMedie(dokId: dokId,
-                           navn: objekt.tittel ?? "Opptak", data: data)
+        await lastOppMedie(dokId: dokId, navn: objekt.tittel ?? "Opptak",
+                           data: data, slag: "lyd")
     }
 
     /// Hva som skjer når man åpner et objekt.
@@ -3944,7 +4028,7 @@ struct CanvasView: View {
             dokId: dokId,
             varighet: varighet))
         objektModus = true
-        await lastOppMedie(dokId: dokId, navn: "Video", data: data)
+        await lastOppMedie(dokId: dokId, navn: "Video", data: data, slag: "video")
     }
 
     private func settInnNettside() {
@@ -4460,6 +4544,55 @@ struct CanvasView: View {
         Task { await lagre(stille: true) }
     }
 
+    private var opptaksEtikett: String {
+        if referatMotor.isRecording { return "Stopp opptaket" }
+        return kanLagreLyd ? "Ta opp lyd og referat" : "Ta opp referat"
+    }
+
+    /// Om selve LYDEN kan lagres. Transkripsjon krever ikke dette.
+    ///
+    /// Åpnes først når org-admin har bekreftet alle fire §7-punktene i
+    /// docs/leadgrid-gdpr-lydopptak.md.
+    private var kanLagreLyd: Bool {
+        EntitlementStore.shared.isExplicitlyEnabled(.leadbookLydopptak)
+    }
+
+    /// §4 punkt 4: kunden ber om at opptaket slettes.
+    ///
+    /// Lyden slettes på serveren, og REFERATET fjernes lokalt sammen med
+    /// den. Å beholde teksten ville vært å beholde det samtykket dekket —
+    /// kunden trakk samtykket til opptaket, ikke bare til lydfilen.
+    private func trekkSamtykke(for objekt: CanvasObjekt) async {
+        guard let dokId = objekt.dokId, let api = appState.api,
+              let prosjekt = appState.activeLeadgridProjectId,
+              let notatId = valgtId else { return }
+        do {
+            try await api.trekkCanvasSamtykke(
+                notatId: notatId, dokId: dokId, projectId: prosjekt)
+            if aktivtLydObjekt == objekt.id {
+                lydSpiller.stopp(); aktivtLydObjekt = nil; opplystStrok = []
+            }
+            objekter.removeAll { $0.id == objekt.id }
+            markerUlagret()
+            feilVedImport = "Opptaket og referatet er slettet."
+        } catch {
+            // Sier det rett ut: kunden har bedt om sletting, og den har ikke
+            // skjedd. Det er ikke en feil å skjule.
+            feilVedImport = "Fikk ikke slettet opptaket. Prøv igjen, eller "
+                + "meld fra til en leder — kunden har trukket samtykket."
+        }
+    }
+
+    private func materWidget() {
+        appState.settSisteNexusNotater(
+            notater
+                .filter { $0.slettetAt == nil }
+                .map { WidgetSnapshot.NotatItem(
+                    tittel: $0.tittel.isEmpty ? "Uten tittel" : $0.tittel,
+                    selskap: $0.selskap,
+                    oppdatert: $0.oppdatert) })
+    }
+
     private func aapneKundeminne(selskap: String, leadId: String?) {
         if let minne = notater.first(where: {
             $0.tittel.hasPrefix("Kundeminne")
@@ -4919,6 +5052,7 @@ struct CanvasView: View {
                     notatUtilgjengelig.contains($0) } ?? false,
                 venterPaaOpplasting: objekt.dokId.map {
                     ventendeOpplasting[$0] != nil } ?? false,
+                onTrekkSamtykke: { Task { await trekkSamtykke(for: objekt) } },
                 onApne: { apneObjekt(objekt) })
         }
     }

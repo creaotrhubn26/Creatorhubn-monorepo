@@ -21,12 +21,32 @@ public struct WidgetSnapshot: Codable {
     public let staleOver14: Int
     public let staleOver7: Int
     public let dueToday: [DueItem]
+    /// Siste Nexus-notater.
+    ///
+    /// VALGFRITT med vilje. Et nytt påkrevd felt ville gjort at snapshot-
+    /// filer skrevet av forrige appversjon ikke lenger kunne dekodes, og
+    /// widgeten ville stått tom til appen tilfeldigvis skrev en ny. En
+    /// widget som blir tom etter en oppdatering ser ut som en feil.
+    public let nexusNotater: [NotatItem]?
     public let writtenAt: Date
 
     public struct DueItem: Codable, Hashable {
         public let leadName: String
         public let datetime: Date?
         public let nextAction: String?
+    }
+
+    public struct NotatItem: Codable, Hashable {
+        public let tittel: String
+        /// Kunden notatet gjelder, når det er koblet.
+        public let selskap: String?
+        public let oppdatert: Date
+
+        public init(tittel: String, selskap: String?, oppdatert: Date) {
+            self.tittel = tittel
+            self.selskap = selskap
+            self.oppdatert = oppdatert
+        }
     }
 
     public init(
@@ -41,6 +61,7 @@ public struct WidgetSnapshot: Codable {
         staleOver14: Int,
         staleOver7: Int,
         dueToday: [DueItem],
+        nexusNotater: [NotatItem]? = nil,
         writtenAt: Date
     ) {
         self.actorUserId = actorUserId
@@ -54,6 +75,7 @@ public struct WidgetSnapshot: Codable {
         self.staleOver14 = staleOver14
         self.staleOver7 = staleOver7
         self.dueToday = dueToday
+        self.nexusNotater = nexusNotater
         self.writtenAt = writtenAt
     }
 
@@ -70,6 +92,7 @@ public struct WidgetSnapshot: Codable {
             staleOver14: 0,
             staleOver7: 0,
             dueToday: [],
+            nexusNotater: nil,
             writtenAt: Date()
         )
     }

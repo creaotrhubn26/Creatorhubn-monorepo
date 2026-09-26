@@ -294,6 +294,33 @@ struct CanvasObjekt: Codable, Identifiable, Hashable, Sendable {
     /// kan vi regne ut nøyaktig hvilke strøk som ble skrevet mens en gitt
     /// del av lyden spilte — uten å lagre noe ekstra per strøk.
     var opptakStartet: Date? = nil
+
+    /// Tidsstemplet transkripsjon, laget på enheten.
+    ///
+    /// Dette er hovedsporet, ikke et tillegg. docs/leadgrid-gdpr-lydopptak.md
+    /// slår fast at rå lyd ikke skal persisteres før GDPR-pakken er godkjent;
+    /// teksten kan lagres i dag, og den bærer tidspunktene blekk-synkingen
+    /// trenger.
+    ///
+    /// Et referat-objekt UTEN `dokId` er et opptak som aldri ble lagret —
+    /// bare hørt, skrevet ned og kastet.
+    var referat: [Referatsegment]? = nil
+
+    /// Samtykket som ble logget før opptaket startet (§4).
+    ///
+    /// Bare satt i lyd-modus. Referat-modus lagrer ingen rå lyd og krever
+    /// derfor ikke samtykke per samtale — men et lydobjekt MED dokId og
+    /// UTEN samtykke-ID er et opptak som aldri skulle vært tatt.
+    var samtykkeId: String? = nil
+}
+
+/// Én ytring fra transkripsjonen, med tidspunkt.
+struct Referatsegment: Codable, Identifiable, Hashable, Sendable {
+    var id: String { "\(start)-\(tekst.prefix(12))" }
+    /// Sekunder fra opptaket startet.
+    let start: Double
+    let varighet: Double
+    let tekst: String
 }
 
 /// Objekttypene flata kjenner.
