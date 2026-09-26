@@ -1,6 +1,7 @@
 #include "ReviewConsole_Algorithm.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 
 namespace {
@@ -30,7 +31,13 @@ bool StereoPassesThroughInPlaceAndOutOfPlace() {
     creatorhub::aax::AlgorithmContext context{&bypass, inputChannels, outputChannels, &frames};
     creatorhub::aax::AlgorithmContext* contexts[]{&context};
     creatorhub::aax::Process<2>(contexts, contexts + 1);
-    return rightOutput == expectedRight && left == std::array<float, 5>{-0.8F, -0.4F, 0.0F, 0.4F, 0.8F};
+    const auto meter = creatorhub::aax::ReadLiveSignal();
+    return rightOutput == expectedRight
+        && left == std::array<float, 5>{-0.8F, -0.4F, 0.0F, 0.4F, 0.8F}
+        && std::abs(meter.peakLinear - 0.8F) < 0.0001F
+        && meter.rmsLinear > 0.48F
+        && meter.stereoCorrelation < -0.99F
+        && meter.sequence > 0;
 }
 
 } // namespace

@@ -13,12 +13,35 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::api_client;
+use crate::command_processor;
 use crate::processing;
 use crate::ptsl;
 use crate::state::{snapshot, SharedConfig};
 
 pub const PORT: u16 = 31_417;
 const MAX_REQUEST_BYTES: u64 = 65_536;
+
+const ALLOWED_ACTIONS: &[&str] = &[
+    "health",
+    "state",
+    "feedback",
+    "locate",
+    "mark",
+    "resolve",
+    "reply",
+    "snapshot",
+    "snapshots",
+    "recall_preview",
+    "recall",
+    "sources",
+    "send_review",
+    "delivery",
+    "delivery_jobs",
+    "import_reference",
+    "prepare_compare",
+    "intro_copy",
+    "diagnostics",
+];
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LocalIpcStatus {
@@ -95,12 +118,95 @@ async fn feedback(cfg: &SharedConfig) -> Result<Value, String> {
     }
 }
 
+fn required_text<'a>(payload: &'a Value, key: &str, max: usize) -> Result<&'a str, String> {
+    payload
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && value.len() <= max)
+        .ok_or_else(|| format!("{}_required", key))
+}
+
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn required_identifier<'a>(payload: &'a Value, key: &str) -> Result<&'a str, String> {
+    let value = required_text(payload, key, 160)?;
+    if valid_identifier(value) {
+        Ok(value)
+    } else {
+        Err(format!("invalid_{}", key))
+    }
+}
+
+fn required_seconds(payload: &Value) -> Result<f64, String> {
+    payload
+        .get("seconds")
+        .and_then(Value::as_f64)
+        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0 && *seconds <= 172_800.0)
+        .ok_or_else(|| "invalid_seconds".to_string())
+}
+
+async fn owned_snapshot(cfg: &SharedConfig, snapshot_id: &str) -> Result<Value, String> {
+    if !valid_identifier(snapshot_id) {
+        return Err("invalid_snapshot_id".into());
+    }
+    let snap = snapshot(cfg);
+    let snapshots = api_client::list_snapshots(
+        &snap.api_base,
+        snap.token.as_deref().ok_or("not_paired")?,
+        snap.session_id.as_deref().ok_or("session_missing")?,
+    )
+    .await?;
+    snapshots
+        .as_array()
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|entry| entry.get("id").and_then(Value::as_str) == Some(snapshot_id))
+        })
+        .cloned()
+        .ok_or_else(|| "snapshot_not_found".into())
+}
+
+fn diagnostics(cfg: &SharedConfig) -> Value {
+    let snap = snapshot(cfg);
+    let config = cfg.lock().unwrap();
+    let pending = config.pending_bounces.len();
+    let bounce_ready = snap
+        .bounce_dir
+        .as_deref()
+        .is_some_and(|path| std::path::Path::new(path).is_dir());
+    let ptsl_status = ptsl::probe();
+    json!({
+        "ready": snap.token.is_some() && snap.session_id.is_some() && snap.audio_room_id.is_some() && ptsl_status.state == "connected",
+        "paired": snap.token.is_some(),
+        "sessionReady": snap.session_id.is_some(),
+        "soundRoomReady": snap.audio_room_id.is_some(),
+        "easeVerseReady": snap.easeverse_track_id.is_some(),
+        "bounceFolderReady": bounce_ready,
+        "ptsl": ptsl_status,
+        "pendingUploads": pending,
+        "offline": config.last_feedback_sync_error.is_some(),
+        "lastFeedbackSyncAt": config.last_feedback_sync_at,
+        "lastFeedbackSyncError": config.last_feedback_sync_error,
+    })
+}
+
 async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Result<Value, String> {
     if request.protocol_version != 1 {
         return Err("unsupported_protocol_version".into());
     }
     if request.request_id.trim().is_empty() || request.request_id.len() > 128 {
         return Err("invalid_request_id".into());
+    }
+    if !ALLOWED_ACTIONS.contains(&request.action.as_str()) {
+        return Err("unsupported_action".into());
     }
     let secret = cfg
         .lock()
@@ -124,28 +230,17 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
         }
         "feedback" => feedback(cfg).await,
         "locate" => {
-            let seconds = request
-                .payload
-                .get("seconds")
-                .and_then(Value::as_f64)
-                .ok_or("seconds_required")?;
+            let seconds = required_seconds(&request.payload)?;
             ptsl::execute("locate", json!({ "seconds": seconds })).await
         }
         "mark" => {
-            let comment_id = request
-                .payload
-                .get("commentId")
-                .and_then(Value::as_str)
-                .ok_or("comment_id_required")?;
-            let seconds = request
-                .payload
-                .get("seconds")
-                .and_then(Value::as_f64)
-                .ok_or("seconds_required")?;
+            let comment_id = required_identifier(&request.payload, "commentId")?;
+            let seconds = required_seconds(&request.payload)?;
             let name = request
                 .payload
                 .get("name")
                 .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty() && value.len() <= 160)
                 .unwrap_or("Sound Room feedback");
             let category = request
                 .payload
@@ -180,11 +275,7 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
             .await
         }
         "resolve" => {
-            let comment_id = request
-                .payload
-                .get("commentId")
-                .and_then(Value::as_str)
-                .ok_or("comment_id_required")?;
+            let comment_id = required_identifier(&request.payload, "commentId")?;
             let snap = snapshot(cfg);
             api_client::feedback_action(
                 &snap.api_base,
@@ -196,17 +287,8 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
             .await
         }
         "reply" => {
-            let comment_id = request
-                .payload
-                .get("commentId")
-                .and_then(Value::as_str)
-                .ok_or("comment_id_required")?;
-            let body = request
-                .payload
-                .get("body")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .ok_or("body_required")?;
+            let comment_id = required_identifier(&request.payload, "commentId")?;
+            let body = required_text(&request.payload, "body", 4_000)?;
             let snap = snapshot(cfg);
             api_client::feedback_action(
                 &snap.api_base,
@@ -218,6 +300,45 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
             .await
         }
         "snapshot" => processing::capture_session_snapshot(cfg, "manual").await,
+        "snapshots" => {
+            let snap = snapshot(cfg);
+            api_client::list_snapshots(
+                &snap.api_base,
+                snap.token.as_deref().ok_or("not_paired")?,
+                snap.session_id.as_deref().ok_or("session_missing")?,
+            )
+            .await
+        }
+        "recall_preview" => {
+            let id = required_identifier(&request.payload, "snapshotId")?;
+            let stored = owned_snapshot(cfg, id).await?;
+            ptsl::execute(
+                "recall_snapshot",
+                json!({ "snapshot": stored, "dryRun": true }),
+            )
+            .await
+        }
+        "recall" => {
+            let id = required_identifier(&request.payload, "snapshotId")?;
+            let stored = owned_snapshot(cfg, id).await?;
+            let recovery = processing::capture_session_snapshot(cfg, "pre_recall").await?;
+            let mut result = ptsl::execute(
+                "recall_snapshot",
+                json!({ "snapshot": stored, "dryRun": false }),
+            )
+            .await?;
+            if let Some(object) = result.as_object_mut() {
+                object.insert(
+                    "recoverySnapshotId".into(),
+                    recovery
+                        .pointer("/snapshot/id")
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                );
+            }
+            Ok(result)
+        }
+        "sources" => ptsl::execute("list_export_sources", json!({})).await,
         "send_review" => {
             let file_name = request
                 .payload
@@ -239,7 +360,99 @@ async fn process(request: Request, cfg: &SharedConfig, app: &AppHandle) -> Resul
             )
             .map_err(|error| error.to_string())
         }
-        _ => Err("unsupported_action".into()),
+        "delivery" => {
+            let preset = required_text(&request.payload, "preset", 40)?;
+            let output_directory = required_text(&request.payload, "outputDirectory", 2_000)?;
+            let outputs: Vec<processing::DeliveryOutput> = serde_json::from_value(
+                request
+                    .payload
+                    .get("outputs")
+                    .cloned()
+                    .ok_or("outputs_required")?,
+            )
+            .map_err(|_| "invalid_outputs".to_string())?;
+            serde_json::to_value(
+                processing::run_delivery(cfg, app, preset, output_directory, outputs).await?,
+            )
+            .map_err(|error| error.to_string())
+        }
+        "delivery_jobs" => {
+            let snap = snapshot(cfg);
+            api_client::list_delivery_jobs(
+                &snap.api_base,
+                snap.token.as_deref().ok_or("not_paired")?,
+                snap.session_id.as_deref().ok_or("session_missing")?,
+            )
+            .await
+        }
+        "import_reference" => {
+            let artifact_id = required_identifier(&request.payload, "artifactId")?;
+            let file_name = request
+                .payload
+                .get("fileName")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty() && value.len() <= 300)
+                .unwrap_or("Sound Room Reference.wav");
+            let snap = snapshot(cfg);
+            command_processor::import_artifact(
+                &snap.api_base,
+                snap.token.as_deref().ok_or("not_paired")?,
+                snap.session_id.as_deref().ok_or("session_missing")?,
+                artifact_id,
+                file_name,
+            )
+            .await
+        }
+        "prepare_compare" => {
+            let references = request
+                .payload
+                .get("references")
+                .and_then(Value::as_array)
+                .filter(|items| !items.is_empty() && items.len() <= 2)
+                .ok_or("one_or_two_references_required")?;
+            let snap = snapshot(cfg);
+            let token = snap.token.as_deref().ok_or("not_paired")?;
+            let session_id = snap.session_id.as_deref().ok_or("session_missing")?;
+            let mut imported = Vec::with_capacity(references.len());
+            for reference in references {
+                let artifact_id = required_identifier(reference, "artifactId")?;
+                let file_name = reference
+                    .get("fileName")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty() && value.len() <= 300)
+                    .unwrap_or("Sound Room Reference.wav");
+                imported.push(
+                    command_processor::import_artifact(
+                        &snap.api_base,
+                        token,
+                        session_id,
+                        artifact_id,
+                        file_name,
+                    )
+                    .await?,
+                );
+            }
+            Ok(json!({ "imported": imported, "count": imported.len() }))
+        }
+        "intro_copy" => {
+            let output_directory = required_text(&request.payload, "outputDirectory", 2_000)?;
+            let session_name = request
+                .payload
+                .get("sessionName")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty() && value.len() <= 160)
+                .unwrap_or("CreatorHub Intro Safe");
+            ptsl::execute(
+                "make_intro_copy",
+                json!({
+                    "outputDirectory": output_directory,
+                    "sessionName": session_name,
+                }),
+            )
+            .await
+        }
+        "diagnostics" => Ok(diagnostics(cfg)),
+        _ => unreachable!("allowlisted action must be handled"),
     }
 }
 
@@ -339,5 +552,37 @@ mod tests {
         .unwrap();
         assert_eq!(request.protocol_version, 1);
         assert_eq!(request.action, "health");
+    }
+
+    #[test]
+    fn identifiers_reject_paths_and_accept_scoped_ids() {
+        assert!(valid_identifier("adc62bef-7aaf-4304-9c4b-ada552ce815f"));
+        assert!(valid_identifier("artifact_42"));
+        assert!(!valid_identifier("../../secret"));
+        assert!(!valid_identifier("https://example.test"));
+    }
+
+    #[test]
+    fn timeline_seconds_are_finite_and_bounded() {
+        assert_eq!(required_seconds(&json!({ "seconds": 12.5 })).unwrap(), 12.5);
+        assert!(required_seconds(&json!({ "seconds": -1 })).is_err());
+        assert!(required_seconds(&json!({ "seconds": 172_801 })).is_err());
+        assert!(required_seconds(&json!({ "seconds": "12" })).is_err());
+    }
+
+    #[test]
+    fn expanded_actions_are_explicitly_allowlisted() {
+        for action in [
+            "snapshots",
+            "recall",
+            "sources",
+            "delivery",
+            "import_reference",
+            "prepare_compare",
+            "diagnostics",
+        ] {
+            assert!(ALLOWED_ACTIONS.contains(&action));
+        }
+        assert!(!ALLOWED_ACTIONS.contains(&"shell"));
     }
 }

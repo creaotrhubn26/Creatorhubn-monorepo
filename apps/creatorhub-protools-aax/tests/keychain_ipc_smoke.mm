@@ -2,6 +2,7 @@
 
 #include <exception>
 #include <iostream>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -15,19 +16,33 @@ bool IsSuccessful(const std::string& response, const std::string& requestId) {
 
 int main() {
     try {
-        const std::string health = creatorhub::aax::SendWithCompanionWake(
-            "aax-live-health", "health");
-        if (!IsSuccessful(health, "aax-live-health")) return 1;
-        const std::string state = creatorhub::aax::SendWithCompanionWake(
-            "aax-live-state", "state");
-        if (!IsSuccessful(state, "aax-live-state")) return 2;
-        const std::string feedback = creatorhub::aax::SendWithCompanionWake(
-            "aax-live-feedback", "feedback");
-        if (!IsSuccessful(feedback, "aax-live-feedback")) return 3;
-        std::cout << "Keychain, Companion IPC, state and Sound Room feedback: PASS\n";
+        const struct {
+            const char* id;
+            const char* action;
+        } readOnlyChecks[] = {
+            {"aax-live-health", "health"},
+            {"aax-live-state", "state"},
+            {"aax-live-diagnostics", "diagnostics"},
+            {"aax-live-sources", "sources"},
+            {"aax-live-snapshots", "snapshots"},
+            {"aax-live-delivery-jobs", "delivery_jobs"},
+            {"aax-live-feedback", "feedback"},
+        };
+        for (std::size_t index = 0; index < std::size(readOnlyChecks); ++index) {
+            const auto& check = readOnlyChecks[index];
+            std::cout << "Checking " << check.action << " … " << std::flush;
+            const std::string response = creatorhub::aax::SendWithCompanionWake(
+                check.id, check.action);
+            if (!IsSuccessful(response, check.id)) {
+                std::cerr << "FAILED\n";
+                return static_cast<int>(index + 1);
+            }
+            std::cout << "PASS\n";
+        }
+        std::cout << "Keychain + authenticated Companion/Pro Tools/Sound Room read flow: PASS\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "IPC smoke failed: " << error.what() << '\n';
-        return 4;
+        return 20;
     }
 }

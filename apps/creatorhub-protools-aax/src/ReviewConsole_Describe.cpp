@@ -93,6 +93,6 @@ AAX_Result GetEffectDescriptions(AAX_ICollection* collection) {
     result = FirstFailure(result, collection->SetManufacturerName("Creatorhub AS"));
     result = FirstFailure(result, collection->AddPackageName("CreatorHub Pro Tools Companion"));
     result = FirstFailure(result, collection->AddPackageName("CreatorHub"));
-    result = FirstFailure(result, collection->SetPackageVersion(3));
+    result = FirstFailure(result, collection->SetPackageVersion(4));
     return result;
 }

@@ -181,8 +181,10 @@ export interface FeedbackTask {
 }
 
 export interface FeedbackInbox {
-  project: { id: string; title: string; status: string } | null;
+  project: { id: string; title: string; artist_name?: string | null; genre?: string | null; bpm?: number | null; musical_key?: string | null; status: string } | null;
   version: { id: string; version_label: string; version_number: number; status: string } | null;
+  versions: Array<{ id: string; version_label: string; version_number: number; status: string; open_comment_count: number; artifact_id?: string | null }>;
+  sections: Array<{ id: string; version_id: string; name: string; start_time_seconds: number; end_time_seconds: number; color?: string | null; order_index: number }>;
   latestVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;
   activeReviewVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;
   approvedVersion: { id: string; version_label: string; version_number: number; status: string; open_comment_count?: number } | null;

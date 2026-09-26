@@ -77,9 +77,12 @@ function createPool() {
     if (sql.includes("SELECT id FROM audio_review_versions")) {
       return { rows: [{ id: "version-1" }], rowCount: 1 };
     }
+    if (sql.includes("SELECT id,title,artist_name,genre,bpm,musical_key,status,updated_at FROM audio_review_projects")) {
+      return { rows: [{ id: "review-1", title: "Northern Lights", artist_name: "Creatorhub", genre: "Pop", bpm: 124, musical_key: "Dm", status: "under_review" }], rowCount: 1 };
+    }
     if (sql.includes("FROM audio_review_versions v WHERE v.project_id")) {
       return { rows: [
-        { id: "version-3", version_label: "Mix V3", version_number: 3, status: "under_review", open_comment_count: 2 },
+        { id: "version-3", version_label: "Mix V3", version_number: 3, status: "under_review", open_comment_count: 2, artifact_id: "artifact-3" },
         { id: "version-2", version_label: "Mix V2", version_number: 2, status: "approved", open_comment_count: 0 },
         { id: "version-1", version_label: "Mix V1", version_number: 1, status: "superseded", open_comment_count: 1 },
       ], rowCount: 3 };
@@ -89,6 +92,9 @@ function createPool() {
         rows: [{ name: "Chorus", start_seconds: 32, end_seconds: 48, color: null, order_index: 0 }],
         rowCount: 1,
       };
+    }
+    if (sql.includes("FROM audio_review_sections s") && sql.includes("JOIN audio_review_versions v")) {
+      return { rows: [{ id: "section-1", version_id: "version-3", name: "Refreng", start_time_seconds: 32, end_time_seconds: 48, order_index: 0 }], rowCount: 1 };
     }
     return { rows: [], rowCount: 1 };
   });
@@ -249,6 +255,12 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       version: { id: "version-3", version_label: "Mix V3" },
+      project: { id: "review-1", title: "Northern Lights", genre: "Pop", bpm: 124, musical_key: "Dm" },
+      versions: [
+        expect.objectContaining({ id: "version-3", artifact_id: "artifact-3" }),
+        expect.objectContaining({ id: "version-2" }),
+        expect.objectContaining({ id: "version-1" }),
+      ],
       latestVersion: { id: "version-3" },
       activeReviewVersion: { id: "version-3" },
       approvedVersion: { id: "version-2" },
@@ -256,6 +268,7 @@ describe("Pro Tools Companion EaseVerse bridge", () => {
         expect.objectContaining({ id: "version-3", open_comment_count: 2 }),
         expect.objectContaining({ id: "version-1", open_comment_count: 1 }),
       ],
+      sections: [expect.objectContaining({ version_id: "version-3", name: "Refreng" })],
       comments: [], approvals: [], tasks: [],
     });
     expect(response.body.generatedAt).toEqual(expect.any(String));

@@ -19,8 +19,34 @@ Before launch, the plug-in verifies that the discovered app has bundle ID
 AS team `9TAUZCPK95`; an unsigned or look-alike app is rejected.
 
 Supported actions are `health`, `state`, `feedback`, `locate`, `mark`,
-`resolve`, `reply`, `snapshot` and `send_review`. Every connection carries one
+`resolve`, `reply`, `snapshot`, `snapshots`, `recall_preview`, `recall`,
+`sources`, `send_review`, `delivery`, `delivery_jobs`, `import_reference`,
+`prepare_compare`, `intro_copy` and `diagnostics`. Every connection carries one
 newline-delimited JSON request and receives one response before closing.
+
+## Producer cockpit UX
+
+The macOS AAX view follows the CreatorHub Workspace dark/orange design and is
+organized by the producer's goal rather than by technical subsystems:
+
+- **Tilbakemeldinger** lists Sound Room comments as selectable cards; locate,
+  marker, reply and resolve actions never require a pasted id or time value.
+  The same overview shows EaseVerse tempo, key, genre, song structure and the
+  current creative brief, so musical context stays visible while mixing.
+- **Send miks** chooses an explicit Pro Tools output, shows transfer/QC status
+  and prevents an accidental duplicate version.
+- **Versjoner** imports one or two session-owned versions as reference tracks
+  and previews Snapshot Recall before a recovery-protected change.
+- **Leveranse** requires an explicit bus/output for every requested master,
+  instrumental, acapella, clean or TV file.
+- **Hjelp** translates diagnostics into one next step and hides raw JSON until
+  the user asks for technical details.
+
+Controls use plain Norwegian, forgiving 44-point targets, native keyboard/focus
+behavior and accessible labels. Live peak/RMS/correlation is calculated with
+bounded lock-free writes on the audio callback; the signal remains
+sample-for-sample unchanged. Delivery LUFS and true peak always come from the
+offline WAV QC pass, not from the lightweight live indicator.
 
 ## Build the AAX bundle
 
@@ -43,10 +69,10 @@ never copied into source control.
 
 On macOS, the plug-in reads the separate local credential from Keychain using
 service `com.creatorhub.protools-companion` and account
-`aax-review-console-ipc`. It provides controls for state, feedback, locate,
-mark, resolve, reply, session snapshot and review export. Mono and stereo audio
-are passed through sample-for-sample; all socket work is dispatched away from
-the Pro Tools audio and UI threads.
+`aax-review-console-ipc`. It provides the complete review, publishing,
+version/reference, safe recall, delivery, Intro-copy and diagnostics cockpit
+described above. Mono and stereo audio are passed through sample-for-sample;
+all socket work is dispatched away from the Pro Tools audio and UI threads.
 
 The first local connection may display a macOS Keychain access prompt. Grant
 the signed CreatorHub/Pro Tools host access so later review requests do not

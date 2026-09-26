@@ -979,19 +979,24 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
     const sess = await ownedSession(d.userId, req.params.id);
     if (!sess) return res.status(404).json({ error: "session_not_found" });
     if (!sess.audio_review_project_id) {
-      return res.json({ project: null, version: null, latestVersion: null, activeReviewVersion: null, approvedVersion: null, versionsWithOpenFeedback: [], comments: [], approvals: [], tasks: [], brief: null, decisions: [], signoffs: [], generatedAt: new Date().toISOString() });
+      return res.json({ project: null, version: null, versions: [], sections: [], latestVersion: null, activeReviewVersion: null, approvedVersion: null, versionsWithOpenFeedback: [], comments: [], approvals: [], tasks: [], brief: null, decisions: [], signoffs: [], generatedAt: new Date().toISOString() });
     }
     try {
       const projectId = String(sess.audio_review_project_id);
-      const [project, versions, comments, approvals, tasks, brief, decisions, signoffs] = await Promise.all([
-        pool.query(`SELECT id,title,status,updated_at FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]),
+      const [project, versions, comments, approvals, tasks, brief, decisions, signoffs, sections] = await Promise.all([
+        pool.query(`SELECT id,title,artist_name,genre,bpm,musical_key,status,updated_at FROM audio_review_projects WHERE id=$1::uuid LIMIT 1`, [projectId]),
         pool.query(
           `SELECT v.id,v.version_label,v.version_number,v.status,v.created_at,
+                  (SELECT b.artifact_id
+                     FROM protools_companion_bounces b
+                    WHERE b.session_id=$2::uuid AND b.review_version_id=v.id
+                      AND b.artifact_id IS NOT NULL
+                    ORDER BY b.created_at DESC LIMIT 1) AS artifact_id,
                   COALESCE((SELECT COUNT(*)::int FROM audio_review_comments c
                              WHERE c.version_id=v.id AND c.status<>'resolved'),0) AS open_comment_count
              FROM audio_review_versions v WHERE v.project_id=$1::uuid
             ORDER BY v.version_number DESC`,
-          [projectId],
+          [projectId, sess.id],
         ),
         pool.query(
           `SELECT c.id,c.version_id,c.author,c.author_role,c.timecode_seconds,c.body,c.category,c.status,c.is_decision,c.created_at,c.updated_at,
@@ -1034,6 +1039,15 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
             WHERE s.project_id=$1::uuid ORDER BY s.created_at DESC LIMIT 30`,
           [projectId],
         ),
+        pool.query(
+          `SELECT s.id,s.version_id,s.name,s.start_time_seconds,s.end_time_seconds,s.color,s.order_index,
+                  v.version_label,v.version_number
+             FROM audio_review_sections s
+             JOIN audio_review_versions v ON v.id=s.version_id
+            WHERE v.project_id=$1::uuid
+            ORDER BY v.version_number DESC,s.order_index ASC,s.start_time_seconds ASC LIMIT 200`,
+          [projectId],
+        ),
       ]);
       const latestVersion = versions.rows[0] || null;
       const activeReviewVersion = versions.rows.find((row: any) => row.status === "under_review") || null;
@@ -1041,6 +1055,8 @@ export function setupProToolsCompanionRoutes(deps: ProToolsCompanionDeps): void 
       res.json({
         project: project.rows[0] || null,
         version: activeReviewVersion || latestVersion,
+        versions: versions.rows,
+        sections: sections.rows,
         latestVersion,
         activeReviewVersion,
         approvedVersion,

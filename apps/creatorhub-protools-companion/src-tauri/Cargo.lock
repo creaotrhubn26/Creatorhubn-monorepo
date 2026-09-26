@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "creatorhub-protools-companion"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "dirs 5.0.1",
  "ebur128",

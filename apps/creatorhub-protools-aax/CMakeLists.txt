@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(CreatorHubReviewConsole VERSION 0.3.3 LANGUAGES CXX)
+project(CreatorHubReviewConsole VERSION 0.4.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -162,6 +162,25 @@ if(CREATORHUB_BUILD_AAX_PLUGIN)
       "-framework Cocoa"
       "-framework Security"
     )
+    if(BUILD_TESTING)
+      add_executable(creatorhub-review-console-ui-preview
+        src/ReviewConsole_GUI_Cocoa.hpp
+        src/ReviewConsole_GUI_Cocoa.mm
+      )
+      target_compile_definitions(creatorhub-review-console-ui-preview PRIVATE
+        CREATORHUB_AAX_UI_PREVIEW=1)
+      target_include_directories(creatorhub-review-console-ui-preview PRIVATE
+        src
+        "${CREATORHUB_AAX_SDK_ROOT}/Extensions/GUI"
+      )
+      target_link_libraries(creatorhub-review-console-ui-preview PRIVATE
+        creatorhub-mac-companion-wake
+        AAX_SDK::AAX_SDK_Interface
+        "-framework Cocoa"
+        "-framework Security"
+      )
+      target_compile_features(creatorhub-review-console-ui-preview PRIVATE cxx_std_17)
+    endif()
   endif()
 endif()
 

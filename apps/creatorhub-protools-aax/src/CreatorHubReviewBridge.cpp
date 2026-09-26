@@ -62,6 +62,15 @@ void ConfigureTimeouts(Socket socket, bool longRunning) {
 #endif
 }
 
+bool IsLongRunningAction(const std::string& action) {
+    return action == "send_review"
+        || action == "delivery"
+        || action == "import_reference"
+        || action == "prepare_compare"
+        || action == "recall"
+        || action == "intro_copy";
+}
+
 int SendFlags() {
 #if defined(MSG_NOSIGNAL)
     return MSG_NOSIGNAL;
@@ -108,7 +117,7 @@ std::string CreatorHubReviewBridge::Send(
     // A review export includes Pro Tools bounce, QC, private S3 upload and
     // server-side registration. It runs on a worker thread and legitimately
     // takes longer than the five-second timeout used by interactive actions.
-    ConfigureTimeouts(socketHandle, action == "send_review");
+    ConfigureTimeouts(socketHandle, IsLongRunningAction(action));
     sockaddr_in address{};
     address.sin_family = AF_INET;
     address.sin_port = htons(port_);
@@ -132,14 +141,15 @@ std::string CreatorHubReviewBridge::Send(
     }
     std::string response;
     char buffer[4096];
-    while (response.size() <= 65536) {
+    constexpr std::size_t MaxResponseBytes = 512 * 1024;
+    while (response.size() <= MaxResponseBytes) {
         const auto count = recv(socketHandle, buffer, sizeof(buffer), 0);
         if (count <= 0) break;
         response.append(buffer, static_cast<std::size_t>(count));
         if (!response.empty() && response.back() == '\n') break;
     }
     CleanupSocket(socketHandle);
-    if (response.empty() || response.size() > 65536) throw std::runtime_error("invalid IPC response");
+    if (response.empty() || response.size() > MaxResponseBytes) throw std::runtime_error("invalid IPC response");
     return response;
 }
 

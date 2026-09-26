@@ -58,12 +58,36 @@ async fn stage_artifact(
     Ok(path)
 }
 
+/// Import one session-owned CreatorHub artifact as a new Pro Tools audio track.
+///
+/// The caller supplies an artifact id obtained through an authenticated,
+/// session-scoped API response. The backend re-checks ownership when the bytes
+/// are downloaded, so the local AAX bridge never receives a reusable cloud URL
+/// or the CreatorHub device token.
+pub(crate) async fn import_artifact(
+    api_base: &str,
+    token: &str,
+    session_id: &str,
+    artifact_id: &str,
+    file_name: &str,
+) -> Result<Value, String> {
+    let path = stage_artifact(api_base, token, session_id, artifact_id, file_name).await?;
+    if !ptsl::probe().helper_installed {
+        return Ok(json!({ "execution": "staged", "localPath": path, "imported": false }));
+    }
+    ptsl::execute(
+        "import_audio",
+        json!({ "localPath": path.to_string_lossy(), "fileName": safe_name(file_name) }),
+    )
+    .await
+}
+
 async fn execute_one(
     api_base: &str,
     token: &str,
     session_id: &str,
     kind: &str,
-    mut payload: Value,
+    payload: Value,
 ) -> Result<Value, String> {
     if kind == "import_audio" {
         let artifact_id = payload
@@ -74,11 +98,7 @@ async fn execute_one(
             .get("fileName")
             .and_then(Value::as_str)
             .unwrap_or("Sound Room Reference.wav");
-        let path = stage_artifact(api_base, token, session_id, artifact_id, file_name).await?;
-        payload["localPath"] = Value::String(path.to_string_lossy().into_owned());
-        if !ptsl::probe().helper_installed {
-            return Ok(json!({ "execution": "staged", "localPath": path, "imported": false }));
-        }
+        return import_artifact(api_base, token, session_id, artifact_id, file_name).await;
     }
     ptsl::execute(kind, payload).await
 }
