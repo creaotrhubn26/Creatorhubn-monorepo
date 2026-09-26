@@ -8,10 +8,11 @@ readonly DEFAULT_INPUT="/Library/Application Support/Avid/Audio/Plug-Ins/Creator
 usage() {
   cat <<'USAGE'
 Usage:
+  scripts/release-protools-aax-macos.sh identity [input.aaxplugin]
   scripts/release-protools-aax-macos.sh check [input.aaxplugin]
   scripts/release-protools-aax-macos.sh wrap <input.aaxplugin> <output.aaxplugin>
 
-The check command is read-only. The wrap command requires:
+The identity and check commands are read-only. The wrap command requires:
   PACE_ACCOUNT_ID
   PACE_WRAP_CONFIG_GUID
   APPLE_SIGNING_IDENTITY
@@ -31,6 +32,10 @@ fail() {
 
 note() {
   printf 'OK: %s\n' "$*"
+}
+
+warn() {
+  printf 'WARNING: %s\n' "$*" >&2
 }
 
 cleanup_stage() {
@@ -90,6 +95,45 @@ require_apple_signature() {
   note "Input bundle has a valid Apple code signature."
 }
 
+inspect_release_identity() {
+  local bundle="$1"
+  local manifest="$bundle/Contents/Resources/CreatorHubAAXIdentity.plist"
+  local approved approval_reference manufacturer_id product_id mono_id stereo_id
+
+  RELEASE_IDENTITY_ERROR=""
+  if [[ ! -f "$manifest" ]]; then
+    RELEASE_IDENTITY_ERROR="The bundle is missing CreatorHubAAXIdentity.plist; rebuild it with the current release configuration."
+    warn "$RELEASE_IDENTITY_ERROR"
+    return
+  fi
+
+  approved="$(/usr/libexec/PlistBuddy -c 'Print :AvidApproved' "$manifest" 2>/dev/null || true)"
+  approval_reference="$(/usr/libexec/PlistBuddy -c 'Print :AvidApprovalReference' "$manifest" 2>/dev/null || true)"
+  manufacturer_id="$(/usr/libexec/PlistBuddy -c 'Print :ManufacturerID' "$manifest" 2>/dev/null || true)"
+  product_id="$(/usr/libexec/PlistBuddy -c 'Print :ProductID' "$manifest" 2>/dev/null || true)"
+  mono_id="$(/usr/libexec/PlistBuddy -c 'Print :MonoNativeID' "$manifest" 2>/dev/null || true)"
+  stereo_id="$(/usr/libexec/PlistBuddy -c 'Print :StereoNativeID' "$manifest" 2>/dev/null || true)"
+
+  if [[ -z "$manufacturer_id" || -z "$product_id" || -z "$mono_id" || -z "$stereo_id" ]]; then
+    RELEASE_IDENTITY_ERROR="The embedded AAX identity manifest is incomplete."
+    warn "$RELEASE_IDENTITY_ERROR"
+    return
+  fi
+
+  note "Embedded AAX IDs: manufacturer=$manufacturer_id product=$product_id mono=$mono_id stereo=$stereo_id."
+  if [[ "$approved" != "true" ]]; then
+    RELEASE_IDENTITY_ERROR="The embedded AAX IDs are marked as development-only. Rebuild with the IDs approved by Avid and -DCREATORHUB_AAX_IDS_AVID_APPROVED=ON."
+    warn "$RELEASE_IDENTITY_ERROR"
+  else
+    if [[ -z "$approval_reference" ]]; then
+      RELEASE_IDENTITY_ERROR="The embedded AAX IDs are marked as approved but have no Avid approval reference."
+      warn "$RELEASE_IDENTITY_ERROR"
+      return
+    fi
+    note "Embedded AAX IDs are explicitly marked as Avid-approved (reference: $approval_reference)."
+  fi
+}
+
 require_pace_license() {
   local bundle="$1"
   local probe_output probe_status
@@ -141,7 +185,9 @@ preflight() {
   require_wrap_config
   require_universal_bundle "$input"
   require_apple_signature "$input"
+  inspect_release_identity "$input"
   require_pace_license "$input"
+  [[ -z "$RELEASE_IDENTITY_ERROR" ]] || fail "$RELEASE_IDENTITY_ERROR"
 }
 
 wrap_bundle() {
@@ -184,8 +230,16 @@ wrap_bundle() {
 
 MODE="${1:-check}"
 WRAPTOOL="${PACE_WRAPTOOL:-$DEFAULT_WRAPTOOL}"
+RELEASE_IDENTITY_ERROR=""
 
 case "$MODE" in
+  identity)
+    INPUT="${2:-$DEFAULT_INPUT}"
+    [[ -d "$INPUT" ]] || fail "AAX bundle does not exist: $INPUT"
+    [[ "$INPUT" == *.aaxplugin ]] || fail "Input must be an .aaxplugin bundle."
+    inspect_release_identity "$INPUT"
+    [[ -z "$RELEASE_IDENTITY_ERROR" ]] || fail "$RELEASE_IDENTITY_ERROR"
+    ;;
   check)
     INPUT="${2:-$DEFAULT_INPUT}"
     preflight "$INPUT"

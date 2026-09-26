@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>ManufacturerID</key>
+  <string>@CREATORHUB_AAX_MANUFACTURER_ID@</string>
+  <key>ProductID</key>
+  <string>@CREATORHUB_AAX_PRODUCT_ID@</string>
+  <key>MonoNativeID</key>
+  <string>@CREATORHUB_AAX_MONO_NATIVE_ID@</string>
+  <key>StereoNativeID</key>
+  <string>@CREATORHUB_AAX_STEREO_NATIVE_ID@</string>
+  <key>AvidApproved</key>
+  <@CREATORHUB_AAX_IDS_AVID_APPROVED_PLIST@/>
+  <key>AvidApprovalReference</key>
+  <string>@CREATORHUB_AAX_AVID_APPROVAL_REFERENCE@</string>
+</dict>
+</plist>
